@@ -1,0 +1,110 @@
+
+erDiagram
+    AUTH_USERS ||--|| EMPLOYEES : "login identity"
+    DEPARTMENTS ||--o{ DEPARTMENTS : "parent of"
+    DEPARTMENTS ||--o{ EMPLOYEES : "home department"
+    DEPARTMENTS ||--o{ EMPLOYEE_ROLES : "scopes assignment"
+    DEPARTMENTS ||--o{ DEPARTMENT_ACCESS_GRANTS : "access granted to"
+    ROLES ||--o{ EMPLOYEES : "primary role"
+    ROLES ||--o{ EMPLOYEE_ROLES : "assigned as"
+    ROLES ||--o{ ROLE_APP_ACCESS : "grants app access"
+    ROLES ||--o{ ROLE_PERMISSIONS : "bundles permission"
+    APPS ||--o{ ROLE_APP_ACCESS : "access defined for"
+    APPS ||--o{ PERMISSIONS : "scopes permission to"
+    PERMISSIONS ||--o{ ROLE_PERMISSIONS : "granted via"
+    EMPLOYEES ||--o{ EMPLOYEES : "manages"
+    EMPLOYEES ||--o{ EMPLOYEE_ROLES : "holds"
+    EMPLOYEES ||--o{ DEPARTMENT_ACCESS_GRANTS : "grantee"
+    EMPLOYEES ||--o{ DEPARTMENT_ACCESS_GRANTS : "granted by"
+
+    AUTH_USERS {
+        uuid id PK
+    }
+
+    DEPARTMENTS {
+        uuid id PK
+        text name UK
+        text code UK
+        uuid parent_department_id FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    ROLES {
+        uuid id PK
+        text name
+        text description
+        boolean is_global
+        timestamptz created_at
+    }
+
+    EMPLOYEES {
+        uuid id PK
+        uuid auth_user_id FK "nullable: unset until invited employee completes Auth signup"
+        text employee_code UK
+        text full_name
+        text email UK
+        text phone
+        uuid department_id FK
+        uuid manager_id FK "self-referencing: sole hierarchy mechanism"
+        uuid primary_role_id FK
+        enum status "employee_status: invited/active/inactive/on_leave/offboarded"
+        enum employment_type "full_time/part_time/contract/intern/consultant"
+        text avatar_path "S3 object key, not a full URL"
+        date joined_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    EMPLOYEE_ROLES {
+        uuid id PK
+        uuid employee_id FK
+        uuid role_id FK
+        uuid department_id FK "scopes this assignment"
+        date valid_from
+        date valid_to "nullable: open-ended"
+        timestamptz created_at
+    }
+
+    DEPARTMENT_ACCESS_GRANTS {
+        uuid id PK
+        uuid employee_id FK "grantee"
+        uuid department_id FK
+        enum access_level "view/manage/admin"
+        uuid granted_by FK "employees.id of the grantor"
+        timestamptz granted_at
+    }
+
+    APPS {
+        uuid id PK
+        text key UK "matches apps/<key> folder name, e.g. hub, inventory"
+        text name
+        text description
+        boolean is_active
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    PERMISSIONS {
+        uuid id PK
+        text key UK "e.g. employees.write, roles.manage, inventory.items.write"
+        uuid app_id FK "nullable: null = global/cross-app permission"
+        text description
+        timestamptz created_at
+    }
+
+    ROLE_APP_ACCESS {
+        uuid id PK
+        uuid role_id FK
+        uuid app_id FK
+        enum access_level "app_access_level: none/view/manage; absent row = implicit none"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    ROLE_PERMISSIONS {
+        uuid id PK
+        uuid role_id FK
+        uuid permission_id FK
+        timestamptz created_at
+    }

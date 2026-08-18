@@ -1,0 +1,46 @@
+# Supabase CLI config for local dev + `supabase functions deploy`.
+# Confirmed live project (2026-08-17, see db/MIGRATIONS.md): matnispbauvvlnbsuzxq.
+project_id = "matnispbauvvlnbsuzxq"
+
+[functions.guest-signup]
+# Pure phone-match-or-create data entry, no auth involved at all (guests are never
+# Supabase Auth users — see the function source). No session to gate on.
+verify_jwt = false
+
+[functions.employee-signin]
+# Employee code + phone match against `employees` — not Supabase Auth, no session exists
+# yet at this bootstrap step (mirrors guest-signup). No JWT to gate on.
+verify_jwt = false
+
+[functions.submit-feedback]
+# Neither reviewer path (guestId or employeeId) carries a Supabase session anymore — both
+# are plain data labels in the request body, not a JWT. No JWT to gate on.
+verify_jwt = false
+
+# Journeys module (apps/admin/internal-portal) — every function below is Internal Portal
+# admin-only with no guest/unauthenticated path at all, unlike the two above, so the
+# platform-level JWT gate can stay on (defense-in-depth in front of each function's own
+# requireInternalPortalAdmin check via supabase/functions/_shared/authz.ts).
+[functions.create-car]
+verify_jwt = true
+
+[functions.update-car-status]
+verify_jwt = true
+
+[functions.create-driver]
+verify_jwt = true
+
+[functions.create-journey]
+verify_jwt = true
+
+[functions.update-journey]
+verify_jwt = true
+
+[functions.cancel-journey]
+verify_jwt = true
+
+[functions.approve-feedback]
+verify_jwt = true
+
+[functions.upload-driver-photo]
+verify_jwt = true

@@ -1,0 +1,18 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+@import "@jaipur-rugs/config/tailwind-theme.css";
+
+/* Tailwind v4 auto-detects content within this app's own directory tree, but ui-kit's
+   components live in a sibling workspace package outside that tree — this tells the v4
+   scanner to include it too, replacing v3's JS `content: []` array. */
+@source "../../../../packages/ui-kit/src";
+
+/* Login page's employee/guest switcher: HeroUI puts a `ring-2 ring-focus` (= ring-accent,
+   blue in this theme) on a focused .tabs__tab via its status-focused utility. Scoped to
+   just this switcher (not a global focus-ring override) since that ring is an intentional
+   a11y affordance everywhere else. */
+.login-tabs .tabs__tab:focus-visible,
+.login-tabs .tabs__tab[data-focus-visible="true"] {
+  --tw-ring-shadow: 0 0 #0000 !important;
+  outline: none;
+}

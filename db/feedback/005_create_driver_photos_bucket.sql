@@ -1,0 +1,11 @@
+-- Driver photos bucket — deliberate override of AGENTS.md's stated "self-hosted S3, not
+-- Supabase Storage" object storage choice, confirmed with the user 2026-08-18 (see
+-- AGENTS.md Section 1 for the recorded decision).
+--
+-- Public bucket: per Supabase's docs, `public = true` bypasses RLS entirely for reads —
+-- anyone with the object URL can view it (matches drivers.photo_path being shown to
+-- guests with no session at all, same as the driver name/status columns already are).
+-- Write operations (upload/delete/move/copy) still require an explicit RLS policy on
+-- storage.objects — none is added here, so by Storage's own default (no policy = no
+-- client writes at all), only the service role can upload until an admin UI exists.
+insert into storage.buckets (id, name, public) values ('driver-photos', 'driver-photos', true);

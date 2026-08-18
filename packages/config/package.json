@@ -1,0 +1,13 @@
+{
+  "name": "@jaipur-rugs/config",
+  "private": true,
+  "version": "0.0.0",
+  "files": [
+    "tsconfig.base.json",
+    "eslint-preset.cjs",
+    "tailwind-theme.css"
+  ],
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

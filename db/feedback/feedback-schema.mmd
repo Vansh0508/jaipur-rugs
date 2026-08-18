@@ -1,0 +1,95 @@
+%% Feedback module ERD — Admin Team Portal, Phase 1 (apps/admin/feedback-app).
+%% Employees and guests rate in-house drivers after a trip.
+%%
+%% Drivers are an independent entity, not a filtered view of `employees`
+%% (decision recorded in the Phase 1 plan: not every driver is a full HR record).
+%%
+%% Neither reviewer path is Supabase Auth anymore (redesigned 2026-08-18 — see
+%% 003_guest_tracking_only.sql and 006_employee_code_phone_login.sql). Both guest-signup
+%% (phone match-or-create) and employee-signin (employee_code + phone match against the
+%% existing EMPLOYEES row) create no auth.users row and no session — the app remembers
+%% "this browser is guest/employee X" with a plain (non-httpOnly) cookie holding the
+%% returned id, not a session token. FEEDBACK therefore has THREE reviewer FKs, exactly
+%% one populated per row (feedback_reviewer_exactly_one CHECK): `employee_id`,
+%% `guest_id`, or the now-vestigial `reviewer_auth_user_id` (kept in the schema for any
+%% other real Supabase-Auth-based integration later, but no longer written by this app).
+%%
+%% Writes to GUESTS and FEEDBACK never happen via a direct client insert — only the
+%% `guest-signup`, `employee-signin`, and `submit-feedback` Supabase Edge Functions write/
+%% read these tables that way (service role, bypassing RLS by design). GUESTS has no
+%% SELECT policy for any client role at all (pure internal tracking data). DRIVERS SELECT
+%% is open to the `anon` role too, since neither guests nor employees carry a session in
+%% this app — but `anon` only has column-level grants on the non-sensitive columns
+%% (id/driver_code/full_name/photo_path/status), never `phone`, since the anon key is
+%% public and RLS alone doesn't restrict columns.
+%%
+%% VEHICLES is an independent fleet roster (2026-08-18 seed) — not linked to DRIVERS.
+%% The two source lists (13 drivers, 14 vehicles) don't provide an assignment mapping;
+%% add a driver_id FK later if/when one exists. No anon access — nothing guest-facing
+%% consumes vehicle data yet.
+%%
+%% DRIVERS.photo_path is a Supabase Storage object key (public `driver-photos` bucket,
+%% 005_create_driver_photos_bucket.sql) — a deliberate, recorded override of AGENTS.md's
+%% default self-hosted-S3 choice (AGENTS.md Section 1), not the general pattern.
+%%
+%% EMPLOYEES is stubbed below (full definition lives in
+%% db/team-members/team-members-schema.mmd) — shown only for the FEEDBACK relationship.
+
+erDiagram
+    AUTH_USERS ||--o{ FEEDBACK : "submitted as (legacy/other integration)"
+    EMPLOYEES ||--o{ FEEDBACK : "submitted as (employee)"
+    DEPARTMENTS ||--o{ DRIVERS : "home department (optional)"
+    DRIVERS ||--o{ FEEDBACK : "rated"
+    GUESTS ||--o{ FEEDBACK : "submitted as (guest)"
+
+    AUTH_USERS {
+        uuid id PK
+    }
+
+    EMPLOYEES {
+        uuid id PK
+        text employee_code UK "matched against for employee-signin, case-insensitive"
+        text phone "matched last-10-digits, not exact string (no enforced format)"
+    }
+
+    DRIVERS {
+        uuid id PK
+        text driver_code UK
+        text full_name
+        text photo_path "Supabase Storage object key, driver-photos bucket"
+        text phone
+        uuid department_id FK "nullable"
+        enum status "driver_status: active/inactive"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    GUESTS {
+        uuid id PK
+        text full_name
+        text phone UK "full E.164, includes country code; the stable identity across visits"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    FEEDBACK {
+        uuid id PK
+        uuid driver_id FK
+        uuid employee_id FK "nullable — set for employee reviewers only"
+        uuid guest_id FK "nullable — set for guest reviewers only"
+        uuid reviewer_auth_user_id FK "nullable, vestigial — see header note; CHECK: exactly one of the three"
+        date travel_date
+        smallint rating "CHECK rating BETWEEN 1 AND 5 — ordinal scale, not a category set"
+        text description "nullable"
+        timestamptz created_at
+    }
+
+    VEHICLES {
+        uuid id PK
+        text registration_number UK
+        text make
+        text model
+        enum fuel_type "diesel/ev/petrol"
+        timestamptz created_at
+        timestamptz updated_at
+    }

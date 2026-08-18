@@ -1,0 +1,149 @@
+%% Journeys module ERD — Internal Portal (apps/admin/internal-portal), admin-only.
+%%
+%% A JOURNEY blocks exactly one VEHICLE and one DRIVER for a precise time window,
+%% derived (not stored independently) from its stops: `first_pickup_at`/`last_drop_at`
+%% are the min/max of stop arrival times, and `busy_window`/`date_from`/`date_to` are
+%% generated columns off those two. Two Postgres EXCLUDE constraints (GiST, on
+%% `tstzrange(first_pickup_at, last_drop_at)`) are the actual double-booking guarantee —
+%% overlapping windows for the same vehicle_id or driver_id cannot both commit. A journey
+%% ending before another starts is NOT a conflict; this falls out of range-overlap
+%% semantics with no special-case code.
+%%
+%% Route shape: exactly one JOURNEY_STOPS row with role='origin' (pickups only) and one
+%% with role='destination' (drops only) per journey (partial unique indexes), any number
+%% with role='stop' in between (ordered by sequence_no, can have both pickups and drops).
+%% JOURNEY_STOP_GUESTS records who's picked up/dropped at which stop, referencing
+%% JOURNEY_GUESTS (not GUESTS directly) so the action is scoped to this journey's
+%% guest-list entry. A trigger defends origin=pickup-only/destination=drop-only, but the
+%% real enforcement is in the create_journey/update_journey SQL functions, since those are
+%% the only write path (no client INSERT policy exists on any table in this module).
+%%
+%% GUESTS is the existing feedback-module table, reused as-is (phone stays the natural
+%% dedupe key) — journeys.created_by/JOURNEYS.driver_id/VEHICLES reuse existing
+%% team-members/feedback tables rather than duplicating them.
+%%
+%% VEHICLES gained `name`/`status`/`qr_code_url` (db/journeys/001) rather than a new
+%% `cars` table — the "Cars" feature is this table with three added columns, not a
+%% parallel entity. DRIVERS gained a NOT NULL + E.164 CHECK on `phone` and a
+%% `driver_code_seq` for new-driver creation.
+%%
+%% FEEDBACK (existing, feedback module) gained `journey_id`/`review_status`/
+%% `reviewed_by`/`reviewed_at` (db/journeys/004) to distinguish planned-ride feedback
+%% (linked to a journey, auto-approved) from unplanned-ride feedback (no journey link,
+%% starts 'pending' until an internal-portal admin approves/rejects it).
+%%
+%% Reads on every table below (plus GUESTS, which previously had no SELECT policy for any
+%% client role at all) are gated to internal-portal admins only, via
+%% private.is_internal_portal_admin(emp_id) — an employee with a department_access_grants
+%% row where departments.code='admin' and access_level='admin'. No INSERT/UPDATE policy on
+%% any of these tables — all writes go through public.create_journey/update_journey (SQL
+%% functions, EXECUTE granted to service_role only) or a plain service-role Edge Function
+%% write, matching the FEEDBACK/GUESTS precedent, not the EMPLOYEES/DEPARTMENTS one.
+
+erDiagram
+    VEHICLES ||--o{ JOURNEYS : "assigned to"
+    DRIVERS ||--o{ JOURNEYS : "assigned to"
+    EMPLOYEES ||--o{ JOURNEYS : "planned by (created_by)"
+    JOURNEYS ||--o{ JOURNEY_GUESTS : "carries"
+    GUESTS ||--o{ JOURNEY_GUESTS : "rides on"
+    JOURNEYS ||--o{ JOURNEY_STOPS : "routes through"
+    JOURNEY_STOPS ||--o{ JOURNEY_STOP_GUESTS : "pickup/drop at"
+    JOURNEY_GUESTS ||--o{ JOURNEY_STOP_GUESTS : "picked up/dropped as"
+    JOURNEYS ||--o{ FEEDBACK : "reviewed via (planned only)"
+    EMPLOYEES ||--o{ FEEDBACK : "reviewed by (moderation)"
+
+    VEHICLES {
+        uuid id PK
+        text registration_number UK
+        text make
+        text model
+        text name "added 001 — friendly display name, backfilled make || ' ' || model"
+        enum fuel_type "diesel/ev/petrol"
+        enum status "added 001 — vacant/on_trip/maintenance"
+        text qr_code_url "added 001 — nullable, populated once the QR endpoint exists; keyed off id"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    DRIVERS {
+        uuid id PK
+        text driver_code UK "from driver_code_seq (added 001), continues after DRV-013"
+        text full_name
+        text photo_path
+        text phone "made NOT NULL + E.164 CHECK, 001"
+        uuid department_id FK "nullable"
+        enum status "active/inactive"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    EMPLOYEES {
+        uuid id PK
+        uuid auth_user_id FK "nullable, references auth.users"
+        text email UK
+        uuid department_id FK
+        enum status
+    }
+
+    JOURNEYS {
+        uuid id PK
+        uuid vehicle_id FK
+        uuid driver_id FK
+        enum status "planned/ongoing/completed/cancelled"
+        timestamptz first_pickup_at "min(arrival_at) over pickup stops"
+        timestamptz last_drop_at "max(arrival_at) over drop stops"
+        tstzrange busy_window "GENERATED — [first_pickup_at, last_drop_at]; EXCLUDE constraint target"
+        date date_from "GENERATED — first_pickup_at::date"
+        date date_to "GENERATED — last_drop_at::date"
+        text notes "nullable"
+        uuid created_by FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    JOURNEY_GUESTS {
+        uuid id PK
+        uuid journey_id FK
+        uuid guest_id FK "references existing feedback-module GUESTS"
+        timestamptz created_at
+    }
+
+    JOURNEY_STOPS {
+        uuid id PK
+        uuid journey_id FK
+        int sequence_no "0=origin ... max=destination; unique per journey"
+        enum role "origin/stop/destination — exactly one origin + one destination per journey"
+        text location_name
+        timestamptz arrival_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    JOURNEY_STOP_GUESTS {
+        uuid id PK
+        uuid stop_id FK
+        uuid journey_guest_id FK
+        enum action "pickup/drop — origin=pickup only, destination=drop only (trigger-enforced)"
+        timestamptz created_at
+    }
+
+    GUESTS {
+        uuid id PK
+        text full_name
+        text phone UK
+    }
+
+    FEEDBACK {
+        uuid id PK
+        uuid driver_id FK
+        uuid reviewer_auth_user_id FK "nullable"
+        uuid guest_id FK "nullable"
+        uuid journey_id FK "added 004 — nullable; set = planned ride, null = unplanned"
+        enum review_status "added 004 — pending/approved/rejected; planned auto-approved, unplanned starts pending"
+        uuid reviewed_by FK "added 004 — nullable, set on admin approve/reject"
+        timestamptz reviewed_at "added 004 — nullable"
+        smallint rating
+        text description
+        date travel_date
+        timestamptz created_at
+    }

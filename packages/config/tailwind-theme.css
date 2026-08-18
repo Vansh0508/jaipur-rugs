@@ -1,0 +1,9 @@
+/*
+ * Shared Tailwind v4 theme tokens, consumed by every app via `@import` in its own CSS
+ * entry file. Tailwind v4 is CSS-first (no more JS `tailwind.config.js` preset/plugin
+ * system) — this replaces the old `tailwind-preset.js`. Keep design tokens here, not
+ * duplicated per-app, so theming stays consistent (AGENTS.md Section 4).
+ *
+ * Empty for now — no shared tokens defined yet beyond what @heroui/styles provides.
+ * Add tokens here as `@theme { --color-brand: ...; }` when a second app needs them.
+ */
