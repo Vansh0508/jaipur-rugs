@@ -46,17 +46,78 @@ export interface EmployeeSignInInput {
   employeeCode: string;
   /** Full E.164 phone number, country code included, e.g. "+919812345678". */
   phone: string;
+  /**
+   * Drives the recovery cascade after a first call throws EmployeeNotFoundError (i.e. the
+   * typed employee_code matched zero rows). Never set any of these speculatively — a code
+   * that exists but doesn't match the phone/status is a wrong-credentials case, and the
+   * edge function won't recover that:
+   *
+   *   - "confirmPhoneMatch" — call after EmployeePhoneMatchPendingError, once the caller's
+   *     own confirm/cancel popup was accepted. Patches only what's missing and logs in.
+   *   - "lookupEmail" — call after EmployeeNotFoundError, with `email` set, to search by
+   *     email once neither code nor phone matched anything.
+   *   - "confirmEmailMatch" — call after EmployeeEmailMatchPendingError (same `email`),
+   *     once confirmed. Patches only what's missing and logs in.
+   *   - "createNew" — call after EmployeeEmailNotFoundError, with `email` (already known
+   *     from the lookupEmail step) and a newly-collected `fullName`. Creates a genuinely
+   *     new row with a server-allocated employee_code — never the one originally typed.
+   */
+  action?: "confirmPhoneMatch" | "lookupEmail" | "confirmEmailMatch" | "createNew";
+  fullName?: string;
+  email?: string;
 }
 
 interface EmployeeSignInResponse {
   employeeId: string;
+  /** Present only when a new row was just created — the server-allocated employee_code
+   * (next_employee_code()), not whatever the caller originally typed to sign in with. */
+  employeeCode?: string;
+  created?: boolean;
 }
+
+/** No `employees` row has the given employee_code, and none matches the given phone either. Next step: ask for an email and call again with action: "lookupEmail". */
+export class EmployeeNotFoundError extends Error {
+  constructor() {
+    super("No employee found with that code.");
+  }
+}
+
+/** The code didn't match, but an existing row's phone does. Show a plain confirm/cancel popup, then call again with action: "confirmPhoneMatch". */
+export class EmployeePhoneMatchPendingError extends Error {
+  constructor() {
+    super("A record already exists for this phone number.");
+  }
+}
+
+/** Neither the code, the phone, nor the given email matched anything. This is genuinely a new person — collect a full name and call again with action: "createNew". */
+export class EmployeeEmailNotFoundError extends Error {
+  constructor() {
+    super("No employee found with that email.");
+  }
+}
+
+/** The given email matches an existing row. Show a plain confirm/cancel popup, then call again with action: "confirmEmailMatch". */
+export class EmployeeEmailMatchPendingError extends Error {
+  constructor() {
+    super("A record already exists for this email.");
+  }
+}
+
+const EMPLOYEE_SIGN_IN_ERROR_CLASSES = {
+  not_found: EmployeeNotFoundError,
+  phone_match_pending: EmployeePhoneMatchPendingError,
+  email_not_found: EmployeeEmailNotFoundError,
+  email_match_pending: EmployeeEmailMatchPendingError,
+} as const;
 
 /**
  * employee_code + phone match against `employees` — NOT Supabase Auth. No password, no
- * auth.users row, no session; mirrors guestCheckIn exactly. Unlike guests, this never
- * creates a row — employees are pre-existing HR records. Throws with the edge function's
- * actual message (e.g. "No active employee matches...") rather than a generic HTTP error.
+ * auth.users row, no session. When the code matches nothing, the edge function runs a
+ * recovery cascade (phone, then email, then offering to create a new row) rather than
+ * failing outright — each step throws one of the typed errors above so the caller can
+ * drive its own popups; see EmployeeSignInInput's `action` docs for the exact sequence.
+ * Throws a plain Error with the edge function's actual message for every other failure
+ * (e.g. "No active employee matches..." for a real code with the wrong phone).
  */
 export async function employeeSignIn(supabase: SupabaseClient, input: EmployeeSignInInput) {
   const { data, error } = await supabase.functions.invoke<EmployeeSignInResponse>("employee-signin", {
@@ -64,10 +125,36 @@ export async function employeeSignIn(supabase: SupabaseClient, input: EmployeeSi
   });
 
   if (error || !data) {
-    throw new Error(await extractErrorMessage(error));
+    const { code, message } = await parseEmployeeSignInError(error);
+    const ErrorClass = code ? EMPLOYEE_SIGN_IN_ERROR_CLASSES[code as keyof typeof EMPLOYEE_SIGN_IN_ERROR_CLASSES] : undefined;
+    if (ErrorClass) {
+      throw new ErrorClass();
+    }
+    throw new Error(message);
   }
 
   return data;
+}
+
+/**
+ * Reads a FunctionsHttpError's body exactly once, returning both the raw `error` string
+ * (used to pick one of the typed errors above) and a display-ready message (used as a
+ * plain Error's message for every other failure). Response bodies can only be read once,
+ * so this must not call context.json() more than a single time per error.
+ */
+async function parseEmployeeSignInError(error: unknown): Promise<{ code: string | null; message: string }> {
+  const context = (error as { context?: Response } | null)?.context;
+  if (context && typeof context.json === "function") {
+    try {
+      const body = await context.json();
+      if (typeof body?.error === "string") {
+        return { code: body.error, message: body.error };
+      }
+    } catch {
+      // fall through to the generic message below
+    }
+  }
+  return { code: null, message: error instanceof Error ? error.message : "The request failed." };
 }
 
 export interface SubmitFeedbackInput {
@@ -356,6 +443,129 @@ export async function approveFeedback(supabase: SupabaseClient, input: ApproveFe
   });
   if (error || !data) {
     throw error ?? new Error("approve-feedback returned no data");
+  }
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Hub module (apps/hub) — sign-up/onboarding/profile and Team-page role/manager admin.
+// See db/team-members/006_hub_onboarding_and_admin.sql.
+
+export interface EmployeeSignUpInput {
+  email: string;
+  password: string;
+  fullName: string;
+}
+
+interface EmployeeSignUpResponse {
+  employeeId: string;
+}
+
+/**
+ * Invokes `employee-signup`, which creates the Supabase Auth user itself (via the Admin
+ * API) rather than the caller using `supabase.auth.signUp()` directly — see the function's
+ * own comment for why. This never establishes a session; call
+ * `supabase.auth.signInWithPassword` with the same credentials right after, to satisfy the
+ * "auto-login after first sign-up" requirement.
+ */
+export async function employeeSignUp(supabase: SupabaseClient, input: EmployeeSignUpInput) {
+  const { data, error } = await supabase.functions.invoke<EmployeeSignUpResponse>("employee-signup", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface UpdateOwnProfileInput {
+  phone?: string;
+  employmentType?: "full_time" | "part_time" | "contract" | "intern" | "consultant";
+  departmentId?: string;
+  joinedAt?: string;
+  avatarPath?: string;
+}
+
+interface UpdateOwnProfileResponse {
+  employeeId: string;
+}
+
+/**
+ * Invokes `update-own-profile` — used both by the onboarding wizard's last step (which
+ * also marks onboarding complete server-side) and later edits from /profile.
+ */
+export async function updateOwnProfile(supabase: SupabaseClient, input: UpdateOwnProfileInput) {
+  const { data, error } = await supabase.functions.invoke<UpdateOwnProfileResponse>("update-own-profile", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+interface UploadEmployeeAvatarResponse {
+  avatarPath: string;
+}
+
+/** Invokes `upload-employee-avatar` (multipart form body) — self-service, unlike uploadDriverPhoto. */
+export async function uploadEmployeeAvatar(supabase: SupabaseClient, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data, error } = await supabase.functions.invoke<UploadEmployeeAvatarResponse>("upload-employee-avatar", {
+    body: formData,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface InviteEmployeeInput {
+  fullName: string;
+  email: string;
+  departmentId?: string;
+  managerId?: string;
+  primaryRoleId?: string;
+  employmentType?: "full_time" | "part_time" | "contract" | "intern" | "consultant";
+}
+
+interface InviteEmployeeResponse {
+  employeeId: string;
+  employeeCode: string;
+}
+
+/** Invokes `invite-employee` — the Team page's "Add team member." Requires `employees.write`. */
+export async function inviteEmployee(supabase: SupabaseClient, input: InviteEmployeeInput) {
+  const { data, error } = await supabase.functions.invoke<InviteEmployeeResponse>("invite-employee", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface UpdateEmployeeInput {
+  employeeId: string;
+  departmentId?: string | null;
+  managerId?: string | null;
+  primaryRoleId?: string | null;
+  employmentType?: "full_time" | "part_time" | "contract" | "intern" | "consultant";
+  status?: "invited" | "active" | "inactive" | "on_leave" | "offboarded";
+}
+
+interface UpdateEmployeeResponse {
+  employeeId: string;
+}
+
+/** Invokes `update-employee` — the Team page's row-level edit (department/manager/role/status). Requires `employees.write`. */
+export async function updateEmployee(supabase: SupabaseClient, input: UpdateEmployeeInput) {
+  const { data, error } = await supabase.functions.invoke<UpdateEmployeeResponse>("update-employee", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
   }
   return data;
 }

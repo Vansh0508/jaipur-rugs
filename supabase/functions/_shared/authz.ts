@@ -78,6 +78,112 @@ export async function requireInternalPortalAdmin(
   return { employeeId: employee.id, authUserId: user.id };
 }
 
+/**
+ * Verifies the request carries a valid session for an active employee who holds the given
+ * permission — either via their `primary_role_id` or a current (not yet expired)
+ * `employee_roles` row. Used by apps/hub's Team-management functions (invite-employee,
+ * update-employee), the generalized counterpart to requireInternalPortalAdmin above (which
+ * is deliberately narrower — one hardcoded department_access_grants check — since that's
+ * the only primitive the Internal Portal module needed).
+ *
+ * Re-implements employee_has_permission (private.employee_has_permission in Postgres) as
+ * plain queries rather than calling it — same reason requireInternalPortalAdmin already
+ * re-implements its own check: functions in the `private` schema aren't PostgREST-exposed
+ * to any caller, service-role included.
+ */
+export async function requireEmployeePermission(
+  supabaseAdmin: SupabaseClient,
+  supabaseUrl: string,
+  anonKey: string,
+  req: Request,
+  permissionKey: string,
+): Promise<AuthorizedEmployee> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) {
+    throw new AuthzError("missing Authorization header", 401);
+  }
+
+  const anonClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const {
+    data: { user },
+    error: userError,
+  } = await anonClient.auth.getUser();
+  if (userError || !user) {
+    throw new AuthzError("not authenticated", 401);
+  }
+
+  const { data: employee, error: employeeError } = await supabaseAdmin
+    .from("employees")
+    .select("id, status, primary_role_id")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+  if (employeeError) {
+    throw new AuthzError(employeeError.message, 500);
+  }
+  if (!employee || employee.status !== "active") {
+    throw new AuthzError("no active employee record for this account", 403);
+  }
+
+  const { data: permission, error: permissionError } = await supabaseAdmin
+    .from("permissions")
+    .select("id")
+    .eq("key", permissionKey)
+    .maybeSingle();
+  if (permissionError) {
+    throw new AuthzError(permissionError.message, 500);
+  }
+  if (!permission) {
+    throw new AuthzError(`unknown permission key: ${permissionKey}`, 500);
+  }
+
+  if (employee.primary_role_id) {
+    const { data: viaPrimaryRole, error: primaryRoleError } = await supabaseAdmin
+      .from("role_permissions")
+      .select("id")
+      .eq("role_id", employee.primary_role_id)
+      .eq("permission_id", permission.id)
+      .maybeSingle();
+    if (primaryRoleError) {
+      throw new AuthzError(primaryRoleError.message, 500);
+    }
+    if (viaPrimaryRole) {
+      return { employeeId: employee.id, authUserId: user.id };
+    }
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: employeeRoles, error: employeeRolesError } = await supabaseAdmin
+    .from("employee_roles")
+    .select("role_id, valid_from, valid_to")
+    .eq("employee_id", employee.id)
+    .lte("valid_from", today);
+  if (employeeRolesError) {
+    throw new AuthzError(employeeRolesError.message, 500);
+  }
+  const currentRoleIds = (employeeRoles ?? [])
+    .filter((er) => !er.valid_to || er.valid_to >= today)
+    .map((er) => er.role_id);
+
+  if (currentRoleIds.length > 0) {
+    const { data: viaAssignedRole, error: assignedRoleError } = await supabaseAdmin
+      .from("role_permissions")
+      .select("id")
+      .in("role_id", currentRoleIds)
+      .eq("permission_id", permission.id)
+      .maybeSingle();
+    if (assignedRoleError) {
+      throw new AuthzError(assignedRoleError.message, 500);
+    }
+    if (viaAssignedRole) {
+      return { employeeId: employee.id, authUserId: user.id };
+    }
+  }
+
+  throw new AuthzError(`missing required permission: ${permissionKey}`, 403);
+}
+
 /** Converts a thrown AuthzError (or anything else) into a JSON error Response. */
 export function authzErrorResponse(err: unknown, corsHeaders: Record<string, string>): Response {
   if (err instanceof AuthzError) {

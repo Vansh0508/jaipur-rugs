@@ -4,6 +4,7 @@
 
 export { Button, type ButtonProps } from "./Button";
 export { TextField, type TextFieldProps } from "./TextField";
+export { Select, type SelectProps, type SelectOption } from "./Select";
 export { Modal, useOverlayState } from "./Modal";
 export { DateField, type DateFieldProps } from "./DateField";
 export { DateRangeField, type DateRangeFieldProps, type DateRangeValue } from "./DateRangeField";

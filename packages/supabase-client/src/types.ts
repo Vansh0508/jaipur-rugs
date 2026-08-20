@@ -1,5 +1,5 @@
 // Generated from project matnispbauvvlnbsuzxq via mcp Supabase generate_typescript_types,
-// last regenerated 2026-08-18 (see db/MIGRATIONS.md for every migration this reflects).
+// last regenerated 2026-08-19 (see db/MIGRATIONS.md for every migration this reflects).
 // Regenerate after every schema migration (AGENTS.md Section 3.1, step 6) — do not hand-edit.
 
 export type Json =
@@ -241,6 +241,7 @@ export type Database = {
           id: string
           joined_at: string | null
           manager_id: string | null
+          onboarding_completed_at: string | null
           phone: string | null
           primary_role_id: string | null
           status: Database["public"]["Enums"]["employee_status"]
@@ -258,6 +259,7 @@ export type Database = {
           id?: string
           joined_at?: string | null
           manager_id?: string | null
+          onboarding_completed_at?: string | null
           phone?: string | null
           primary_role_id?: string | null
           status?: Database["public"]["Enums"]["employee_status"]
@@ -275,6 +277,7 @@ export type Database = {
           id?: string
           joined_at?: string | null
           manager_id?: string | null
+          onboarding_completed_at?: string | null
           phone?: string | null
           primary_role_id?: string | null
           status?: Database["public"]["Enums"]["employee_status"]
@@ -787,6 +790,7 @@ export type Database = {
     Functions: {
       create_journey: { Args: { payload: Json }; Returns: string }
       next_driver_code: { Args: never; Returns: string }
+      next_employee_code: { Args: never; Returns: string }
       update_journey: {
         Args: { p_journey_id: string; payload: Json }
         Returns: undefined

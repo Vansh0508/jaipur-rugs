@@ -36,8 +36,10 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | (2026-08-18) | `journeys_driver_code_helper_fixes` | journeys | `db/journeys/008_driver_code_helper_fixes.sql` |
 | (2026-08-18) | `team_members_fix_employees_select_recursion` | team-members | `db/team-members/005_fix_employees_select_recursion.sql` |
 | (2026-08-18) | `employee_code_phone_login` | feedback | `db/feedback/006_employee_code_phone_login.sql` |
+| `20260819000000` (approx) | `hub_onboarding_and_admin` | team-members | `db/team-members/006_hub_onboarding_and_admin.sql` |
+| `20260819000001` (approx) | `hub_next_employee_code_advisor_fix` | team-members | `db/team-members/007_hub_advisor_fixes.sql` |
 
-First four applied 2026-08-17, everything else 2026-08-18. Security and performance advisors were
+First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows above (2026-08-19). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
 (006, 008) rather than deferred. The only standing findings as of this ledger: an
 INFO-level "guests has RLS enabled but no policies for `anon`/unauthenticated" (intentional
@@ -169,6 +171,72 @@ cookies (`jr_guest_id`/`jr_employee_id`), no `@jaipur-rugs/auth`/session client 
 Checked before making this change: `apps/admin/internal-portal`'s feedback queries
 (`lib/queries/feedback.ts`) never select `reviewer_auth_user_id`, so nothing there broke.
 
+**Employee sign-in recovery cascade (2026-08-20, product decision, supersedes the
+next-day-old simpler version below):** a sign-in attempt whose `employee_code` matches
+zero rows no longer just offers to create a new row — it cascades through a recognition
+sequence first, in order, so a person who mistyped/doesn't know their code isn't turned
+into a duplicate record:
+
+1. **Try phone.** If an existing row's phone matches (ignoring the wrong code), the edge
+   function returns `409 { error: "phone_match_pending" }`. The frontend shows a plain
+   Confirm/Cancel popup — no new fields, since the match was already found from data the
+   person already typed — and confirming calls back with `action: "confirmPhoneMatch"`.
+2. **Fall back to email.** If phone doesn't match anything either, `404 { error:
+   "not_found" }` — the frontend now needs an email to keep looking and prompts for one,
+   then calls back with `action: "lookupEmail"`. A match returns `409 { error:
+   "email_match_pending" }` (same plain confirm popup, `action: "confirmEmailMatch"` on
+   confirm); no match returns `404 { error: "email_not_found" }`.
+3. **Create new.** Only once code, phone, AND email have all failed to match anything is
+   this genuinely a new person — the frontend collects a Full Name (email already known
+   from step 2) and calls back with `action: "createNew"`.
+
+A code that **exists** but has the wrong phone/status never enters this cascade at all —
+that's a real account's wrong credentials, not a recovery case, and still gets the
+ordinary "no active employee matches" rejection.
+
+The phone/email match steps **patch only genuinely missing fields, never overwrite
+anything already set, and never touch `employee_code`** — confirmed by the user
+explicitly rather than assumed: "only overtype the data which was missing, rest should
+remain as it is." In practice that means `status` (flipped to `'active'` if it wasn't,
+since otherwise the same person is locked out next visit — `employee-signin`'s exact-match
+path only accepts `status = 'active'`) and `phone` (set only if the matched row's phone
+was `null`, e.g. a row created via `invite-employee` before the person ever supplied one).
+Confirmation popups for these two steps are deliberately confirm-only, no editable fields
+(also an explicit choice, not a default) — the system fills in what's missing itself
+rather than asking the person to re-enter data that's already on file.
+
+Two things this deliberately does NOT do like a naive copy of the guest flow would have,
+unchanged from the previous version of this feature:
+- **Never accepts employee_code from the client on creation.** `employees.employee_code`
+  is UNIQUE and, per `hub_onboarding_and_admin`'s `invite-employee` function, always
+  server-allocated via `next_employee_code()` (the same race-free sequence `create-driver`
+  uses for `driver_code`) — never chosen by the person, and never written into an existing
+  row by the phone/email match steps either (those never touch that column at all).
+- **Sets `status: 'active'` immediately on a brand-new row, not the usual `'invited'`.**
+  `invite-employee`'s HR-driven flow leaves new rows `'invited'` pending a real sign-up
+  step later; there's no such follow-up here.
+
+Verified live via curl through the full state machine: an unrecognized code + a phone that
+matches an existing (`'invited'`) row returns `phone_match_pending`, and confirming flips
+that row's status to `'active'` while leaving `employee_code`/phone untouched; a
+subsequent unrecognized code + phone that matches nothing but an email does returns
+`not_found` → `email_match_pending` on the email lookup, and confirming patches the
+matched row's previously-`null` phone in while leaving `employee_code`/status(already
+active in that test)/email alone; a code+phone+email that all match nothing returns
+`not_found` → `email_not_found` → `createNew` allocates a genuinely new server-issued code
+(not the one typed). All test rows deleted afterward.
+
+---
+
+Earlier, simpler version of the same feature (2026-08-20, same day, superseded above): a
+sign-in attempt whose `employee_code` matched zero rows returned `{ error: "not_found" }`
+(HTTP 404) directly, with no phone/email recognition step — the Feedback App's login form
+caught this via `EmployeeNotFoundError` and immediately offered to create a new row via
+`createIfMissing: true` after collecting Full Name + Email. Replaced the same day once the
+product requirement was clarified: a returning person recognizable by phone or email
+should never end up duplicated into a brand-new row just because they mistyped or forgot
+their employee_code.
+
 Also on 2026-08-18: dropped a stale `on_auth_user_created` trigger + `internal.handle_new_user()`
 function, orphaned debris from the pre-existing (unrelated, superseded) schema on this
 project — it inserted into `public.profiles`, a table that no longer exists, and broke
@@ -186,6 +254,57 @@ RLS policy was added for writes, so by Storage's own default (no policy = no cli
 writes), only the service role can upload until an admin UI exists. `drivers.photo_path`
 resolves against this bucket via `lib/env.ts`'s `resolvePhotoUrl()` in
 `apps/admin/feedback-app` — no separate S3 base URL env var needed anymore.
+
+**Hub module (2026-08-19, new — `db/team-members/006`–`007`):** built for `apps/hub` —
+self-service sign-up/sign-in, a one-time onboarding wizard, profile, and a Team page for
+role/manager admin. This is the first thing built on top of the RBAC layer
+(`roles`/`role_permissions`) that `001_team_members_schema.sql` shipped with zero seeded
+rows on purpose. `006_hub_onboarding_and_admin.sql` added `employees.onboarding_completed_at`
+(nullable timestamptz, the single "don't show onboarding again" flag), `employee_code_seq`/
+`public.next_employee_code()` (mirrors `next_driver_code()` exactly), the public
+`employee-avatars` Storage bucket (same override pattern as `driver-photos`, recorded in
+`AGENTS.md` Section 1), and seeded one `Admin` role bound to all 5 existing permissions,
+granted to the pre-existing `vansh.g@pixxeldigital.com` employee (`PIX-001`) — the same
+account already used for Internal Portal testing (see the "Demo admin user" entry below),
+confirmed live via `execute_sql` before seeding rather than assumed. That account's
+`onboarding_completed_at` was also set to `now()` in the same migration, since its profile
+(phone, department, employment_type) already exists — it should not be forced through the
+wizard. `007_hub_advisor_fixes.sql` is the standard immediate follow-up (Section 3.1 step
+5): the security advisor flagged `next_employee_code`'s mutable `search_path`, fixed the
+same way `next_driver_code`'s was (`db/journeys/008_driver_code_helper_fixes.sql`).
+
+Product decision made in this session: **open sign-up**, not invite-only. Any email can
+sign up via the `employee-signup` edge function; if an `employees` row already exists for
+that email with no `auth_user_id` (created ahead of time by the Team page's
+`invite-employee` function, `status: 'invited'`), sign-up claims it — preserving whatever
+department/manager/role was preset — instead of creating a duplicate. Sign-up never uses
+`supabase.auth.signUp()` directly; `employee-signup` creates the `auth.users` row itself via
+the Admin API (so an unmatched attempt can never leave an orphaned auth user), and the
+client calls `signInWithPassword` immediately after to satisfy "auto-login on first
+sign-up." No new RLS write policy was added for employee self-service — `employees_write`'s
+"no self-service path... flagged as an open decision, not built" comment (from
+`001_team_members_schema.sql`) is resolved by `update-own-profile`, a service-role edge
+function that checks `auth_user_id` ownership in code, matching every other write in this
+repo (RLS is not the enforcement layer for edge-function writes, since they run as
+service_role and bypass it by design).
+
+Five new edge functions, all deployed and version-1 (`update-own-profile` shows version 2
+in the dashboard only because an initial deploy attempt was interrupted mid-session before
+the real one landed — no functional difference): `employee-signup` (`verify_jwt: false`,
+mirrors `guest-signup`'s "no session yet" treatment), `update-own-profile`,
+`upload-employee-avatar` (self-service version of `upload-driver-photo`, same bucket
+pattern, different auth check), `invite-employee`, `update-employee` (both gated by a new
+`requireEmployeePermission` helper added to `supabase/functions/_shared/authz.ts` —
+generalizes `requireInternalPortalAdmin`'s pattern to an arbitrary permission key instead of
+the one hardcoded `department_access_grants` check, re-implementing
+`private.employee_has_permission` as plain queries for the same reason
+`requireInternalPortalAdmin` already re-implements its own check). One deploy gotcha hit and
+resolved in this session: the `deploy_edge_function` MCP tool bundles the entrypoint under
+an internal `source/` folder, so a shared file must be named with a leading `../` (e.g.
+`../_shared/authz.ts`) in the `files` array to land one level up where the repo's own
+`import "../_shared/authz.ts"` actually resolves — naming it `_shared/authz.ts` (matching
+the repo path literally) instead nests it under `source/` and the bundle fails with
+`Module not found`.
 
 ## Pre-existing history on this project (context, not part of this module's schema)
 
@@ -217,10 +336,11 @@ were, since neither corresponds to anything in this repo.
   and live-tested (`submit-feedback` is version 4 as of the employee-login redesign;
   `employee-signin` is new, version 2 after the phone-matching fix) —
   `packages/supabase-client/src/types.ts` is regenerated and current.
-- No seed `roles` or `role_permissions` rows exist — only the `apps` and `permissions`
-  catalog rows from the team-members migration's seed data. Nobody currently has any
-  permission at all, which is a safe default but means no admin UI action will succeed
-  until at least one role is created and granted permissions directly in the database.
+- ~~No seed `roles` or `role_permissions` rows exist~~ — **resolved 2026-08-19**: one
+  `Admin` role now exists, bound to all 5 existing permissions, granted to
+  `vansh.g@pixxeldigital.com` (`PIX-001`). See the "Hub module" entry above. Every other
+  employee still has `primary_role_id = null` (no permissions) until that Admin account
+  grants them a role from `apps/hub`'s Team page.
 - `drivers` (13) and `vehicles` (14) are seeded with real data as of 2026-08-18 — the
   driver grid has real content now. Driver photos (`photo_path`) are still unset for all
   of them, so the grid falls back to initials until photos are uploaded to S3 and the

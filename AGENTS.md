@@ -25,6 +25,8 @@ Do not introduce a second UI kit, a second charting library, a second ORM, or a 
 
 **Recorded override (2026-08-18):** the Feedback App's driver photos (`drivers.photo_path`) use a public Supabase Storage bucket (`driver-photos`), not self-hosted S3 — a deliberate, discussed decision, not a silent one. This is scoped to that one use case; don't treat it as license to default new modules to Supabase Storage without the same explicit conversation. See `db/feedback/005_create_driver_photos_bucket.sql` and `lib/env.ts` in `apps/admin/feedback-app`.
 
+**Recorded override (2026-08-19):** Hub's employee avatars (`employees.avatar_path`) use a public Supabase Storage bucket (`employee-avatars`), same rationale and same one-off scope as the driver-photos override above — not a general license for future modules. See `db/team-members/006_hub_onboarding_and_admin.sql` and `lib/env.ts` in `apps/hub`.
+
 ---
 
 ## 2. Repo Layout (target state)

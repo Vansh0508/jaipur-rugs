@@ -137,6 +137,67 @@ importers:
         specifier: ^5.6.0
         version: 5.9.3
 
+  apps/hub:
+    dependencies:
+      '@heroui/react':
+        specifier: ^3.2.4
+        version: 3.2.4(@react-aria/i18n@3.13.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@react-aria/ssr@3.10.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@react-aria/utils@3.34.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@react-spectrum/provider@3.11.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-aria-components@1.20.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-aria@3.51.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tailwindcss@4.3.3)
+      '@heroui/styles':
+        specifier: ^3.2.4
+        version: 3.2.4(tailwind-merge@3.4.0)(tailwindcss@4.3.3)
+      '@jaipur-rugs/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
+      '@jaipur-rugs/db-management-client':
+        specifier: workspace:*
+        version: link:../../packages/db-management-client
+      '@jaipur-rugs/supabase-client':
+        specifier: workspace:*
+        version: link:../../packages/supabase-client
+      '@jaipur-rugs/ui-kit':
+        specifier: workspace:*
+        version: link:../../packages/ui-kit
+      '@supabase/ssr':
+        specifier: ^0.5.0
+        version: 0.5.2(@supabase/supabase-js@2.112.3)
+      '@supabase/supabase-js':
+        specifier: ^2.45.0
+        version: 2.112.3
+      next:
+        specifier: ^16.3.1
+        version: 16.3.1(@types/node@20.19.43)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: ^19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.2.8
+        version: 19.2.8(react@19.2.8)
+    devDependencies:
+      '@jaipur-rugs/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@tailwindcss/postcss':
+        specifier: ^4.3.3
+        version: 4.3.3
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: ^19.2.0
+        version: 19.2.4(@types/react@19.2.18)
+      postcss:
+        specifier: ^8.4.47
+        version: 8.5.26
+      tailwindcss:
+        specifier: ^4.3.3
+        version: 4.3.3
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
   packages/auth:
     dependencies:
       '@jaipur-rugs/supabase-client':

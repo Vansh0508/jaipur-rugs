@@ -59,10 +59,29 @@ export function createSupabaseServerClient(
     cookieOptions,
     cookies: {
       get: (name: string) => cookies.get(name),
-      set: (name: string, value: string, options: CookieOptions) =>
-        cookies.set(name, value, { ...cookieOptions, ...options }),
-      remove: (name: string, options: CookieOptions) =>
-        cookies.remove(name, { ...cookieOptions, ...options }),
+      // @supabase/ssr calls set/remove internally to persist a refreshed auth session on
+      // essentially every request — including from a plain Server Component render, where
+      // Next.js's cookies() is read-only and throws ("Cookies can only be modified in a
+      // Server Action or Route Handler"). Swallow that specific failure: proxy.ts (running
+      // as middleware, where cookies() IS writable) refreshes the session on the next
+      // request regardless, so a no-op here from a Server Component is harmless — see
+      // https://nextjs.org/docs/app/api-reference/functions/cookies#options. A Route
+      // Handler or Server Action calling this still writes cookies normally; only the
+      // read-only-context failure is caught.
+      set: (name: string, value: string, options: CookieOptions) => {
+        try {
+          cookies.set(name, value, { ...cookieOptions, ...options });
+        } catch {
+          // Called from a context where cookies() is read-only — see comment above.
+        }
+      },
+      remove: (name: string, options: CookieOptions) => {
+        try {
+          cookies.remove(name, { ...cookieOptions, ...options });
+        } catch {
+          // Called from a context where cookies() is read-only — see comment above.
+        }
+      },
     },
   });
 }

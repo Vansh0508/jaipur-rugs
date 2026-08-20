@@ -67,6 +67,21 @@ No S3 config needed — driver photos resolve directly against
   plain phone field with no country-code picker. This used to be real Supabase Auth
   (`signInWithPassword`) — replaced mid-build. See `db/MIGRATIONS.md`'s "Employee login
   redesign" entry for the full reasoning.
+  - If the code matches **zero** `employees` rows, a recovery cascade runs before ever
+    offering to create anything: try the **phone** (ignoring the wrong code) → fall back
+    to an **email** the form asks for → only then offer to **create** a new row. Each step
+    is confirm-only where a match is found (no fields — the match came from data already
+    typed) and patches only whatever was genuinely missing (`status` → `'active'`,
+    `phone` if it was `null`) without ever touching `employee_code` or overwriting
+    anything already set. Only the final create-new step collects a Full Name (email
+    already known by then) and allocates a real `employee_code` via `next_employee_code()`
+    (the same sequence `create-driver` uses for `driver_code`) — the code typed at login is
+    always discarded, never written anywhere. New rows are `status: 'active'` immediately,
+    unlike the HR-flow default of `'invited'`. A code that *exists* but doesn't match the
+    given phone/status still gets the ordinary rejection — nothing in this cascade ever
+    runs for a real, claimed code. See `db/MIGRATIONS.md`'s "Employee sign-in recovery
+    cascade" entry for the full design (including why an earlier, simpler version built
+    the same day was replaced).
 - **Guest** — matched against (or inserted into) `guests` by phone via `guest-signup`, full
   E.164 with a mandatory country-code picker. This was a deliberate mid-build product
   decision — guests are tracked data for the purpose of the feedback record, not accounts.
@@ -93,7 +108,7 @@ Hub app yet to redirect unauthenticated users to, so they land on this app's own
 | Function | Auth required | Does |
 |---|---|---|
 | `guest-signup` | None (bootstrap step) | Phone match-or-create against `guests`. Returns `{guestId, matched}`. |
-| `employee-signin` | None (bootstrap step) | `employee_code` + phone match against `employees` (last-10-digits, case-insensitive code). Returns `{employeeId}`. |
+| `employee-signin` | None (bootstrap step) | `employee_code` + phone match against `employees` (last-10-digits, case-insensitive code). Returns `{employeeId}`. If the code matches nothing, runs a recovery cascade driven by an `action` param (`confirmPhoneMatch` → `lookupEmail`/`confirmEmailMatch` → `createNew`) — see [Architecture](#architecture) below. |
 | `submit-feedback` | `guestId` **or** `employeeId` in body — exactly one | Validates driver/rating/date, inserts one `feedback` row. |
 
 ### Styling
