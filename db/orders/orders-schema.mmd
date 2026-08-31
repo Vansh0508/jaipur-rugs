@@ -1,0 +1,124 @@
+erDiagram
+    %% Orders module (apps/atlas). See README.md for plain-language entities and the
+    %% full ERP field mapping. Follows the team-members-schema.mmd format/style
+    %% (AGENTS.md §3.1 step 2).
+
+    employees ||--o| employees : "extended with salesperson_code (see 001_orders_core_schema.sql)"
+
+    stages ||--o{ status_stage_map : "resolves to"
+    stages ||--o{ order_stage_events : "occurred"
+
+    orders ||--o{ order_stage_events : "has history"
+    orders ||--o| shipping_details : "has"
+
+    merchants ||--o{ merchant_customer_codes : "may see"
+
+    stages {
+        uuid id PK
+        text code "pre_loom | loom | finish | purchase | consignee | rejected | other"
+        text display_name
+        int display_order
+        boolean is_terminal
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    status_stage_map {
+        uuid id PK
+        text raw_status "exact ERP Current Status value, or a prefix when is_prefix"
+        boolean is_prefix "true = prefix match (e.g. 'Consignee Loc-')"
+        uuid stage_id FK
+        timestamptz created_at
+    }
+
+    orders {
+        uuid id PK
+        text otn_no
+        text item_no "unique with otn_no"
+        text sales_order_no
+        text customer_no "indexed — merchant RLS + old STORE_CUSTOMERS parity"
+        text customer_po_no
+        text merchant_name
+        text order_wise_merchant
+        text raw_current_status "verbatim ERP Current Status"
+        uuid stage_id FK "resolved via status_stage_map, nullable until resolved"
+        int current_status_pending_days
+        text quality
+        text design
+        text size
+        text size_cm
+        text shape
+        text construction
+        text india_collection
+        text pile_fibre
+        text pile_height
+        text gr_color_name
+        text br_color_name
+        text matching_code
+        text backing
+        numeric std_cubage
+        text on_hold
+        boolean quick_ship
+        int order_priority
+        date sales_order_date
+        date revised_ex_factory_date
+        date original_ex_factory_date
+        date promised_delivery_date
+        date expected_ready_date
+        text salesperson_code
+        text follow_up_person
+        text project_coordinator
+        text production_order_no
+        text production_order_status
+        text item_description
+        text serial_no
+        text us_item_code
+        boolean warehouse_shipment_created
+        text remark
+        text authorization
+        timestamptz erp_synced_at "last time this row was refreshed from the feed"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    order_stage_events {
+        uuid id PK
+        uuid order_id FK
+        uuid stage_id FK
+        timestamptz entered_at
+        text source "erp_sync | manual"
+        uuid recorded_by FK "employees.id, null for erp_sync"
+        timestamptz created_at
+    }
+
+    shipping_details {
+        uuid id PK
+        uuid order_id FK "unique — one row per order"
+        numeric weight_kg
+        numeric length_cm
+        numeric width_cm
+        numeric height_cm
+        boolean foldable
+        text carrier
+        text quote_status "not_requested | requested | quoted | booked"
+        text notes
+        uuid updated_by FK "employees.id"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    merchants {
+        uuid id PK
+        text display_name
+        text primary_contact_email "match key for first Clerk sign-in link"
+        text clerk_user_id "unique, null until linked"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    merchant_customer_codes {
+        uuid id PK
+        uuid merchant_id FK
+        text customer_no
+        timestamptz created_at
+    }

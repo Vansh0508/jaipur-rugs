@@ -570,6 +570,206 @@ export async function updateEmployee(supabase: SupabaseClient, input: UpdateEmpl
   return data;
 }
 
+// ---------------------------------------------------------------------------
+// Orders module (apps/atlas) — see db/orders/README.md and AGENTS.md's recorded override
+// on Clerk as the merchant auth provider. Every write here goes through a service-role
+// Edge Function (no client, including admin, has an insert/update RLS policy on any
+// orders-module table) — same posture as the journeys module above.
+
+export interface UpdateOrderStageInput {
+  orderId: string;
+  /** Must match a `stages.code` value — see db/orders/001_orders_core_schema.sql's seed. */
+  stageCode: string;
+}
+
+interface UpdateOrderStageResponse {
+  orderId: string;
+  stageCode: string;
+}
+
+/** Invokes `orders-update-stage`. Production department access or orders.write.all (admin) only. */
+export async function updateOrderStage(supabase: SupabaseClient, input: UpdateOrderStageInput) {
+  const { data, error } = await supabase.functions.invoke<UpdateOrderStageResponse>("orders-update-stage", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface SetShippingDetailInput {
+  orderId: string;
+  weightKg?: number | null;
+  lengthCm?: number | null;
+  widthCm?: number | null;
+  heightCm?: number | null;
+  foldable?: boolean | null;
+  carrier?: string | null;
+  quoteStatus?: "not_requested" | "requested" | "quoted" | "booked";
+  notes?: string | null;
+}
+
+interface SetShippingDetailResponse {
+  id: string;
+  orderId: string;
+}
+
+/**
+ * Invokes `orders-set-shipping-detail`. Only the fields present in `input` are changed —
+ * omitted fields keep whatever's already stored (see the function's own comment); pass
+ * `null` explicitly to clear a field. Production or shipping department access, or
+ * orders.write.all (admin).
+ */
+export async function setShippingDetail(supabase: SupabaseClient, input: SetShippingDetailInput) {
+  const { data, error } = await supabase.functions.invoke<SetShippingDetailResponse>(
+    "orders-set-shipping-detail",
+    { body: input },
+  );
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface MerchantsInviteInput {
+  displayName: string;
+  primaryContactEmail: string;
+  /** ERP `Customer No_` codes this merchant should see — at least one required. */
+  customerNos: string[];
+}
+
+interface MerchantsInviteResponse {
+  merchantId: string;
+}
+
+/** Invokes `merchants-invite`. orders.write.all (admin) only. Does not create a Clerk account — see the function's own comment. */
+export async function inviteMerchant(supabase: SupabaseClient, input: MerchantsInviteInput) {
+  const { data, error } = await supabase.functions.invoke<MerchantsInviteResponse>("merchants-invite", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+interface LinkClerkAccountResponse {
+  merchantId: string;
+}
+
+/**
+ * Invokes `merchants-link-clerk-account`. Call this once, right after a merchant signs
+ * in via Clerk, before rendering any order data. `clerkSessionToken` is passed as an
+ * explicit Authorization header rather than relying on `supabase`'s own session
+ * plumbing — the function verifies this token itself (server-side, via @clerk/backend),
+ * not a Supabase Auth session, so this is deliberately explicit about which token is
+ * being sent rather than assuming a given SupabaseClient instance's internal
+ * accessToken callback (apps/atlas's merchant Supabase client factory) wires it through
+ * to a Functions invocation the same way it does to a REST query.
+ */
+export async function linkMerchantClerkAccount(supabase: SupabaseClient, clerkSessionToken: string) {
+  const { data, error } = await supabase.functions.invoke<LinkClerkAccountResponse>(
+    "merchants-link-clerk-account",
+    { body: {}, headers: { Authorization: `Bearer ${clerkSessionToken}` } },
+  );
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Orders workflow layer (db/orders/004) — the structured replacement for the
+// order@/mzpreview@ email relay. Prototyped and load-tested in a local preview tool
+// against the real live ERP feed before this schema/these functions were written; see
+// db/orders/README.md and apps/atlas/README.md.
+
+export interface CreateOrderRequestInput {
+  orderId: string;
+  requestTypeCode: "process_order" | "create_warehouse" | "post_warehouse" | "qc_review";
+  /** Required for create_warehouse; optional elsewhere — there is no accounts department, the requester supplies it. */
+  psft?: string;
+  note?: string;
+}
+
+interface CreateOrderRequestResponse {
+  request: { id: string; status: "open" | "blocked"; blockedReason: string | null; psft: string | null; warehouseNo: string | null; createdAt: string };
+  qcLocation: string | null;
+}
+
+/** Invokes `orders-create-request`. Open to any active employee — filing is the write-side equivalent of sending an email today. */
+export async function createOrderRequest(supabase: SupabaseClient, input: CreateOrderRequestInput) {
+  const { data, error } = await supabase.functions.invoke<CreateOrderRequestResponse>("orders-create-request", { body: input });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface ActionOrderRequestInput {
+  requestId: string;
+  status: "in_progress" | "done" | "rejected";
+  /** Required to mark a process_order request done — the ack IS the number. */
+  soNo?: string;
+  /** Required to mark a create_warehouse request done — referenced by every later step. */
+  warehouseNo?: string;
+  note?: string;
+}
+
+/** Invokes `orders-action-request`. Gated by the request type's owning department, or orders.write.all (admin). */
+export async function actionOrderRequest(supabase: SupabaseClient, input: ActionOrderRequestInput) {
+  const { data, error } = await supabase.functions.invoke<{ requestId: string; status: string }>("orders-action-request", { body: input });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+/** Invokes `orders-mark-request-seen` — the receipt that kills "maine dekha nahi." Open to any active employee. */
+export async function markOrderRequestSeen(supabase: SupabaseClient, requestId: string) {
+  const { data, error } = await supabase.functions.invoke<{ ok: true }>("orders-mark-request-seen", { body: { requestId } });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface RecordOrderMilestoneInput {
+  orderId: string;
+  milestone: "qc_done" | "packed" | "dispatched" | "awb_issued";
+  /** For awb_issued, this IS the AWB number, not a comment — the tracking link is generated from it. */
+  note?: string;
+}
+
+/** Invokes `orders-record-milestone`. Gated to production/shipping/nav access, or orders.write.all (admin). */
+export async function recordOrderMilestone(supabase: SupabaseClient, input: RecordOrderMilestoneInput) {
+  const { data, error } = await supabase.functions.invoke<{ ok: true }>("orders-record-milestone", { body: input });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+interface EscalateOrderResponse {
+  to: string;
+  level: number;
+  nextLevel: string | null;
+}
+
+/**
+ * Invokes `orders-escalate-order` — climbs the real named chain (Amit Dagar → Vishal
+ * Verma & Sumit Yadav → the Director) one rung per call, per order. Throws once already
+ * at the top level ("nowhere further to go") rather than a generic rate limit.
+ */
+export async function escalateOrder(supabase: SupabaseClient, orderId: string, reason?: string) {
+  const { data, error } = await supabase.functions.invoke<EscalateOrderResponse>("orders-escalate-order", { body: { orderId, reason } });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
 /**
  * `supabase.functions.invoke` surfaces a non-2xx response as a generic FunctionsHttpError
  * whose `.context` is the raw Response — the structured `{ error, conflict }` body isn't

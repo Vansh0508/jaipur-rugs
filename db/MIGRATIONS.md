@@ -38,8 +38,13 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | (2026-08-18) | `employee_code_phone_login` | feedback | `db/feedback/006_employee_code_phone_login.sql` |
 | `20260819000000` (approx) | `hub_onboarding_and_admin` | team-members | `db/team-members/006_hub_onboarding_and_admin.sql` |
 | `20260819000001` (approx) | `hub_next_employee_code_advisor_fix` | team-members | `db/team-members/007_hub_advisor_fixes.sql` |
+| `20260827102505` | `orders_core_schema` | orders | `db/orders/001_orders_core_schema.sql` |
+| `20260827102520` | `orders_rls` | orders | `db/orders/002_orders_rls.sql` |
+| `20260827102535` | `orders_sync_cron` | orders | `db/orders/003_orders_sync_cron.sql` |
+| `20260827102559` | `orders_workflow_and_escalation` | orders | `db/orders/004_workflow_and_escalation.sql` |
+| `20260827102803` + `20260827102953` | `orders_advisor_fixes` + `orders_advisor_fixes_2` | orders | `db/orders/005_advisor_fixes.sql` |
 
-First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows above (2026-08-19). Security and performance advisors were
+First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
 (006, 008) rather than deferred. The only standing findings as of this ledger: an
 INFO-level "guests has RLS enabled but no policies for `anon`/unauthenticated" (intentional
@@ -306,6 +311,40 @@ an internal `source/` folder, so a shared file must be named with a leading `../
 the repo path literally) instead nests it under `source/` and the bundle fails with
 `Module not found`.
 
+**Orders module / Atlas (2026-08-27, new — `db/orders/001`–`005`):** built for
+`apps/atlas` — unified merchant/production/shipping/sales order visibility, replacing the
+standalone `Track JR Orders` tool, plus a workflow layer (structured work requests,
+milestones, an append-only audit log, the real named production-escalation chain) that
+replaces the order@/mzpreview@ email relay. Every design choice was prototyped and
+load-tested against the live ERP feed in a local preview tool before being written as
+these migrations (see `apps/atlas/README.md` and `architecture.md`). Target project
+re-confirmed against real table contents (not name alone) on 2026-08-27 — see the
+"Project" note above; the two-project ambiguity was also independently flagged in a
+Slack exchange with Vansh Gupta the same day, directing all modules into this one shared
+project rather than a new one, matching this ledger's existing guidance.
+
+Two real issues hit and fixed during application, both now folded into the source files:
+1. **`authorization` is a reserved word in Postgres** (`CREATE`/`SET ... AUTHORIZATION`) —
+   `001_orders_core_schema.sql`'s `orders.authorization` column failed with a syntax error
+   until quoted as `"authorization"`. Fixed in the source file itself (not a follow-up
+   migration, since nothing had been applied yet when it was caught).
+2. **`auth_rls_initplan` exact-shape gotcha**: wrapping the whole `->>` expression in
+   `select` — `(select (auth.jwt() ->> 'sub'))` — did NOT clear the advisor's WARN on this
+   project/Postgres version for `merchants_select`/`merchant_customer_codes_select`;
+   only wrapping the bare function call, `(select auth.jwt()) ->> 'sub'`, did. Confirmed
+   by re-running `get_advisors` after each attempt. `005_advisor_fixes.sql` carries the
+   working shape and the note for any future `auth.jwt()`/`auth.uid()` policy in this
+   module. (`private.can_view_order()`'s internal `auth.jwt() ->> 'sub'` call, inside a
+   SECURITY DEFINER SQL function rather than a bare policy `qual`, is invisible to this
+   specific advisor check — a known limitation, not something this pass chased further.)
+
+Advisor-clean after `005`: zero security findings beyond the pre-existing project-wide
+`auth_leaked_password_protection` WARN (unrelated, not from this module); zero performance
+findings beyond expected `unused_index` INFO notices on these brand-new, zero-traffic
+tables. `003_orders_sync_cron.sql`'s scheduled job is applied but fails closed (401) until
+the `orders-sync` Edge Function is deployed and the `orders_sync_secret` Vault entry is
+created — neither done yet, see "Still pending" below.
+
 ## Pre-existing history on this project (context, not part of this module's schema)
 
 This project was not a clean slate. Its migration history (`supabase_migrations.schema_migrations`)
@@ -360,3 +399,55 @@ were, since neither corresponds to anything in this repo.
   assuming this ledger entry is stale.
 - `vehicles.qr_code_url` is nullable and unpopulated for all 14 rows — the QR-generation
   endpoint doesn't exist yet (explicitly deferred, per the Internal Portal spec).
+
+## Orders module — still pending (schema + Edge Functions deployed, this is what's left)
+
+`db/orders/001`–`005` are applied and advisor-clean (see the module paragraph above). All
+10 Edge Functions (there are 10, not 9 — an earlier count in this file was off by one:
+`orders-sync`, `orders-update-stage`, `orders-set-shipping-detail`, `merchants-invite`,
+`merchants-link-clerk-account`, `orders-create-request`, `orders-action-request`,
+`orders-mark-request-seen`, `orders-record-milestone`, `orders-escalate-order`) are
+deployed (2026-08-27) and version 1, `ACTIVE`, smoke-tested with real HTTP calls (each
+one's own auth gate returns the expected error for a request that shouldn't be let
+through — not just "the deploy call returned success"). `supabase/config.toml` also
+picked up explicit `verify_jwt` entries for the five functions that were missing them
+(functionally the CLI default already matched — `true`, since all five expect a real
+employee session — this just closes a documentation gap matching every other function's
+explicit entry).
+
+**Admin role extended (2026-08-27):** the existing `Admin` role (bound to `vansh.g@pixxeldigital.com`, `PIX-001`, since the Hub module's original seed) did not automatically pick up `orders.read.all`/`orders.write.all` when `001` added them — Hub's original seed was a one-time "bind to every permission that exists right now," not an ongoing auto-bind. Explicitly granted both to `Admin` via a plain `role_permissions` insert, confirmed by the user, so that account can actually see/manage orders once real data exists. As of the same check: `orders` has 0 rows (`orders-sync` has never run), `merchants` has 0 rows (deliberately unseeded), and of the 3 employees with a completed signup, only `shipping@jaipurrugs.com` (a `shipping` department grant) passed the staff gate before this change — `Admin` now does too.
+
+Still required before this module is actually usable end-to-end:
+- **Set two Edge Function secrets** — `CLERK_SECRET_KEY` (confirmed missing live:
+  `merchants-link-clerk-account` currently 500s with "server misconfigured") and
+  `ORDERS_SYNC_SECRET` (confirmed missing live: `orders-sync` currently 401s on every
+  cron tick). No Supabase MCP tool in this session can set project secrets — this needs
+  `supabase secrets set <NAME>=<value>` from a CLI session authenticated to this project,
+  or the Dashboard's Edge Functions → Secrets page. Both values already exist (Clerk's is
+  in `apps/atlas/.env.local`'s `CLERK_SECRET_KEY`; the sync secret needs to be freshly
+  generated and must match whatever `db/orders/003_orders_sync_cron.sql`'s Vault entry
+  gets — see that file's own comment) — this repo/session just can't push them to the
+  platform itself.
+- Once `ORDERS_SYNC_SECRET` exists as an Edge Function secret, still create the matching
+  `orders_sync_secret` Vault entry (`select vault.create_secret(...)`) so `003`'s
+  scheduled job's `x-orders-sync-secret` header actually matches — both sides need the
+  same value, and neither exists yet.
+- Regenerate `packages/supabase-client`'s types — the current `types.ts` has a
+  hand-authored section for this module, clearly flagged at the top of the file, standing
+  in until then.
+- Configure Clerk as a Supabase Third-Party Auth provider in the Dashboard (see
+  `AGENTS.md`'s recorded override on Clerk) — a manual Dashboard step, not something a
+  migration file can do.
+
+**Pilot scope, confirmed by Ayaan (2026-08-27):** London — customer code `34836`
+(back-ops: Rahul Sharma, head: Gaurav Mehtani) — a single person, single head, and the
+best-evidenced code in the corpus (the Theodora Jury thread traces punch → PSFT →
+warehouse → AWB end to end on this exact code). Apply the migration, seed **only**
+Rahul Sharma's employee account with a `nav`-adjacent... actually a `sales`/backend
+department grant scoped to this pilot before wider rollout — do not seed the other six
+back-ops staff or their regions yet. `escalation_levels.notify_employee_id` for all
+three rungs (Amit Dagar; Vishal Verma & Sumit Yadav; Yogesh Chaudhary) stays **null**
+until those four people have real employee accounts (via Hub signup) — escalating still
+records correctly without it, it just can't notify yet. Merchant identity (who
+externally, if anyone, gets Clerk self-service login for 34836 in this pilot) is
+still **unconfirmed** — do not seed a `merchants` row with a guessed name/email.
