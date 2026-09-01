@@ -7,12 +7,18 @@ import { setShippingDetail } from "@jaipur-rugs/db-management-client";
 import { getBrowserSupabaseClient } from "@/lib/supabaseClient.browser";
 import type { ShippingDetailRow } from "@/lib/queries/orders";
 
-const QUOTE_STATUS_OPTIONS = [
+type QuoteStatus = "not_requested" | "requested" | "quoted" | "booked";
+
+const QUOTE_STATUS_OPTIONS: { id: QuoteStatus; label: string }[] = [
   { id: "not_requested", label: "Not requested" },
   { id: "requested", label: "Requested" },
   { id: "quoted", label: "Quoted" },
   { id: "booked", label: "Booked" },
 ];
+const QUOTE_STATUS_VALUES = QUOTE_STATUS_OPTIONS.map((o) => o.id);
+function isQuoteStatus(value: string | null | undefined): value is QuoteStatus {
+  return QUOTE_STATUS_VALUES.includes(value as QuoteStatus);
+}
 
 // Production/shipping-only (the edge function re-checks this — see
 // supabase/functions/orders-set-shipping-detail's own comment). Rendered regardless of
@@ -26,7 +32,7 @@ export function ShippingDetailForm({ orderId, existing }: { orderId: string; exi
   const [widthCm, setWidthCm] = useState(existing?.width_cm?.toString() ?? "");
   const [heightCm, setHeightCm] = useState(existing?.height_cm?.toString() ?? "");
   const [carrier, setCarrier] = useState(existing?.carrier ?? "");
-  const [quoteStatus, setQuoteStatus] = useState(existing?.quote_status ?? "not_requested");
+  const [quoteStatus, setQuoteStatus] = useState<QuoteStatus>(existing?.quote_status ?? "not_requested");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -43,7 +49,7 @@ export function ShippingDetailForm({ orderId, existing }: { orderId: string; exi
         widthCm: widthCm ? Number(widthCm) : null,
         heightCm: heightCm ? Number(heightCm) : null,
         carrier: carrier || null,
-        quoteStatus: quoteStatus as "not_requested" | "requested" | "quoted" | "booked",
+        quoteStatus,
       });
       router.refresh();
     } catch (err) {
@@ -67,7 +73,7 @@ export function ShippingDetailForm({ orderId, existing }: { orderId: string; exi
         <Select
           label="Quote status"
           value={quoteStatus}
-          onChange={(key) => setQuoteStatus(key ?? "not_requested")}
+          onChange={(key) => setQuoteStatus(isQuoteStatus(key) ? key : "not_requested")}
           items={QUOTE_STATUS_OPTIONS}
         />
       </div>

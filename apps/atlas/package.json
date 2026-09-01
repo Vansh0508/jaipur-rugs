@@ -10,7 +10,6 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@clerk/nextjs": "^6.9.0",
     "@heroui/react": "^3.2.4",
     "@heroui/styles": "^3.2.4",
     "@jaipur-rugs/auth": "workspace:*",

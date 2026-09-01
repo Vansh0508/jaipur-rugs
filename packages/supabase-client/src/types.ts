@@ -613,60 +613,37 @@ export type Database = {
         ]
       }
       merchant_customer_codes: {
+        // "Merchant" here means a territory head/B2B salesperson (Ayaan's correction,
+        // 2026-09-01), an existing employees row — not a separate Clerk-linked
+        // identity. The old `merchants` table is gone; see
+        // db/orders/006_merchant_auth_consolidation.sql.
         Row: {
           created_at: string
           customer_no: string
+          employee_id: string | null
           id: string
-          merchant_id: string
         }
         Insert: {
           created_at?: string
           customer_no: string
+          employee_id?: string | null
           id?: string
-          merchant_id: string
         }
         Update: {
           created_at?: string
           customer_no?: string
+          employee_id?: string | null
           id?: string
-          merchant_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "merchant_customer_codes_merchant_id_fkey"
-            columns: ["merchant_id"]
+            foreignKeyName: "merchant_customer_codes_employee_id_fkey"
+            columns: ["employee_id"]
             isOneToOne: false
-            referencedRelation: "merchants"
+            referencedRelation: "employees"
             referencedColumns: ["id"]
           },
         ]
-      }
-      merchants: {
-        Row: {
-          clerk_user_id: string | null
-          created_at: string
-          display_name: string
-          id: string
-          primary_contact_email: string
-          updated_at: string
-        }
-        Insert: {
-          clerk_user_id?: string | null
-          created_at?: string
-          display_name: string
-          id?: string
-          primary_contact_email: string
-          updated_at?: string
-        }
-        Update: {
-          clerk_user_id?: string | null
-          created_at?: string
-          display_name?: string
-          id?: string
-          primary_contact_email?: string
-          updated_at?: string
-        }
-        Relationships: []
       }
       order_stage_events: {
         Row: {

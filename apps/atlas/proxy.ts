@@ -1,37 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { createSupabaseServerClient, type CookieAdapter } from "@jaipur-rugs/auth";
 import { env } from "./lib/env";
 
 // Named `proxy` (not `middleware`) per Next.js 16 — see apps/hub/proxy.ts's comment.
 //
-// Atlas is the first app in this repo with two independent auth systems in one proxy:
-// staff (Supabase Auth via packages/auth, same as every other app) under everything
-// except /merchant/*, and merchants (Clerk, AGENTS.md's recorded override) under
-// /merchant/*. clerkMiddleware() has to wrap the whole handler for Clerk's auth()/
-// useAuth() to work anywhere in the app — it does NOT redirect anything on its own
-// unless a route explicitly calls auth.protect(), so the staff branch below runs exactly
-// as it would if Clerk weren't involved at all.
-//
-// KNOWN VALIDATION GAP: written against Clerk's documented Next.js App Router
-// middleware API; this session had no way to actually run `next dev`/`next build`
-// against it (see AGENTS.md's recorded override for the full list of things that need
-// a real deploy to confirm, including Clerk's SDK compatibility with this repo's
-// Next ^16.3.1).
-const isMerchantRoute = createRouteMatcher(["/merchant(.*)"]);
-
-export default clerkMiddleware(async (_clerkAuth, request: NextRequest) => {
-  if (isMerchantRoute(request)) {
-    // Clerk's own components (<SignedIn>/<SignedOut>/redirectToSignIn in
-    // app/merchant/(shell)/layout.tsx) handle the actual gate for this branch — nothing
-    // further needed here.
-    return NextResponse.next();
-  }
-
-  return staffProxy(request);
-});
-
-async function staffProxy(request: NextRequest): Promise<NextResponse> {
+// One auth system only — Supabase Auth via packages/auth, same as every other app.
+// Atlas briefly had a second, Clerk-based login under /merchant/* for what were assumed
+// to be external customers; consolidated back onto Supabase Auth 2026-09-01 once it
+// became clear "merchant" actually means an internal Jaipur Rugs salesperson/territory
+// head (B2B team), not an outside party — there was never a real reason for two login
+// systems. See requireAtlasStaffAccess.ts's comment for the fuller authorization check
+// this mirrors a lighter version of.
+export default async function proxy(request: NextRequest): Promise<NextResponse> {
   const response = NextResponse.next({ request: { headers: request.headers } });
 
   if (request.nextUrl.pathname.startsWith("/api/force-logout")) {
@@ -90,7 +70,17 @@ async function staffProxy(request: NextRequest): Promise<NextResponse> {
     .in("departments.code", ["production", "shipping", "sales"])
     .maybeSingle();
 
-  const isAuthorized = hasOrdersReadAll || Boolean(anyAtlasGrant) || Boolean(employee!.salesperson_code);
+  // Territory heads/B2B salespeople ("merchant" in this business's own vocabulary) hold
+  // no department grant and no single salesperson_code — they're scoped to specific ERP
+  // customer codes instead. See requireAtlasStaffAccess.ts's fuller comment.
+  const { data: anyCustomerCodeGrant } = await supabase
+    .from("merchant_customer_codes")
+    .select("id")
+    .eq("employee_id", employee!.id)
+    .limit(1)
+    .maybeSingle();
+
+  const isAuthorized = hasOrdersReadAll || Boolean(anyAtlasGrant) || Boolean(employee!.salesperson_code) || Boolean(anyCustomerCodeGrant);
   if (!isAuthorized) {
     return NextResponse.redirect(env.hubUrl ?? new URL("/login", request.url));
   }

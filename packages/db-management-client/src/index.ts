@@ -571,10 +571,9 @@ export async function updateEmployee(supabase: SupabaseClient, input: UpdateEmpl
 }
 
 // ---------------------------------------------------------------------------
-// Orders module (apps/atlas) — see db/orders/README.md and AGENTS.md's recorded override
-// on Clerk as the merchant auth provider. Every write here goes through a service-role
-// Edge Function (no client, including admin, has an insert/update RLS policy on any
-// orders-module table) — same posture as the journeys module above.
+// Orders module (apps/atlas) — see db/orders/README.md. Every write here goes through a
+// service-role Edge Function (no client, including admin, has an insert/update RLS
+// policy on any orders-module table) — same posture as the journeys module above.
 
 export interface UpdateOrderStageInput {
   orderId: string;
@@ -632,47 +631,30 @@ export async function setShippingDetail(supabase: SupabaseClient, input: SetShip
   return data;
 }
 
-export interface MerchantsInviteInput {
-  displayName: string;
-  primaryContactEmail: string;
-  /** ERP `Customer No_` codes this merchant should see — at least one required. */
+export interface GrantCustomerCodesInput {
+  /** The salesperson's own login email — must already have signed up (see
+   * employee-signup); this only grants access, it never creates an account. */
+  employeeEmail: string;
+  /** ERP `Customer No_` codes this salesperson/territory head should see — at least one required. */
   customerNos: string[];
 }
 
-interface MerchantsInviteResponse {
-  merchantId: string;
-}
-
-/** Invokes `merchants-invite`. orders.write.all (admin) only. Does not create a Clerk account — see the function's own comment. */
-export async function inviteMerchant(supabase: SupabaseClient, input: MerchantsInviteInput) {
-  const { data, error } = await supabase.functions.invoke<MerchantsInviteResponse>("merchants-invite", {
-    body: input,
-  });
-  if (error || !data) {
-    throw new Error(await extractErrorMessage(error));
-  }
-  return data;
-}
-
-interface LinkClerkAccountResponse {
-  merchantId: string;
+interface GrantCustomerCodesResponse {
+  employeeId: string;
+  granted: number;
 }
 
 /**
- * Invokes `merchants-link-clerk-account`. Call this once, right after a merchant signs
- * in via Clerk, before rendering any order data. `clerkSessionToken` is passed as an
- * explicit Authorization header rather than relying on `supabase`'s own session
- * plumbing — the function verifies this token itself (server-side, via @clerk/backend),
- * not a Supabase Auth session, so this is deliberately explicit about which token is
- * being sent rather than assuming a given SupabaseClient instance's internal
- * accessToken callback (apps/atlas's merchant Supabase client factory) wires it through
- * to a Functions invocation the same way it does to a REST query.
+ * Invokes `merchants-invite` — kept its original name (renaming would ripple through
+ * the deployed function's slug too) though it no longer creates a Clerk-linkable row.
+ * "Merchant" here means a territory head/B2B salesperson (Ayaan's correction,
+ * 2026-09-01), already a normal employee — this just grants that existing employee
+ * visibility into specific ERP customer codes. orders.write.all (admin) only.
  */
-export async function linkMerchantClerkAccount(supabase: SupabaseClient, clerkSessionToken: string) {
-  const { data, error } = await supabase.functions.invoke<LinkClerkAccountResponse>(
-    "merchants-link-clerk-account",
-    { body: {}, headers: { Authorization: `Bearer ${clerkSessionToken}` } },
-  );
+export async function grantCustomerCodes(supabase: SupabaseClient, input: GrantCustomerCodesInput) {
+  const { data, error } = await supabase.functions.invoke<GrantCustomerCodesResponse>("merchants-invite", {
+    body: input,
+  });
   if (error || !data) {
     throw new Error(await extractErrorMessage(error));
   }

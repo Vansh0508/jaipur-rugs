@@ -27,12 +27,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           Create your account via Hub
         </Link>
       </p>
-      <p className="text-center text-sm text-muted">
-        Merchant?{" "}
-        <Link href="/merchant/login" className="font-medium text-accent hover:underline">
-          Sign in here instead
-        </Link>
-      </p>
     </main>
   );
 }

@@ -1,29 +1,37 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Plain SupabaseClient, not SupabaseClient<Database> — see lib/queries/orders.ts's comment.
+//
+// "Merchant" here means a territory head/B2B salesperson scoped to specific ERP
+// customer codes (Ayaan's correction, 2026-09-01) — not an external customer. Every one
+// is a normal employees row; this just groups merchant_customer_codes by employee for
+// the admin management page. The old separate `merchants` table (Clerk-linked) is gone.
 
-export interface MerchantWithCodes {
-  id: string;
-  displayName: string;
-  primaryContactEmail: string;
-  linked: boolean;
+export interface SalespersonWithCodes {
+  employeeId: string;
+  fullName: string;
+  email: string;
   customerNos: string[];
 }
 
-/** Admin-only in practice — RLS's merchants_select/merchant_customer_codes_select only
- * return every row to an orders.read.all holder; anyone else gets nothing back here. */
-export async function listMerchantsWithCodes(supabase: SupabaseClient): Promise<MerchantWithCodes[]> {
+/** Admin-only in practice — RLS's merchant_customer_codes_select only returns every row
+ * to an orders.read.all holder; anyone else only sees their own. */
+export async function listSalespeopleWithCustomerCodes(supabase: SupabaseClient): Promise<SalespersonWithCodes[]> {
   const { data, error } = await supabase
-    .from("merchants")
-    .select("id, display_name, primary_contact_email, clerk_user_id, merchant_customer_codes(customer_no)")
-    .order("display_name", { ascending: true });
+    .from("merchant_customer_codes")
+    .select("customer_no, employees!inner(id, full_name, email)")
+    .order("customer_no", { ascending: true });
   if (error) throw error;
 
-  return (data ?? []).map((m) => ({
-    id: m.id,
-    displayName: m.display_name,
-    primaryContactEmail: m.primary_contact_email,
-    linked: Boolean(m.clerk_user_id),
-    customerNos: (m.merchant_customer_codes ?? []).map((c: { customer_no: string }) => c.customer_no),
-  }));
+  const byEmployee = new Map<string, SalespersonWithCodes>();
+  for (const row of data ?? []) {
+    const emp = row.employees as unknown as { id: string; full_name: string; email: string };
+    let entry = byEmployee.get(emp.id);
+    if (!entry) {
+      entry = { employeeId: emp.id, fullName: emp.full_name, email: emp.email, customerNos: [] };
+      byEmployee.set(emp.id, entry);
+    }
+    entry.customerNos.push(row.customer_no as string);
+  }
+  return [...byEmployee.values()].sort((a, b) => a.fullName.localeCompare(b.fullName));
 }

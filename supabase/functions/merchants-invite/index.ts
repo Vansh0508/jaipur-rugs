@@ -1,9 +1,14 @@
-// db-management write endpoint: admin pre-seeds a merchant record + the ERP customer
-// codes they're allowed to see — replaces hand-editing the old tool's STORE_CUSTOMERS
-// JS map. Does NOT create a Clerk account or send any invite email itself (Clerk owns
-// that — the merchant simply signs in/up at apps/atlas's merchant login with the same
-// email given here); this only creates the row merchants-link-clerk-account will match
-// against on that person's first real sign-in. orders.write.all (admin) only.
+// db-management write endpoint: admin grants an EXISTING employee visibility into
+// specific ERP customer codes. "Merchant" in this business's own vocabulary means a
+// territory head/B2B salesperson — not an external customer (Ayaan's correction,
+// 2026-09-01, which is also why this no longer creates a separate Clerk-linkable
+// `merchants` row — that whole system is gone, consolidated onto Supabase Auth like
+// every other employee). Kept the function's original name/slug to avoid an extra
+// redeploy-and-repoint; only its body changed.
+//
+// Does NOT create the employee account — the salesperson signs up once via the normal
+// employee-signup flow first, same as any other staff member; this only grants access
+// once that account exists. orders.write.all (admin) only.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { requireAtlasAccess, authzErrorResponse } from "../_shared/authz.ts";
@@ -13,9 +18,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-interface MerchantsInviteBody {
-  displayName: string;
-  primaryContactEmail: string;
+interface GrantCustomerCodesBody {
+  employeeEmail: string;
   customerNos: string[];
 }
 
@@ -32,35 +36,36 @@ Deno.serve(async (req) => {
       permissionKey: "orders.write.all",
     });
 
-    const body = (await req.json()) as Partial<MerchantsInviteBody>;
-    const { displayName, primaryContactEmail, customerNos } = body;
-    if (!displayName || !primaryContactEmail || !customerNos?.length) {
+    const body = (await req.json()) as Partial<GrantCustomerCodesBody>;
+    const employeeEmail = body.employeeEmail?.trim().toLowerCase();
+    const customerNos = body.customerNos;
+    if (!employeeEmail || !customerNos?.length) {
+      return jsonResponse({ error: "employeeEmail and at least one customerNos entry are required" }, 400);
+    }
+
+    const { data: employee, error: employeeError } = await supabaseAdmin
+      .from("employees")
+      .select("id, status")
+      .ilike("email", employeeEmail)
+      .maybeSingle();
+    if (employeeError) return jsonResponse({ error: employeeError.message }, 500);
+    if (!employee) {
       return jsonResponse(
-        { error: "displayName, primaryContactEmail, and at least one customerNos entry are required" },
-        400,
+        { error: "No employee account for this email yet — they need to sign up via Hub/employee-signup first, then grant access." },
+        404,
       );
     }
 
-    const { data: merchant, error: merchantError } = await supabaseAdmin
-      .from("merchants")
-      .insert({ display_name: displayName, primary_contact_email: primaryContactEmail })
-      .select("id")
-      .single();
-    if (merchantError) {
-      // unique index on lower(primary_contact_email) — surface as a clear conflict
-      // rather than the raw Postgres constraint message.
-      if (merchantError.code === "23505") {
-        return jsonResponse({ error: "a merchant with this contact email already exists" }, 409);
-      }
-      return jsonResponse({ error: merchantError.message }, 500);
-    }
-
-    const { error: codesError } = await supabaseAdmin
+    const { data: inserted, error: codesError } = await supabaseAdmin
       .from("merchant_customer_codes")
-      .insert(customerNos.map((customerNo) => ({ merchant_id: merchant.id, customer_no: customerNo })));
+      .upsert(
+        customerNos.map((customerNo) => ({ employee_id: employee.id, customer_no: customerNo })),
+        { onConflict: "employee_id,customer_no", ignoreDuplicates: true },
+      )
+      .select("id");
     if (codesError) return jsonResponse({ error: codesError.message }, 500);
 
-    return jsonResponse({ merchantId: merchant.id }, 200);
+    return jsonResponse({ employeeId: employee.id, granted: inserted?.length ?? 0 }, 200);
   } catch (err) {
     return authzErrorResponse(err, corsHeaders);
   }

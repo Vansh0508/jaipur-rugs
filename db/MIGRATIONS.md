@@ -43,6 +43,7 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | `20260827102535` | `orders_sync_cron` | orders | `db/orders/003_orders_sync_cron.sql` |
 | `20260827102559` | `orders_workflow_and_escalation` | orders | `db/orders/004_workflow_and_escalation.sql` |
 | `20260827102803` + `20260827102953` | `orders_advisor_fixes` + `orders_advisor_fixes_2` | orders | `db/orders/005_advisor_fixes.sql` |
+| `20260901062335` | `merchant_auth_consolidation` | orders | `db/orders/006_merchant_auth_consolidation.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
@@ -402,42 +403,37 @@ were, since neither corresponds to anything in this repo.
 
 ## Orders module — still pending (schema + Edge Functions deployed, this is what's left)
 
-`db/orders/001`–`005` are applied and advisor-clean (see the module paragraph above). All
+`db/orders/001`–`006` are applied and advisor-clean (see the module paragraph above). All
 10 Edge Functions (there are 10, not 9 — an earlier count in this file was off by one:
 `orders-sync`, `orders-update-stage`, `orders-set-shipping-detail`, `merchants-invite`,
 `merchants-link-clerk-account`, `orders-create-request`, `orders-action-request`,
 `orders-mark-request-seen`, `orders-record-milestone`, `orders-escalate-order`) are
-deployed (2026-08-27) and version 1, `ACTIVE`, smoke-tested with real HTTP calls (each
-one's own auth gate returns the expected error for a request that shouldn't be let
-through — not just "the deploy call returned success"). `supabase/config.toml` also
-picked up explicit `verify_jwt` entries for the five functions that were missing them
-(functionally the CLI default already matched — `true`, since all five expect a real
-employee session — this just closes a documentation gap matching every other function's
-explicit entry).
+deployed (2026-08-27) and `ACTIVE`, smoke-tested with real HTTP calls (each one's own
+auth gate returns the expected error for a request that shouldn't be let through — not
+just "the deploy call returned success"). `supabase/config.toml` also picked up explicit
+`verify_jwt` entries for the five functions that were missing them (functionally the CLI
+default already matched — `true`, since all five expect a real employee session — this
+just closes a documentation gap matching every other function's explicit entry).
 
-**Admin role extended (2026-08-27):** the existing `Admin` role (bound to `vansh.g@pixxeldigital.com`, `PIX-001`, since the Hub module's original seed) did not automatically pick up `orders.read.all`/`orders.write.all` when `001` added them — Hub's original seed was a one-time "bind to every permission that exists right now," not an ongoing auto-bind. Explicitly granted both to `Admin` via a plain `role_permissions` insert, confirmed by the user, so that account can actually see/manage orders once real data exists. As of the same check: `orders` has 0 rows (`orders-sync` has never run), `merchants` has 0 rows (deliberately unseeded), and of the 3 employees with a completed signup, only `shipping@jaipurrugs.com` (a `shipping` department grant) passed the staff gate before this change — `Admin` now does too.
+**Admin role extended (2026-08-27):** the existing `Admin` role (bound to `vansh.g@pixxeldigital.com`, `PIX-001`, since the Hub module's original seed) did not automatically pick up `orders.read.all`/`orders.write.all` when `001` added them — Hub's original seed was a one-time "bind to every permission that exists right now," not an ongoing auto-bind. Explicitly granted both to `Admin` via a plain `role_permissions` insert, confirmed by the user, so that account can actually see/manage orders once real data exists. As of the same check: `orders` has 0 rows (`orders-sync` has never run), `merchants` has 0 rows (deliberately unseeded), and of the 3 employees with a completed signup, only `shipping@jaipurrugs.com` (a `shipping` department grant) passed the staff gate before this change — `Admin` now does too. Ayaan's own admin account (`EMP-011`, `ayaan.k@jaipurrugs.com`) was created the same way on 2026-09-01 via a direct `employee-signup` call (Hub itself was never deployed to the pilot server — see below), bound to the same `Admin` role.
+
+**Merchant auth consolidated onto Supabase Auth (2026-09-01, `006_merchant_auth_consolidation.sql`):** "merchants" turned out to mean internal Jaipur Rugs territory heads/B2B salespeople, not external customers — the real trigger was setting up Dinesh Choudhary (`dinesh.c@jaipurrugs.com`, territory head, 72 real ERP customer codes cross-checked against the live feed) and discovering the Clerk-based merchant login was broken in two independent, unfixable-from-this-session ways: `CLERK_SECRET_KEY` was never set as an Edge Function secret, and Clerk was never configured as a Supabase Third-Party Auth provider either. Rather than fix both, removed the whole second auth system: the `merchants` table is dropped, `merchant_customer_codes` now links directly to `employees` (nullable `employee_id` until that person actually signs up — same pattern as `escalation_levels.notify_employee_id`), `can_view_order()`'s merchant branch matches the caller's own employee id instead of a Clerk JWT, `apps/atlas/app/merchant/*` and `lib/merchant/*` are deleted, `merchants-invite` now grants an *existing* employee visibility into customer codes (no account creation), and `merchants-link-clerk-account` is retired as a static 410 stub (no delete-function tool available in this session). Dinesh's 72 codes are seeded but `employee_id` is still null for all of them — **he needs to sign up via the normal `employee-signup` flow (same as everyone else) before his access actually works**; nothing auto-links him.
 
 Still required before this module is actually usable end-to-end:
-- **Set two Edge Function secrets** — `CLERK_SECRET_KEY` (confirmed missing live:
-  `merchants-link-clerk-account` currently 500s with "server misconfigured") and
-  `ORDERS_SYNC_SECRET` (confirmed missing live: `orders-sync` currently 401s on every
-  cron tick). No Supabase MCP tool in this session can set project secrets — this needs
-  `supabase secrets set <NAME>=<value>` from a CLI session authenticated to this project,
-  or the Dashboard's Edge Functions → Secrets page. Both values already exist (Clerk's is
-  in `apps/atlas/.env.local`'s `CLERK_SECRET_KEY`; the sync secret needs to be freshly
-  generated and must match whatever `db/orders/003_orders_sync_cron.sql`'s Vault entry
-  gets — see that file's own comment) — this repo/session just can't push them to the
-  platform itself.
-- Once `ORDERS_SYNC_SECRET` exists as an Edge Function secret, still create the matching
+- **Set `ORDERS_SYNC_SECRET`** as an Edge Function secret (confirmed missing live:
+  `orders-sync` currently 401s on every cron tick). No Supabase MCP tool in this session
+  can set project secrets — this needs `supabase secrets set <NAME>=<value>` from a CLI
+  session authenticated to this project, or the Dashboard's Edge Functions → Secrets
+  page.
+- Once it exists as an Edge Function secret, still create the matching
   `orders_sync_secret` Vault entry (`select vault.create_secret(...)`) so `003`'s
   scheduled job's `x-orders-sync-secret` header actually matches — both sides need the
   same value, and neither exists yet.
+- Link Dinesh Choudhary's `merchant_customer_codes` rows to his real `employee_id` once
+  he signs up (see above) — a one-line `update` by email match, same as `006`'s backfill.
 - Regenerate `packages/supabase-client`'s types — the current `types.ts` has a
   hand-authored section for this module, clearly flagged at the top of the file, standing
   in until then.
-- Configure Clerk as a Supabase Third-Party Auth provider in the Dashboard (see
-  `AGENTS.md`'s recorded override on Clerk) — a manual Dashboard step, not something a
-  migration file can do.
 
 **Pilot scope, confirmed by Ayaan (2026-08-27):** London — customer code `34836`
 (back-ops: Rahul Sharma, head: Gaurav Mehtani) — a single person, single head, and the

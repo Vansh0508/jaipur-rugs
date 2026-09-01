@@ -11,7 +11,7 @@ erDiagram
     orders ||--o{ order_stage_events : "has history"
     orders ||--o| shipping_details : "has"
 
-    merchants ||--o{ merchant_customer_codes : "may see"
+    employees ||--o{ merchant_customer_codes : "may see (territory head/B2B salesperson)"
 
     stages {
         uuid id PK
@@ -107,18 +107,13 @@ erDiagram
         timestamptz updated_at
     }
 
-    merchants {
-        uuid id PK
-        text display_name
-        text primary_contact_email "match key for first Clerk sign-in link"
-        text clerk_user_id "unique, null until linked"
-        timestamptz created_at
-        timestamptz updated_at
-    }
+    %% merchants table removed 2026-09-01 — "merchants" are internal Jaipur Rugs
+    %% territory heads/B2B salespeople, not external customers, so they're just
+    %% employees rows now. See 006_merchant_auth_consolidation.sql.
 
     merchant_customer_codes {
         uuid id PK
-        uuid merchant_id FK
+        uuid employee_id FK "nullable until that person actually signs up"
         text customer_no
         timestamptz created_at
     }

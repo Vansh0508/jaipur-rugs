@@ -45,8 +45,10 @@ verify_jwt = true
 [functions.upload-driver-photo]
 verify_jwt = true
 
-# Orders module (apps/atlas) — see db/orders/README.md and AGENTS.md's recorded override
-# on Clerk as the merchant auth provider.
+# Orders module (apps/atlas) — see db/orders/README.md. One auth system (Supabase Auth)
+# throughout; Clerk was briefly used for "merchants" before 2026-09-01's correction that
+# those are internal salespeople, not external customers — see
+# db/orders/006_merchant_auth_consolidation.sql.
 [functions.orders-sync]
 # Invoked by db/orders/003_orders_sync_cron.sql's pg_cron job, not a user session — no
 # JWT to gate on. Checks its own shared-secret header instead (see the function source);
@@ -63,11 +65,9 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.merchants-link-clerk-account]
-# The bearer token this function receives is a Clerk session token, not a Supabase Auth
-# JWT — the platform gate can't validate it (unless/until Clerk is configured as a
-# Supabase Third-Party Auth provider), and this function verifies it itself via
-# @clerk/backend regardless, so leaving the platform gate on would just double-fail
-# every legitimate call. See the function source for the full reasoning.
+# RETIRED 2026-09-01 — kept deployed only as a static 410 stub (see the function
+# source), verify_jwt off since it's a plain informational response to anyone who still
+# has the old URL, not a real auth-gated endpoint.
 verify_jwt = false
 
 # 004's workflow layer — every one of these expects a real employee session
