@@ -31,7 +31,7 @@ export default async function proxy(request: NextRequest): Promise<NextResponse>
     remove: (name, options) => response.cookies.set(name, "", { ...options, maxAge: 0 }),
   };
 
-  const supabase = createSupabaseServerClient(env.supabaseUrl, env.supabaseAnonKey, cookieAdapter, env.rootDomain);
+  const supabase = createSupabaseServerClient(env.supabaseUrl, env.supabaseAnonKey, cookieAdapter, env.rootDomain, env.secureCookies);
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -89,6 +89,16 @@ export default async function proxy(request: NextRequest): Promise<NextResponse>
 
   const isAuthorized = hasOrdersReadAll || Boolean(anyAtlasGrant) || Boolean(employee!.salesperson_code) || Boolean(anyCustomerCodeGrant);
   if (!isAuthorized) {
+    // Second bug found alongside the cookie one (2026-09-02): when hubUrl is unset, the
+    // redirect target IS /login itself — for an unauthorized visitor already headed to
+    // /login (e.g. right after signing up, before an admin grants any access), this used
+    // to redirect /login -> /login -> /login forever. Checked BEFORE building the
+    // redirect now: already on /login just renders it (the person sees the normal sign-in
+    // page — a real "contact your admin" message here is future polish, not required to
+    // stop the loop) instead of bouncing to itself.
+    if (isLoginPage) {
+      return response;
+    }
     return NextResponse.redirect(env.hubUrl ?? new URL("/login", request.url));
   }
 

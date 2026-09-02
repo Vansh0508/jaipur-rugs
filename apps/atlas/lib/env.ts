@@ -24,4 +24,18 @@ export const env = {
   get hubUrl() {
     return process.env.NEXT_PUBLIC_HUB_URL || undefined;
   },
+  /**
+   * Whether the auth session cookie should be marked Secure (HTTPS-only). Defaults to
+   * true — the safe choice for a real deployment — unless explicitly set to "false".
+   * Found necessary 2026-09-02: this app's internal-server deployment is plain HTTP (no
+   * TLS), and `next build`/`next start` always sets NODE_ENV=production regardless, so
+   * packages/auth's old NODE_ENV-only default marked the cookie Secure on a connection
+   * that can never satisfy it — browsers silently drop a Secure cookie over plain HTTP,
+   * so sign-in "succeeded" but the session never survived past that one response,
+   * bouncing back to /login forever. Set NEXT_PUBLIC_COOKIE_SECURE=false only for a
+   * deployment you know is genuinely plain HTTP.
+   */
+  get secureCookies() {
+    return process.env.NEXT_PUBLIC_COOKIE_SECURE !== "false";
+  },
 };
