@@ -46,6 +46,7 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | `20260901062335` | `merchant_auth_consolidation` | orders | `db/orders/006_merchant_auth_consolidation.sql` |
 | (2026-09-02) | `orders_sync_secret_rpc_bridge` | orders | `db/orders/007_orders_sync_secret_rpc_bridge.sql` |
 | (2026-09-02) | `orders_sync_move_to_server` | orders | `db/orders/008_orders_sync_move_to_server.sql` |
+| (2026-09-02) | `orders_select_perf_fix` | orders | `db/orders/009_orders_select_perf_fix.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
@@ -435,6 +436,22 @@ un-scheduled the pg_cron job entirely and the same logic now runs as a plain Nod
 script on the app server itself (`apps/atlas/scripts/orders-sync.mjs`, invoked by a
 system cron entry there — a real machine has no such ceiling). The Edge Function stays
 deployed (harmless) for manual/small-feed use only.
+
+**`/orders` timeout, confirmed and fixed (2026-09-02, `009_orders_select_perf_fix.sql`).**
+The very first real page load against real data (14,214 rows) hit a Postgres statement
+timeout, confirmed via `pm2`'s error log (`{"code":"57014",...,"message":"canceling
+statement due to statement timeout"}`). Cause: `orders_select`'s policy called
+`private.can_view_order(id)` — an opaque function Postgres must invoke once per
+candidate row — whose "coarse" checks (admin permission, department access) don't
+depend on the row at all, yet were being fully re-derived (several joins) for every one
+of 14,214 rows before the `limit 500` could even apply. Fixed by giving `orders_select`
+its own policy that reads the row's own `salesperson_code`/`customer_no` columns
+directly and wraps every row-independent check in `(select ...)` so Postgres treats it
+as an InitPlan (evaluated once, not per row) — confirmed via `EXPLAIN ANALYZE` under a
+simulated real session: total execution time **9.6ms**, with the salesperson/merchant
+branches showing `never executed` (short-circuited once the hoisted admin check came
+back true). Also added `orders_updated_at_idx` — the list view's `order by updated_at
+desc` had no supporting index.
 
 Still required before this module is actually usable end-to-end:
 - Confirm `apps/atlas/scripts/orders-sync.mjs` has actually run successfully at least
