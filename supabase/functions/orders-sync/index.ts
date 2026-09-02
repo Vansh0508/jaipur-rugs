@@ -14,15 +14,12 @@
 // should NOT be reachable by the public internet, hence the secret check as the very
 // first thing this does).
 //
-// KNOWN OPEN RISK, flagged rather than silently assumed away: the build prompt observed
-// this feed at ~120,000 rows / ~145MB. A single Edge Function invocation fetching,
-// JSON-parsing, and upserting the whole thing in one shot may exceed Supabase Edge
-// Functions' memory/wall-clock limits at that size — this was written against the
-// documented behavior, not verified live (this session had no credentials to deploy or
-// invoke it). Whoever deploys this should watch the first real run's logs/duration; if
-// it doesn't fit in one invocation, the fallback is moving the pull itself (not the
-// upsert-into-Postgres design) to a small external scheduled runner that chunks the feed
-// into several calls to this function instead of one.
+// RESOLVED 2026-09-02 (was flagged here as an open risk, then confirmed): the feed is
+// ~120,000 rows / ~145MB, and the first real invocation hit WORKER_RESOURCE_LIMIT trying
+// to buffer + JSON.parse the whole response at once. Fixed by reading the response as a
+// stream and parsing one row at a time (see RowStreamer below) instead of moving the
+// pull to a separate external runner — the upsert-into-Postgres design didn't need to
+// change, only how the feed gets read.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -82,6 +79,86 @@ function bool(row: ErpRow, key: string): boolean {
  * non-breaking space) in Current Status values. */
 function normalizeStatus(raw: string): string {
   return raw.replace(/\s+/g, " ").trim();
+}
+
+// Confirmed 2026-09-02 (see this file's own "KNOWN OPEN RISK" comment — no longer open):
+// `await response.json()` on the full ~145MB feed hit WORKER_RESOURCE_LIMIT on the very
+// first real invocation. The feed is a plain top-level JSON array of flat objects
+// (confirmed by sampling the first few KB live) — RowStreamer reads the response as it
+// arrives and emits one row at a time, so peak memory is proportional to one network
+// chunk plus one row, never the whole feed. Hand-rolled rather than an npm streaming-JSON
+// library, specifically to avoid depending on something unverified inside a Deno edge
+// runtime for a fix that only needs "track string state and bracket depth."
+class RowStreamer {
+  private buf = "";
+  private depth = 0; // 0 = between rows; >0 = inside the current row object
+  private inString = false;
+  private escapeNext = false;
+  private rowStart = -1; // index into `buf` where the current row's `{` began
+  private started = false; // seen the feed's outer `[` yet
+  private finished = false; // seen the feed's outer `]` yet
+
+  feed(chunk: string): ErpRow[] {
+    this.buf += chunk;
+    const rows: ErpRow[] = [];
+    let i = 0;
+
+    while (i < this.buf.length && !this.finished) {
+      const c = this.buf[i];
+
+      if (!this.started) {
+        if (c === "[") this.started = true;
+        i++;
+        continue;
+      }
+
+      if (this.depth === 0) {
+        if (c === "{") {
+          this.rowStart = i;
+          this.depth = 1;
+        } else if (c === "]") {
+          this.finished = true;
+        }
+        i++;
+        continue;
+      }
+
+      if (this.inString) {
+        if (this.escapeNext) this.escapeNext = false;
+        else if (c === "\\") this.escapeNext = true;
+        else if (c === '"') this.inString = false;
+        i++;
+        continue;
+      }
+
+      if (c === '"') {
+        this.inString = true;
+      } else if (c === "{" || c === "[") {
+        this.depth++;
+      } else if (c === "}" || c === "]") {
+        this.depth--;
+        if (this.depth === 0) {
+          const rowText = this.buf.slice(this.rowStart, i + 1);
+          try {
+            rows.push(JSON.parse(rowText) as ErpRow);
+          } catch {
+            // Skip a malformed row rather than aborting the whole sync over one bad record.
+          }
+          this.rowStart = -1;
+        }
+      }
+      i++;
+    }
+
+    // Trim to only the unconsumed tail — from the in-progress row's start if we're
+    // mid-row, otherwise from wherever the scan stopped — so `buf` never grows toward
+    // the full feed size across calls.
+    const keepFrom = this.depth > 0 ? this.rowStart : i;
+    this.buf = this.buf.slice(keepFrom);
+    if (this.rowStart >= 0) this.rowStart -= keepFrom;
+
+    return rows;
+  }
 }
 
 function resolveStageId(
@@ -158,16 +235,28 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const expectedSecret = Deno.env.get("ORDERS_SYNC_SECRET");
-  const providedSecret = req.headers.get("x-orders-sync-secret");
-  if (!expectedSecret || providedSecret !== expectedSecret) {
-    return jsonResponse({ error: "unauthorized" }, 401);
-  }
-
   const supabaseAdmin = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+
+  // Secret check reads from Postgres Vault (the same `orders_sync_secret` row
+  // db/orders/003_orders_sync_cron.sql's cron job already reads to build its own
+  // request header) rather than a Deno.env project secret — changed 2026-09-02
+  // because no tool available to that session could set a project-level Function
+  // secret through the Dashboard/CLI, but it already had full database access. Same
+  // security property (a shared value the cron job and this function both need to
+  // agree on, never exposed to the public internet), just stored where it was
+  // actually reachable. Goes through get_orders_sync_secret() (public schema, RPC,
+  // service_role only) rather than `.schema("vault").from(...)` directly — PostgREST
+  // only exposes the `public` schema, so a direct vault query 404s no matter what
+  // table-level grants say; the RPC function reads vault internally where schema
+  // exposure doesn't apply.
+  const { data: expectedSecret, error: secretError } = await supabaseAdmin.rpc("get_orders_sync_secret");
+  const providedSecret = req.headers.get("x-orders-sync-secret");
+  if (secretError || !expectedSecret || providedSecret !== expectedSecret) {
+    return jsonResponse({ error: "unauthorized" }, 401);
+  }
 
   try {
     const { data: stages, error: stagesError } = await supabaseAdmin
@@ -197,18 +286,23 @@ Deno.serve(async (req) => {
     if (!erpResponse.ok) {
       throw new Error(`ERP feed returned ${erpResponse.status}`);
     }
-    const erpPayload = await erpResponse.json();
-    const rows: ErpRow[] = Array.isArray(erpPayload)
-      ? erpPayload
-      : (erpPayload?.value ?? erpPayload?.data ?? erpPayload?.rows ?? []);
+    if (!erpResponse.body) {
+      throw new Error("ERP feed response had no body to stream");
+    }
 
+    let totalRows = 0;
     let upserted = 0;
     let stageEventsInserted = 0;
     const errors: string[] = [];
+    let pendingBatch: ErpRow[] = [];
+    let batchIndex = 0;
 
-    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-      const batch = rows.slice(i, i + BATCH_SIZE).filter((r) => str(r, "Item No_"));
-      if (!batch.length) continue;
+    // Runs the exact same per-batch logic the old array-slicing loop did — pulled out
+    // so it can be called both as each streamed batch fills up AND once more for
+    // whatever's left over at the end (a batch that never reached BATCH_SIZE).
+    async function processBatch(batch: ErpRow[]): Promise<void> {
+      if (!batch.length) return;
+      const label = batchIndex++;
 
       const itemNos = batch.map((r) => str(r, "Item No_")!);
       const { data: existing, error: existingError } = await supabaseAdmin
@@ -216,8 +310,8 @@ Deno.serve(async (req) => {
         .select("id, item_no, stage_id")
         .in("item_no", itemNos);
       if (existingError) {
-        errors.push(`existing lookup batch ${i}: ${existingError.message}`);
-        continue;
+        errors.push(`existing lookup batch ${label}: ${existingError.message}`);
+        return;
       }
       const existingByItemNo = new Map((existing ?? []).map((o) => [o.item_no, o]));
 
@@ -232,8 +326,8 @@ Deno.serve(async (req) => {
         .upsert(mappedRows.map((m) => m.mapped), { onConflict: "item_no" })
         .select("id, item_no, stage_id");
       if (upsertError) {
-        errors.push(`upsert batch ${i}: ${upsertError.message}`);
-        continue;
+        errors.push(`upsert batch ${label}: ${upsertError.message}`);
+        return;
       }
       upserted += upsertedRows?.length ?? 0;
 
@@ -278,15 +372,37 @@ Deno.serve(async (req) => {
           .from("order_stage_events")
           .upsert(eventsToInsert, { onConflict: "order_id,stage_id,entered_at", ignoreDuplicates: true });
         if (eventsError) {
-          errors.push(`stage events batch ${i}: ${eventsError.message}`);
+          errors.push(`stage events batch ${label}: ${eventsError.message}`);
         } else {
           stageEventsInserted += eventsToInsert.length;
         }
       }
     }
 
+    // Read the feed as it arrives — never buffer the whole ~145MB response or hold the
+    // full ~120,000-row array in memory at once (that's what hit WORKER_RESOURCE_LIMIT).
+    // Peak memory here is one network chunk plus one BATCH_SIZE-sized batch.
+    const reader = erpResponse.body.getReader();
+    const decoder = new TextDecoder();
+    const streamer = new RowStreamer();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const rowsFromChunk = streamer.feed(decoder.decode(value, { stream: true }));
+      for (const row of rowsFromChunk) {
+        totalRows++;
+        if (!str(row, "Item No_")) continue;
+        pendingBatch.push(row);
+        if (pendingBatch.length >= BATCH_SIZE) {
+          await processBatch(pendingBatch);
+          pendingBatch = [];
+        }
+      }
+    }
+    await processBatch(pendingBatch); // whatever's left under one full batch
+
     return jsonResponse({
-      totalRows: rows.length,
+      totalRows,
       upserted,
       stageEventsInserted,
       errors,

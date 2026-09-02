@@ -1,0 +1,23 @@
+-- Orders module. Reverses 003_orders_sync_cron.sql's pg_cron schedule.
+--
+-- Confirmed 2026-09-02: even after rewriting orders-sync (see that file's header
+-- comment) to stream-parse the ERP feed instead of buffering it whole, a real
+-- invocation against the live ~120,000-row / ~145MB feed still failed with
+-- WORKER_RESOURCE_LIMIT, twice, at a near-identical ~9.5s mark (confirmed via
+-- function_edge_logs). That repeatability points at a fixed compute/memory ceiling
+-- for this project's Edge Function runtime, not a fixable-in-code inefficiency —
+-- Edge Functions are built for light request/response work, not pulling and mapping
+-- a feed this size in one invocation.
+--
+-- Rather than keep shrinking the workload inside a runtime that isn't built for it,
+-- the sync now runs as a plain Node script on the same Linux server Atlas itself is
+-- deployed to (apps/atlas/scripts/orders-sync.mjs), on a system cron entry there —
+-- a real machine with ordinary amounts of RAM/CPU, not a sandboxed function. That
+-- script talks to Postgres the same way (service-role Supabase client, same table
+-- writes) so nothing about the destination schema changes, only where the pulling
+-- and mapping happens.
+--
+-- The orders-sync Edge Function itself is left deployed (harmless, and still usable
+-- for a manual on-demand call against a small/test feed) — only the recurring
+-- schedule moves.
+select cron.unschedule('orders-sync-erp-feed');

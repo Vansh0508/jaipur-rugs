@@ -44,6 +44,8 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | `20260827102559` | `orders_workflow_and_escalation` | orders | `db/orders/004_workflow_and_escalation.sql` |
 | `20260827102803` + `20260827102953` | `orders_advisor_fixes` + `orders_advisor_fixes_2` | orders | `db/orders/005_advisor_fixes.sql` |
 | `20260901062335` | `merchant_auth_consolidation` | orders | `db/orders/006_merchant_auth_consolidation.sql` |
+| (2026-09-02) | `orders_sync_secret_rpc_bridge` | orders | `db/orders/007_orders_sync_secret_rpc_bridge.sql` |
+| (2026-09-02) | `orders_sync_move_to_server` | orders | `db/orders/008_orders_sync_move_to_server.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
@@ -419,16 +421,25 @@ just closes a documentation gap matching every other function's explicit entry).
 
 **Merchant auth consolidated onto Supabase Auth (2026-09-01, `006_merchant_auth_consolidation.sql`):** "merchants" turned out to mean internal Jaipur Rugs territory heads/B2B salespeople, not external customers — the real trigger was setting up Dinesh Choudhary (`dinesh.c@jaipurrugs.com`, territory head, 72 real ERP customer codes cross-checked against the live feed) and discovering the Clerk-based merchant login was broken in two independent, unfixable-from-this-session ways: `CLERK_SECRET_KEY` was never set as an Edge Function secret, and Clerk was never configured as a Supabase Third-Party Auth provider either. Rather than fix both, removed the whole second auth system: the `merchants` table is dropped, `merchant_customer_codes` now links directly to `employees` (nullable `employee_id` until that person actually signs up — same pattern as `escalation_levels.notify_employee_id`), `can_view_order()`'s merchant branch matches the caller's own employee id instead of a Clerk JWT, `apps/atlas/app/merchant/*` and `lib/merchant/*` are deleted, `merchants-invite` now grants an *existing* employee visibility into customer codes (no account creation), and `merchants-link-clerk-account` is retired as a static 410 stub (no delete-function tool available in this session). Dinesh's 72 codes are seeded but `employee_id` is still null for all of them — **he needs to sign up via the normal `employee-signup` flow (same as everyone else) before his access actually works**; nothing auto-links him.
 
+**ERP sync pipeline resolved, then moved off Edge Functions entirely (2026-09-02).**
+What was "Set `ORDERS_SYNC_SECRET`" below turned out to have no path forward via any
+tool in this session (no MCP tool sets project-level Edge Function secrets, and none
+ever will by design) — worked around via `007_orders_sync_secret_rpc_bridge.sql`
+(Postgres Vault + a `service_role`-only RPC bridge) instead, needing no Dashboard visit.
+`orders-sync` was then redeployed with a stream-parser rewrite to fix a real
+`WORKER_RESOURCE_LIMIT` failure on the ~120k-row/~145MB live feed — but a real
+invocation still failed the same way, twice, at a near-identical ~9.5s mark. That
+repeatability means it's a fixed platform ceiling (Edge Functions aren't sized for a
+pull this large), not a fixable inefficiency, so `008_orders_sync_move_to_server.sql`
+un-scheduled the pg_cron job entirely and the same logic now runs as a plain Node
+script on the app server itself (`apps/atlas/scripts/orders-sync.mjs`, invoked by a
+system cron entry there — a real machine has no such ceiling). The Edge Function stays
+deployed (harmless) for manual/small-feed use only.
+
 Still required before this module is actually usable end-to-end:
-- **Set `ORDERS_SYNC_SECRET`** as an Edge Function secret (confirmed missing live:
-  `orders-sync` currently 401s on every cron tick). No Supabase MCP tool in this session
-  can set project secrets — this needs `supabase secrets set <NAME>=<value>` from a CLI
-  session authenticated to this project, or the Dashboard's Edge Functions → Secrets
-  page.
-- Once it exists as an Edge Function secret, still create the matching
-  `orders_sync_secret` Vault entry (`select vault.create_secret(...)`) so `003`'s
-  scheduled job's `x-orders-sync-secret` header actually matches — both sides need the
-  same value, and neither exists yet.
+- Confirm `apps/atlas/scripts/orders-sync.mjs` has actually run successfully at least
+  once on the server (real orders populating the `orders` table) and that its cron
+  entry is in place — see the script's own header for the exact command.
 - Link Dinesh Choudhary's `merchant_customer_codes` rows to his real `employee_id` once
   he signs up (see above) — a one-line `update` by email match, same as `006`'s backfill.
 - Regenerate `packages/supabase-client`'s types — the current `types.ts` has a
