@@ -18,6 +18,13 @@ export default async function proxy(request: NextRequest): Promise<NextResponse>
     return response;
   }
 
+  // /signup needs the same unauthenticated-visitor exemption as /login below — a
+  // brand-new person has no session by definition. Missed when /signup was added
+  // (2026-09-02); caught because the page 307'd straight back to /login for everyone.
+  if (request.nextUrl.pathname.startsWith("/signup")) {
+    return response;
+  }
+
   const cookieAdapter: CookieAdapter = {
     get: (name) => request.cookies.get(name)?.value,
     set: (name, value, options) => response.cookies.set(name, value, options),
