@@ -52,10 +52,17 @@ function num(row, key) {
   return Number.isFinite(n) ? n : null;
 }
 
+// Confirmed 2026-09-02 on the real feed: date-ish fields sometimes hold plain status
+// text instead of a date (e.g. "Ready" in Expected Ready Date, presumably meaning "no
+// date yet, it's just ready") — Postgres rejects that outright for a `date` column.
+// Only pass through something that actually looks like a date; anything else becomes
+// null rather than failing the whole batch's upsert.
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 function dateOnly(row, key) {
   const v = str(row, key);
   if (!v) return null;
-  return v.slice(0, 10);
+  const candidate = v.slice(0, 10);
+  return DATE_ONLY_RE.test(candidate) ? candidate : null;
 }
 
 function bool(row, key) {
@@ -139,7 +146,20 @@ async function processBatch(batch, stageState, counters, errors, batchIndex) {
   if (!batch.length) return;
   const label = batchIndex;
 
-  const itemNos = batch.map((r) => str(r, "Item No_"));
+  // Confirmed 2026-09-02 on the real feed: the same Item No_ can appear more than once
+  // within a single batch. A single upsert() call can't target the same conflict row
+  // twice ("ON CONFLICT DO UPDATE command cannot affect row a second time"), so collapse
+  // to one row per item number before doing anything else. "Last occurrence in feed
+  // order wins" is a simplification — nothing in the feed says which duplicate is more
+  // authoritative.
+  const dedupedByItemNo = new Map();
+  for (const r of batch) {
+    const itemNo = str(r, "Item No_");
+    dedupedByItemNo.set(itemNo, r);
+  }
+  const dedupedBatch = Array.from(dedupedByItemNo.values());
+
+  const itemNos = dedupedBatch.map((r) => str(r, "Item No_"));
   const { data: existing, error: existingError } = await supabaseAdmin
     .from("orders")
     .select("id, item_no, stage_id")
@@ -151,7 +171,7 @@ async function processBatch(batch, stageState, counters, errors, batchIndex) {
   const existingByItemNo = new Map((existing ?? []).map((o) => [o.item_no, o]));
 
   const { exactMap, prefixRules, otherStageId } = stageState;
-  const mappedRows = batch.map((r) => {
+  const mappedRows = dedupedBatch.map((r) => {
     const rawStatus = str(r, "Current Status");
     const stageId = resolveStageId(rawStatus, exactMap, prefixRules, otherStageId);
     return { erp: r, mapped: mapErpRowToOrder(r, stageId) };
