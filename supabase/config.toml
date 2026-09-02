@@ -12,6 +12,13 @@ verify_jwt = false
 # yet at this bootstrap step (mirrors guest-signup). No JWT to gate on.
 verify_jwt = false
 
+[functions.employee-signup]
+# Open self-service sign-up (apps/atlas/app/signup, added 2026-09-02, and originally
+# apps/hub) — a brand-new person has no session yet by definition. Already correctly
+# `false` in the live deployment; this entry was just missing from this file, same
+# documentation gap as the five orders-module functions fixed 2026-08-27.
+verify_jwt = false
+
 [functions.submit-feedback]
 # Neither reviewer path (guestId or employeeId) carries a Supabase session anymore — both
 # are plain data labels in the request body, not a JWT. No JWT to gate on.
