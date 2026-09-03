@@ -252,7 +252,6 @@ export type Database = {
           onboarding_completed_at: string | null
           phone: string | null
           primary_role_id: string | null
-          salesperson_code: string | null
           status: Database["public"]["Enums"]["employee_status"]
           updated_at: string
         }
@@ -271,7 +270,6 @@ export type Database = {
           onboarding_completed_at?: string | null
           phone?: string | null
           primary_role_id?: string | null
-          salesperson_code?: string | null
           status?: Database["public"]["Enums"]["employee_status"]
           updated_at?: string
         }
@@ -290,7 +288,6 @@ export type Database = {
           onboarding_completed_at?: string | null
           phone?: string | null
           primary_role_id?: string | null
-          salesperson_code?: string | null
           status?: Database["public"]["Enums"]["employee_status"]
           updated_at?: string
         }
@@ -638,6 +635,38 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "merchant_customer_codes_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_salesperson_codes: {
+        // Self-service (db/orders/010_salesperson_codes_self_service.sql) — a person
+        // adds their own already-known ERP salesperson code(s) from /my-access. Same
+        // one-to-many shape as merchant_customer_codes, no approval step.
+        Row: {
+          created_at: string
+          employee_id: string
+          id: string
+          salesperson_code: string
+        }
+        Insert: {
+          created_at?: string
+          employee_id: string
+          id?: string
+          salesperson_code: string
+        }
+        Update: {
+          created_at?: string
+          employee_id?: string
+          id?: string
+          salesperson_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_salesperson_codes_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "employees"

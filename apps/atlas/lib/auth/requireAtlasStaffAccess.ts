@@ -6,16 +6,19 @@ import { env } from "@/lib/env";
 // apps/hub's requireHubAccess (checked here AND independently in proxy.ts, AGENTS.md
 // Section 5: a shared session proves "logged in," never "authorized for Atlas"). Atlas
 // authorization is "any real reason to be here": org-wide admin, a
-// production/shipping/sales department grant, being a sales rep whose own
-// salesperson_code appears on real orders, or — since 2026-09-01's auth
-// consolidation — being a territory head/B2B salesperson ("merchant" in this
-// business's own vocabulary, not an external customer) with rows in
-// merchant_customer_codes. That last case used to be a wholly separate Clerk-based
-// login (apps/atlas/app/merchant/*, removed) — now it's just another employee, scoped
-// by RLS to their own customer codes like everyone else. Redirects to the Hub launcher
-// on failure (AGENTS.md's "Do": never render an empty/broken department screen) rather
-// than this app's own /login, since Hub is the one place every employee's session
-// definitely already works.
+// production/shipping/sales department grant, a sales rep with rows in
+// employee_salesperson_codes (self-service — see db/orders/010, there's no reliable way
+// to derive a name<->code mapping from the ERP feed, so a person adds their own known
+// code themselves from /my-access), or — since 2026-09-01's auth consolidation —
+// being a territory head/B2B salesperson ("merchant" in this business's own
+// vocabulary, not an external customer) with rows in merchant_customer_codes. That last
+// case used to be a wholly separate Clerk-based login (apps/atlas/app/merchant/*,
+// removed) — now it's just another employee, scoped by RLS to their own customer codes
+// like everyone else. Redirects to the Hub launcher on failure (AGENTS.md's "Do": never
+// render an empty/broken department screen) rather than this app's own /login, since
+// Hub is the one place every employee's session definitely already works — UNLESS
+// `allowUnauthorized` is set, for the one page (/my-access) whose whole job is letting
+// someone with no access yet grant themselves one, so it can't itself require access.
 
 const ATLAS_DEPARTMENT_CODES = ["production", "shipping", "sales"] as const;
 
@@ -26,13 +29,17 @@ export interface AtlasStaffAccess {
   isAdmin: boolean;
   /** department codes this employee holds ANY grant on, restricted to the ones Atlas cares about. */
   departmentCodes: string[];
-  salespersonCode: string | null;
+  /** true if this employee has any employee_salesperson_codes rows (self-service, db/orders/010). */
+  hasSalespersonCodeGrants: boolean;
   /** true if this employee has any merchant_customer_codes rows — a territory head/B2B
    * salesperson scoped to specific ERP customer codes rather than a department. */
   hasCustomerCodeGrants: boolean;
 }
 
-export async function requireAtlasStaffAccess(supabase: SupabaseClient): Promise<AtlasStaffAccess> {
+export async function requireAtlasStaffAccess(
+  supabase: SupabaseClient,
+  options: { allowUnauthorized?: boolean } = {},
+): Promise<AtlasStaffAccess> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -43,7 +50,7 @@ export async function requireAtlasStaffAccess(supabase: SupabaseClient): Promise
 
   const { data: employee } = await supabase
     .from("employees")
-    .select("id, full_name, status, primary_role_id, salesperson_code")
+    .select("id, full_name, status, primary_role_id")
     .eq("auth_user_id", user.id)
     .maybeSingle();
 
@@ -60,14 +67,20 @@ export async function requireAtlasStaffAccess(supabase: SupabaseClient): Promise
     .in("departments.code", ATLAS_DEPARTMENT_CODES);
   const departmentCodes = (grants ?? []).map((g) => (g as unknown as { departments: { code: string } }).departments.code);
 
+  const { count: salespersonCodeCount } = await supabase
+    .from("employee_salesperson_codes")
+    .select("id", { count: "exact", head: true })
+    .eq("employee_id", employee.id);
+  const hasSalespersonCodeGrants = Boolean(salespersonCodeCount);
+
   const { count: customerCodeCount } = await supabase
     .from("merchant_customer_codes")
     .select("id", { count: "exact", head: true })
     .eq("employee_id", employee.id);
   const hasCustomerCodeGrants = Boolean(customerCodeCount);
 
-  const isAuthorized = isAdmin || departmentCodes.length > 0 || Boolean(employee.salesperson_code) || hasCustomerCodeGrants;
-  if (!isAuthorized) {
+  const isAuthorized = isAdmin || departmentCodes.length > 0 || hasSalespersonCodeGrants || hasCustomerCodeGrants;
+  if (!isAuthorized && !options.allowUnauthorized) {
     redirect(env.hubUrl ?? "/login");
   }
 
@@ -76,7 +89,7 @@ export async function requireAtlasStaffAccess(supabase: SupabaseClient): Promise
     fullName: employee.full_name,
     isAdmin,
     departmentCodes,
-    salespersonCode: employee.salesperson_code,
+    hasSalespersonCodeGrants,
     hasCustomerCodeGrants,
   };
 }

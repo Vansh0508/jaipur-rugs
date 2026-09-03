@@ -35,3 +35,15 @@ export async function listSalespeopleWithCustomerCodes(supabase: SupabaseClient)
   }
   return [...byEmployee.values()].sort((a, b) => a.fullName.localeCompare(b.fullName));
 }
+
+/** The caller's own salesperson codes (self-service, db/orders/010) — RLS's
+ * employee_salesperson_codes_select already restricts a non-admin to their own rows, so
+ * this doesn't need to filter by employee_id itself. Used by /my-access. */
+export async function listMySalespersonCodes(supabase: SupabaseClient): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("employee_salesperson_codes")
+    .select("salesperson_code")
+    .order("salesperson_code", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row) => row.salesperson_code as string);
+}

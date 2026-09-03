@@ -47,6 +47,7 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | (2026-09-02) | `orders_sync_secret_rpc_bridge` | orders | `db/orders/007_orders_sync_secret_rpc_bridge.sql` |
 | (2026-09-02) | `orders_sync_move_to_server` | orders | `db/orders/008_orders_sync_move_to_server.sql` |
 | (2026-09-02) | `orders_select_perf_fix` | orders | `db/orders/009_orders_select_perf_fix.sql` |
+| (2026-09-02) | `salesperson_codes_self_service` | orders | `db/orders/010_salesperson_codes_self_service.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
@@ -452,6 +453,25 @@ simulated real session: total execution time **9.6ms**, with the salesperson/mer
 branches showing `never executed` (short-circuited once the hoisted admin check came
 back true). Also added `orders_updated_at_idx` — the list view's `order by updated_at
 desc` had no supporting index.
+
+**Self-service salesperson codes (2026-09-02, `010_salesperson_codes_self_service.sql`).**
+Asked directly: "mapping each sales person with the respective sales code is not
+possible" — confirmed by checking the real data (some ERP `Salesperson Code` values
+cover thousands of orders across several different client accounts, so they don't even
+map cleanly to one person each). There is no field in the ERP feed that ties a code to
+a real name, so no admin-compiled mapping was ever going to work. Fixed by generalizing
+`employees.salesperson_code` (a single nullable column, 0 rows ever used it) into
+`employee_salesperson_codes`, the same one-to-many shape `merchant_customer_codes`
+already uses for Dinesh's case — a person adds their own already-known code(s)
+themselves from a new `/my-access` page (or optionally at sign-up), through a new
+`salesperson-codes-add` Edge Function that only ever writes to the CALLER'S OWN
+employee_id. No approval step (explicit product decision — the underlying order data
+isn't confidential between salespeople in the first place), matching exactly how the
+pre-Atlas tool at ai.jaipurrugs.com/track-jr-order/ already treats a salesperson's login
+code as identical to their ERP salesperson code. `proxy.ts` and
+`requireAtlasStaffAccess.ts` both needed a real fix alongside this (not just the swap):
+they were still selecting the now-dropped `employees.salesperson_code` column, which
+would have 500'd on every request — caught before deploying, not after.
 
 Still required before this module is actually usable end-to-end:
 - Confirm `apps/atlas/scripts/orders-sync.mjs` has actually run successfully at least

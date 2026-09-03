@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, TextField } from "@jaipur-rugs/ui-kit";
 import { grantCustomerCodes } from "@jaipur-rugs/db-management-client";
 import { getBrowserSupabaseClient } from "@/lib/supabaseClient.browser";
+import { parseCodeList } from "@/lib/parseCodeList";
 
 // "Merchant" here means a territory head/B2B salesperson (Ayaan's correction,
 // 2026-09-01) — an existing employee, not someone this form creates an account for.
@@ -19,12 +20,9 @@ export function InviteMerchantForm() {
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    const customerNos = customerNosRaw
-      .split(",")
-      .map((c) => c.trim())
-      .filter(Boolean);
+    const customerNos = parseCodeList(customerNosRaw);
     if (!customerNos.length) {
-      setError("Enter at least one customer number, comma-separated.");
+      setError("Enter at least one customer number.");
       return;
     }
     setSubmitting(true);
@@ -50,7 +48,7 @@ export function InviteMerchantForm() {
         <TextField label="Employee email" type="email" value={email} onChange={setEmail} isRequired />
         <TextField
           label="Customer No.(s)"
-          placeholder="34836, 7333"
+          placeholder="34836, 7333 — or paste a whole pasted list, any format"
           value={customerNosRaw}
           onChange={setCustomerNosRaw}
           isRequired

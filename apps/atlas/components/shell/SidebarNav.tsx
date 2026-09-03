@@ -15,6 +15,7 @@ export function SidebarNav({ isAdmin }: { isAdmin: boolean }) {
     { href: "/dashboard", label: "Dashboard" },
     { href: "/orders", label: "Orders" },
     ...(isAdmin ? [{ href: "/merchants", label: "Merchants" }] : []),
+    { href: "/my-access", label: "My access" },
   ];
 
   return (

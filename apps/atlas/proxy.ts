@@ -12,7 +12,14 @@ import { env } from "./lib/env";
 // systems. See requireAtlasStaffAccess.ts's comment for the fuller authorization check
 // this mirrors a lighter version of.
 export default async function proxy(request: NextRequest): Promise<NextResponse> {
-  const response = NextResponse.next({ request: { headers: request.headers } });
+  // Lets the (shell) layout's requireAtlasStaffAccess() know which page it's gating —
+  // needed only so /my-access can exempt itself from the "must already have access"
+  // redirect further down (see isMyAccessPage below). Must be set on the REQUEST
+  // headers (not the response's) to actually reach Server Components via headers() —
+  // a layout has no other standard way to read the current path in the App Router.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", request.nextUrl.pathname);
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
 
   if (request.nextUrl.pathname.startsWith("/api/force-logout")) {
     return response;
@@ -24,6 +31,12 @@ export default async function proxy(request: NextRequest): Promise<NextResponse>
   if (request.nextUrl.pathname.startsWith("/signup")) {
     return response;
   }
+
+  // /my-access is exempt from the isAuthorized redirect below (not from the session/
+  // active-employee checks) — it's the one page whose whole job is letting someone with
+  // NO access yet grant themselves a salesperson code, so it can't itself require access
+  // to reach. See db/orders/010_salesperson_codes_self_service.sql.
+  const isMyAccessPage = request.nextUrl.pathname.startsWith("/my-access");
 
   const cookieAdapter: CookieAdapter = {
     get: (name) => request.cookies.get(name)?.value,
@@ -44,7 +57,7 @@ export default async function proxy(request: NextRequest): Promise<NextResponse>
 
   const { data: employee } = await supabase
     .from("employees")
-    .select("id, status, salesperson_code, primary_role_id")
+    .select("id, status, primary_role_id")
     .eq("auth_user_id", user.id)
     .maybeSingle();
 
@@ -78,8 +91,8 @@ export default async function proxy(request: NextRequest): Promise<NextResponse>
     .maybeSingle();
 
   // Territory heads/B2B salespeople ("merchant" in this business's own vocabulary) hold
-  // no department grant and no single salesperson_code — they're scoped to specific ERP
-  // customer codes instead. See requireAtlasStaffAccess.ts's fuller comment.
+  // no department grant — they're scoped to specific ERP customer codes instead. See
+  // requireAtlasStaffAccess.ts's fuller comment.
   const { data: anyCustomerCodeGrant } = await supabase
     .from("merchant_customer_codes")
     .select("id")
@@ -87,7 +100,19 @@ export default async function proxy(request: NextRequest): Promise<NextResponse>
     .limit(1)
     .maybeSingle();
 
-  const isAuthorized = hasOrdersReadAll || Boolean(anyAtlasGrant) || Boolean(employee!.salesperson_code) || Boolean(anyCustomerCodeGrant);
+  // Self-service salesperson codes (db/orders/010) — a plain salespeople, scoped to
+  // whichever ERP salesperson code(s) they've added themselves from /my-access.
+  const { data: anySalespersonCode } = await supabase
+    .from("employee_salesperson_codes")
+    .select("id")
+    .eq("employee_id", employee!.id)
+    .limit(1)
+    .maybeSingle();
+
+  const isAuthorized = hasOrdersReadAll || Boolean(anyAtlasGrant) || Boolean(anyCustomerCodeGrant) || Boolean(anySalespersonCode);
+  if (isMyAccessPage) {
+    return response;
+  }
   if (!isAuthorized) {
     // Second bug found alongside the cookie one (2026-09-02): when hubUrl is unset, the
     // redirect target IS /login itself — for an unauthorized visitor already headed to

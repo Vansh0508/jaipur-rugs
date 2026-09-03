@@ -661,6 +661,29 @@ export async function grantCustomerCodes(supabase: SupabaseClient, input: GrantC
   return data;
 }
 
+interface AddOwnSalespersonCodesResponse {
+  employeeId: string;
+  added: string[];
+}
+
+/**
+ * Invokes `salesperson-codes-add` — self-service, always the CALLER'S OWN account
+ * (resolved server-side from their session, never a client-supplied id). No approval
+ * step (explicit product decision, 2026-09-02): there's no reliable way to derive a
+ * name<->code mapping from the ERP feed, so a person typing in their own already-known
+ * code is the real answer — see db/orders/010_salesperson_codes_self_service.sql.
+ */
+export async function addOwnSalespersonCodes(supabase: SupabaseClient, codes: string[]) {
+  const { data, error } = await supabase.functions.invoke<AddOwnSalespersonCodesResponse>(
+    "salesperson-codes-add",
+    { body: { codes } },
+  );
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Orders workflow layer (db/orders/004) — the structured replacement for the
 // order@/mzpreview@ email relay. Prototyped and load-tested in a local preview tool
