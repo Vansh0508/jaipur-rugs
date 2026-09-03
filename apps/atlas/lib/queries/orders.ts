@@ -45,6 +45,43 @@ export async function listOrders(supabase: SupabaseClient, filters: OrderFilters
   return data ?? [];
 }
 
+export interface DashboardStatsRow {
+  id: string;
+  stage_id: string | null;
+  promised_delivery_date: string | null;
+  revised_ex_factory_date: string | null;
+}
+
+/** Every order the caller can see, but only the 4 columns the dashboard's aggregate
+ * stats actually need — and paginated via .range(), not a single limit(). Confirmed
+ * live 2026-09-02: PostgREST caps any single request at 1000 rows no matter what
+ * limit() asks for, so the dashboard's earlier listOrders({ limit: 2000 }) was silently
+ * truncated to the 1000 most-recently-updated orders and showing that as the total
+ * against a real 14,214-row table — wrong, not just incomplete. Ordered by `id` (stable
+ * primary key), not `updated_at`, so a page boundary can't skip/duplicate a row that
+ * happens to get touched by the ERP sync between page fetches.
+ *
+ * Fine at today's scale (a dozen or so requests per dashboard load). If order volume
+ * grows another order of magnitude, this should become a real server-side aggregate
+ * (a SQL view/RPC doing count/group by) instead of pulling every row to count in JS. */
+export async function listAllOrdersForStats(supabase: SupabaseClient): Promise<DashboardStatsRow[]> {
+  const PAGE_SIZE = 1000;
+  const rows: DashboardStatsRow[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("id, stage_id, promised_delivery_date, revised_ex_factory_date")
+      .order("id", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    rows.push(...((data ?? []) as DashboardStatsRow[]));
+    if (!data || data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return rows;
+}
+
 export async function getOrder(supabase: SupabaseClient, orderId: string): Promise<OrderRow | null> {
   const { data, error } = await supabase.from("orders").select("*").eq("id", orderId).maybeSingle();
   if (error) throw error;

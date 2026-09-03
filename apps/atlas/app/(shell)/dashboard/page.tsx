@@ -1,5 +1,5 @@
 import { getServerSupabaseClient } from "@/lib/supabaseClient.server";
-import { listOrders, listStages } from "@/lib/queries/orders";
+import { listAllOrdersForStats, listStages } from "@/lib/queries/orders";
 import { onTimeStatus } from "@/lib/tat";
 import { DashboardStat } from "@/components/DashboardStat";
 import { StageChip } from "@/components/StageChip";
@@ -9,9 +9,14 @@ import Link from "next/link";
 // summary, not a re-implementation of the Orders list. Deliberately thin: total, a
 // delayed count (the on-time signal the build prompt calls the whole point of this
 // rebuild), and a per-stage breakdown. Resist adding more here than that.
+//
+// Uses listAllOrdersForStats(), not listOrders() with a limit — a "total" that's
+// silently capped at some arbitrary row count isn't a total. See that function's
+// comment (confirmed live 2026-09-02: this page showed "1000" against a real
+// 14,214-row table before the fix).
 export default async function DashboardPage() {
   const supabase = await getServerSupabaseClient();
-  const [orders, stages] = await Promise.all([listOrders(supabase, { limit: 2000 }), listStages(supabase)]);
+  const [orders, stages] = await Promise.all([listAllOrdersForStats(supabase), listStages(supabase)]);
 
   const stageById = new Map(stages.map((s) => [s.id, s]));
   const delayedCount = orders.filter((o) => {
