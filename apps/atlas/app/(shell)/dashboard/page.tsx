@@ -13,7 +13,15 @@ import Link from "next/link";
 // Uses listAllOrdersForStats(), not listOrders() with a limit — a "total" that's
 // silently capped at some arbitrary row count isn't a total. See that function's
 // comment (confirmed live 2026-09-02: this page showed "1000" against a real
-// 14,214-row table before the fix).
+// 14,214-row table before the fix). listAllOrdersForStats() also excludes the 5
+// internal stock/inventory customer codes now (STOCK_CUSTOMER_CODES) — confirmed live
+// 2026-09-03 that 24.5% of the previous 14,214 total were stock rows, not real orders.
+//
+// Two separate counts are shown, not one — "rug lines" (one row per item, the level
+// stage-tracking actually happens at) and "sales orders" (one Sales Order can contain
+// several rugs). Confirmed live 2026-09-03: those 14,214 rows resolved to only 3,757
+// distinct Sales Order Nos, so a single "Orders in view" number was quietly answering
+// two different questions depending on who read it.
 export default async function DashboardPage() {
   const supabase = await getServerSupabaseClient();
   const [orders, stages] = await Promise.all([listAllOrdersForStats(supabase), listStages(supabase)]);
@@ -23,6 +31,8 @@ export default async function DashboardPage() {
     const stage = o.stage_id ? stageById.get(o.stage_id) : undefined;
     return onTimeStatus(o.promised_delivery_date, o.revised_ex_factory_date, stage?.is_terminal ?? false) === "delayed";
   }).length;
+
+  const distinctSalesOrders = new Set(orders.map((o) => o.sales_order_no).filter(Boolean)).size;
 
   const countByStage = new Map<string, number>();
   for (const order of orders) {
@@ -37,8 +47,9 @@ export default async function DashboardPage() {
         <p className="text-sm text-muted">Everything you have visibility into, in one place.</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <DashboardStat label="Orders in view" value={orders.length} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <DashboardStat label="Rug lines in view" value={orders.length} />
+        <DashboardStat label="Distinct sales orders" value={distinctSalesOrders} />
         <DashboardStat label="Delayed" value={delayedCount} />
         <DashboardStat label="On track" value={orders.length - delayedCount} />
       </div>
