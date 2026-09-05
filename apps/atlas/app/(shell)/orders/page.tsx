@@ -106,7 +106,11 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   const to = Math.min(page * pageSize, totalCount);
 
   return (
-    <div className="flex flex-col gap-6">
+    // h-full + overflow-hidden, scoped to just this page — main itself still keeps its
+    // own overflow-y-auto as a fallback for every other page, but this page manages its
+    // own scrolling internally (only the table body scrolls; title bar and pagination
+    // stay put) via Table.ScrollContainer below, not this outer div.
+    <div className="flex h-full flex-col gap-4 overflow-hidden">
       <OrdersFilterPanel
         stages={stages}
         facets={facets}
@@ -136,13 +140,15 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
         }}
       />
 
-      {/* Sticky at the top of `main`'s own scroll region (not the page — see the shell
-          layout's comment) so the title/count/export bar stays visible while scrolling
-          through a long results list. Direct feedback, 2026-09-05: "the main orders
-          list top panel" wasn't freezing (the sidebar fix alone didn't cover this — it's
-          a separate sticky region). bg-background is required on anything sticky here,
-          otherwise scrolled-past rows show through underneath it. */}
-      <div className="sticky top-0 z-20 -mx-8 -mt-8 flex items-center justify-between bg-background px-8 pb-4 pt-8">
+      {/* Plain, non-scrolling content — no sticky/offset tricks needed here at all.
+          Direct feedback, 2026-09-05: a manual sticky-offset hack on this block plus a
+          second one on the table's header "messed the table" (they can't self-stack —
+          each computes its own stuck position with no idea the other exists). Real fix:
+          this bar and the pagination footer below just sit in normal flow, fixed in
+          place, because ONLY the table's own Table.ScrollContainer scrolls — see
+          OrdersTable, which now uses this app's real Table component (Hero UI, via
+          @jaipur-rugs/ui-kit) instead of a hand-rolled <table>. */}
+      <div className="flex shrink-0 items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Orders</h1>
           <p className="text-sm text-muted">
@@ -154,7 +160,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
       </div>
 
       {toArray(params.stageId).length === 1 ? (
-        <div>
+        <div className="shrink-0">
           {(() => {
             const stage = stages.find((s) => s.id === toArray(params.stageId)[0]);
             return stage ? <StageChip code={stage.code} label={`Filtered: ${stage.display_name}`} /> : null;
@@ -162,9 +168,11 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
         </div>
       ) : null}
 
-      <OrdersTable rows={orders} stages={stages} currentSort={sortBy} currentDir={sortDir} sortLinkFor={sortLinkFor} />
+      <div className="min-h-0 flex-1">
+        <OrdersTable rows={orders} stages={stages} currentSort={sortBy} currentDir={sortDir} sortLinkFor={sortLinkFor} />
+      </div>
 
-      <div className="flex items-center justify-between text-sm text-muted">
+      <div className="flex shrink-0 items-center justify-between text-sm text-muted">
         <span>
           Page {page} of {totalPages}
         </span>
