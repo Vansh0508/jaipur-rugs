@@ -113,10 +113,10 @@ const SWATCH_MAX_SQFT = 4;
 
 /** Every column the Orders table lets someone sort by — a fixed whitelist mapping a
  * plain user-facing key to the real DB column, so a request can never sort by an
- * arbitrary column. "stage" is handled separately (see listOrders) — its real order is
- * display_order on the joined `stages` row, not the stage_id text itself, so it isn't a
- * plain same-table column sort like the rest of these. On-Time still isn't sortable —
- * it's computed client-side, not stored anywhere to sort by. */
+ * arbitrary column. Stage and On-Time aren't here: a real attempt at sorting Stage by
+ * the joined stages.display_order didn't actually work in practice (confirmed live
+ * 2026-09-05) and was removed rather than left silently broken — worth revisiting for
+ * real later. On-Time is computed client-side, not stored anywhere to sort by. */
 export const SORTABLE_COLUMNS = {
   otn: "otn_no",
   merchant: "merchant_name",
@@ -125,7 +125,7 @@ export const SORTABLE_COLUMNS = {
   pendingDays: "current_status_pending_days",
   revisedExFactory: "revised_ex_factory_date",
 } as const;
-export type SortableColumn = keyof typeof SORTABLE_COLUMNS | "stage";
+export type SortableColumn = keyof typeof SORTABLE_COLUMNS;
 
 /** Normalizes a filter value that might arrive as a single string or an array (a plain
  * <select multiple>'s query params, or a hand-built URL) into a clean string array. */
@@ -262,28 +262,13 @@ function applyOrderFilters(supabase: SupabaseClient, filters: OrderFilters, sele
  * real pagination (see OrderListResult.totalCount) rather than a single growing cap. */
 export async function listOrders(supabase: SupabaseClient, filters: OrderFilters = {}): Promise<OrderListResult> {
   // filters.sortBy is a plain string round-tripped through a URL, not something the
-  // type system can actually guarantee is a real SortableColumn — falls back to the
-  // default rather than asking PostgREST to sort by an undefined/arbitrary column if
-  // someone hand-crafts an invalid ?sortBy=.
-  const isSortingByStage = filters.sortBy === "stage";
-  const isValidPlainSort = Boolean(filters.sortBy && filters.sortBy in SORTABLE_COLUMNS);
-  const ascending = isSortingByStage || isValidPlainSort ? filters.sortDir !== "desc" : false; // default: updated_at desc
-
-  let query: any;
-  if (isSortingByStage) {
-    // Stage's real order is its own display_order, not the stage_id text — needs the
-    // joined `stages` row embedded in the select so PostgREST can order by a column on
-    // it. Plain (non-`!inner`) embed, so an order with no resolved stage (stage_id
-    // null) still comes back rather than being silently dropped.
-    query = applyOrderFilters(supabase, filters, "*, stages(display_order)").order("display_order", {
-      foreignTable: "stages",
-      ascending,
-      nullsFirst: false,
-    });
-  } else {
-    const sortColumn = isValidPlainSort ? SORTABLE_COLUMNS[filters.sortBy as keyof typeof SORTABLE_COLUMNS] : "updated_at";
-    query = applyOrderFilters(supabase, filters).order(sortColumn, { ascending, nullsFirst: false });
-  }
+  // type system can actually guarantee is one of SORTABLE_COLUMNS's keys — falls back
+  // to the default rather than asking PostgREST to sort by an undefined/arbitrary
+  // column if someone hand-crafts an invalid ?sortBy=.
+  const isValidSort = Boolean(filters.sortBy && filters.sortBy in SORTABLE_COLUMNS);
+  const sortColumn = isValidSort ? SORTABLE_COLUMNS[filters.sortBy as SortableColumn] : "updated_at";
+  const ascending = isValidSort ? filters.sortDir !== "desc" : false; // default: updated_at desc
+  let query = applyOrderFilters(supabase, filters).order(sortColumn, { ascending, nullsFirst: false });
 
   if (filters.page || filters.pageSize) {
     const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;

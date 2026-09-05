@@ -99,8 +99,6 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
     return `/orders?${p.toString()}`;
   }
   const pageLink = (newPage: number) => buildLink({ page: String(newPage) });
-  const sortLinkFor = (column: SortableColumn, dir: "asc" | "desc") =>
-    buildLink({ sortBy: column, sortDir: dir, page: undefined });
 
   const from = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, totalCount);
@@ -169,7 +167,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
       ) : null}
 
       <div className="min-h-0 flex-1">
-        <OrdersTable rows={orders} stages={stages} currentSort={sortBy} currentDir={sortDir} sortLinkFor={sortLinkFor} />
+        <OrdersTable rows={orders} stages={stages} />
       </div>
 
       <div className="flex shrink-0 items-center justify-between text-sm text-muted">
