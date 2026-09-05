@@ -364,14 +364,11 @@ export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageR
                     </Table.Cell>
                     <Table.Cell>{order.current_status_pending_days ?? "—"}</Table.Cell>
                     <Table.Cell>
-                      {standard.status === "on_hold" ? (
-                        <span className="text-muted">On hold</span>
-                      ) : standard.status === "no_standard" ? (
+                      {standard.status === "on_hold" || standard.status === "no_standard" ? (
                         <span className="text-muted">—</span>
                       ) : (
-                        <span className={standard.status === "breached" ? "text-danger" : "text-foreground"}>
-                          {standard.standardDays}d standard
-                          {standard.status === "breached" ? ` (+${standard.overBy}d over)` : ""}
+                        <span className={standard.status === "breached" ? "font-medium text-danger" : "text-foreground"}>
+                          {standard.standardDays}d
                         </span>
                       )}
                     </Table.Cell>
