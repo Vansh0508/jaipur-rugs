@@ -150,39 +150,30 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   const to = Math.min(page * pageSize, totalCount);
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+    <div className="flex items-start gap-6">
+      {/* Enterprise-style docked left filter panel (2026-09-05, per direct feedback —
+          the original horizontal filter block "looked messy") — sticky so it stays
+          in view while the results table scrolls, same as the old tool's own sticky
+          sidebar filter panel. */}
+      <form
+        method="get"
+        className="sticky top-4 flex w-72 shrink-0 flex-col gap-4 rounded-xl border-2 border-border p-4"
+      >
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Orders</h1>
-          <p className="text-sm text-muted">
-            Showing {from}-{to} of {totalCount}
-            {hasAnyFilter ? " (filtered)" : ""}
-          </p>
-        </div>
-        <ExportOrdersButton rows={orders} stages={stages} />
-      </div>
-
-      <form method="get" className="flex flex-col gap-4 rounded-xl border-2 border-border p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-1 min-w-[240px] flex-col gap-1 text-xs">
+          <h2 className="mb-3 text-sm font-semibold uppercase text-muted">Filters</h2>
+          <label className="flex flex-col gap-1 text-xs">
             <span className="font-medium uppercase text-muted">Search</span>
             <input
               type="search"
               name="q"
-              defaultValue={params.q as string | undefined ?? ""}
-              placeholder="OTN, item, sales order, customer, merchant, quality, design, size, follow-up, status…"
+              defaultValue={(params.q as string | undefined) ?? ""}
+              placeholder="OTN, item, customer, quality…"
               className="rounded-lg border-2 border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-accent"
             />
           </label>
-          <SingleSelect
-            name="pageSize"
-            label="Rows per page"
-            selected={String(pageSize)}
-            options={PAGE_SIZE_OPTIONS.map((n) => ({ value: String(n), label: String(n) }))}
-          />
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="flex flex-col gap-3">
           <MultiSelect name="stageId" label="Stage" options={stages.map((s) => s.id)} selected={toArray(params.stageId)} />
           <MultiSelect name="customerNo" label="Customer No." options={facets.customerNo} selected={toArray(params.customerNo)} />
           <MultiSelect name="merchantName" label="Merchant" options={facets.merchantName} selected={toArray(params.merchantName)} />
@@ -259,54 +250,73 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
           </label>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-2 border-t-2 border-border pt-3">
+          <SingleSelect
+            name="pageSize"
+            label="Rows per page"
+            selected={String(pageSize)}
+            options={PAGE_SIZE_OPTIONS.map((n) => ({ value: String(n), label: String(n) }))}
+          />
           <button type="submit" className="rounded-lg border-2 border-border px-3 py-2 text-sm hover:bg-surface-secondary">
             Apply filters
           </button>
           {hasAnyFilter ? (
-            <Link href="/orders" className="text-sm text-accent hover:underline">
+            <Link href="/orders" className="text-center text-sm text-accent hover:underline">
               Clear all
             </Link>
           ) : null}
         </div>
       </form>
 
-      {toArray(params.stageId).length === 1 ? (
-        <div>
-          {(() => {
-            const stage = stages.find((s) => s.id === toArray(params.stageId)[0]);
-            return stage ? <StageChip code={stage.code} label={`Filtered: ${stage.display_name}`} /> : null;
-          })()}
+      <div className="flex min-w-0 flex-1 flex-col gap-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-foreground">Orders</h1>
+            <p className="text-sm text-muted">
+              Showing {from}-{to} of {totalCount}
+              {hasAnyFilter ? " (filtered)" : ""}
+            </p>
+          </div>
+          <ExportOrdersButton rows={orders} stages={stages} />
         </div>
-      ) : null}
 
-      <OrdersTable rows={orders} stages={stages} />
+        {toArray(params.stageId).length === 1 ? (
+          <div>
+            {(() => {
+              const stage = stages.find((s) => s.id === toArray(params.stageId)[0]);
+              return stage ? <StageChip code={stage.code} label={`Filtered: ${stage.display_name}`} /> : null;
+            })()}
+          </div>
+        ) : null}
 
-      <div className="flex items-center justify-between text-sm text-muted">
-        <span>
-          Page {page} of {totalPages}
-        </span>
-        <div className="flex gap-2">
-          <Link
-            href={pageLink(Math.max(1, page - 1))}
-            aria-disabled={page <= 1}
-            className={
-              "rounded-lg border-2 border-border px-3 py-1.5 " +
-              (page <= 1 ? "pointer-events-none opacity-40" : "hover:bg-surface-secondary")
-            }
-          >
-            ← Prev
-          </Link>
-          <Link
-            href={pageLink(Math.min(totalPages, page + 1))}
-            aria-disabled={page >= totalPages}
-            className={
-              "rounded-lg border-2 border-border px-3 py-1.5 " +
-              (page >= totalPages ? "pointer-events-none opacity-40" : "hover:bg-surface-secondary")
-            }
-          >
-            Next →
-          </Link>
+        <OrdersTable rows={orders} stages={stages} />
+
+        <div className="flex items-center justify-between text-sm text-muted">
+          <span>
+            Page {page} of {totalPages}
+          </span>
+          <div className="flex gap-2">
+            <Link
+              href={pageLink(Math.max(1, page - 1))}
+              aria-disabled={page <= 1}
+              className={
+                "rounded-lg border-2 border-border px-3 py-1.5 " +
+                (page <= 1 ? "pointer-events-none opacity-40" : "hover:bg-surface-secondary")
+              }
+            >
+              ← Prev
+            </Link>
+            <Link
+              href={pageLink(Math.min(totalPages, page + 1))}
+              aria-disabled={page >= totalPages}
+              className={
+                "rounded-lg border-2 border-border px-3 py-1.5 " +
+                (page >= totalPages ? "pointer-events-none opacity-40" : "hover:bg-surface-secondary")
+              }
+            >
+              Next →
+            </Link>
+          </div>
         </div>
       </div>
     </div>
