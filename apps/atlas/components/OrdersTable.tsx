@@ -57,7 +57,7 @@ export function OrdersTable({
             <SortableHeader column="otn" label="OTN / Item" currentSort={currentSort} currentDir={currentDir} sortLinkFor={sortLinkFor} />
             <SortableHeader column="merchant" label="Merchant" currentSort={currentSort} currentDir={currentDir} sortLinkFor={sortLinkFor} />
             <SortableHeader column="design" label="Design / Quality" currentSort={currentSort} currentDir={currentDir} sortLinkFor={sortLinkFor} />
-            <th className="px-4 py-3 font-medium">Stage</th>
+            <SortableHeader column="stage" label="Stage" currentSort={currentSort} currentDir={currentDir} sortLinkFor={sortLinkFor} />
             <SortableHeader column="pendingDays" label="Days in Stage" currentSort={currentSort} currentDir={currentDir} sortLinkFor={sortLinkFor} />
             <SortableHeader column="revisedExFactory" label="Rev. Ex-Factory" currentSort={currentSort} currentDir={currentDir} sortLinkFor={sortLinkFor} />
             <th className="px-4 py-3 font-medium">On Time</th>
