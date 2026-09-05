@@ -684,6 +684,32 @@ export async function addOwnSalespersonCodes(supabase: SupabaseClient, codes: st
   return data;
 }
 
+export type SelfServiceDepartmentCode = "management" | "production";
+
+interface JoinDepartmentResponse {
+  employeeId: string;
+  departmentCode: string;
+}
+
+/**
+ * Invokes `join-department` — self-service, always the CALLER'S OWN account, always at
+ * the lowest access level ('view'). Only "management" and "production" are accepted —
+ * NOT "sales" (that department code means blanket view-all; an individual salesperson
+ * must stay scoped to their own codes via addOwnSalespersonCodes instead) — matching the
+ * explicit product decision, 2026-09-05: "Management, Production should [see] all
+ * orders... and not [be] bind[ing] with any customer code." NAV/QC/Shipping aren't
+ * self-service yet ("will come in later stage," same decision).
+ */
+export async function joinOwnDepartment(supabase: SupabaseClient, departmentCode: SelfServiceDepartmentCode) {
+  const { data, error } = await supabase.functions.invoke<JoinDepartmentResponse>("join-department", {
+    body: { departmentCode },
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Orders workflow layer (db/orders/004) — the structured replacement for the
 // order@/mzpreview@ email relay. Prototyped and load-tested in a local preview tool

@@ -20,7 +20,10 @@ import { env } from "@/lib/env";
 // `allowUnauthorized` is set, for the one page (/my-access) whose whole job is letting
 // someone with no access yet grant themselves one, so it can't itself require access.
 
-const ATLAS_DEPARTMENT_CODES = ["production", "shipping", "sales"] as const;
+// "management" added 2026-09-05 (self-service, db/orders/011) — directors/managers who
+// should see every order, same as production/shipping/sales, but deliberately its own
+// department rather than a re-use of "admin" (see that migration's comment).
+const ATLAS_DEPARTMENT_CODES = ["production", "shipping", "sales", "management"] as const;
 
 export interface AtlasStaffAccess {
   employeeId: string;

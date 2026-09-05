@@ -87,7 +87,7 @@ export default async function proxy(request: NextRequest): Promise<NextResponse>
     .from("department_access_grants")
     .select("id, departments!inner(code)")
     .eq("employee_id", employee!.id)
-    .in("departments.code", ["production", "shipping", "sales"])
+    .in("departments.code", ["production", "shipping", "sales", "management"])
     .maybeSingle();
 
   // Territory heads/B2B salespeople ("merchant" in this business's own vocabulary) hold
