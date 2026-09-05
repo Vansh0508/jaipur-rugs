@@ -163,8 +163,8 @@ function applyConstructionTypeFilter(query: any, ctype: ConstructionType) {
  * multi-select applied as an exact IN-match, aging/on-hold/quick-ship/delay/date-range/
  * construction-type applied as their respective conditions. Kept as one function so the
  * facets query and the list query can never quietly drift out of sync with each other. */
-function applyOrderFilters(supabase: SupabaseClient, filters: OrderFilters, selectColumns = "*") {
-  let query = supabase.from("orders").select(selectColumns, { count: "exact" });
+function applyOrderFilters(supabase: SupabaseClient, filters: OrderFilters) {
+  let query = supabase.from("orders").select("*", { count: "exact" });
 
   if (!filters.includeStock) query = query.not("customer_no", "in", `(${STOCK_CUSTOMER_CODES.join(",")})`);
 
