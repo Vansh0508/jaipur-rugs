@@ -23,6 +23,7 @@ export function SidebarNav({ isAdmin }: { isAdmin: boolean }) {
   const links: NavLink[] = [
     { href: "/dashboard", label: "Dashboard" },
     { href: "/orders", label: "Orders" },
+    { href: "/alerts", label: "Alerts" },
     ...(isAdmin ? [{ href: "/merchants", label: "Merchants" }] : []),
     { href: "/my-access", label: "My access" },
   ];

@@ -726,6 +726,69 @@ export type Database = {
           },
         ]
       }
+      order_delay_alerts: {
+        // Detection/de-dupe record for the stage-standard delay-alert feature
+        // (db/orders/012_delay_alerts.sql) — one row per (order, calendar day) it's
+        // found breached. `recipients` is a plain jsonb array, not normalized.
+        Row: {
+          alert_date: string
+          body: string
+          created_at: string
+          id: string
+          order_id: string
+          overdue_by_days: number
+          pending_days: number
+          recipients: Json
+          sent_at: string | null
+          stage_id: string | null
+          standard_days: number
+          subject: string
+        }
+        Insert: {
+          alert_date?: string
+          body: string
+          created_at?: string
+          id?: string
+          order_id: string
+          overdue_by_days: number
+          pending_days: number
+          recipients: Json
+          sent_at?: string | null
+          stage_id?: string | null
+          standard_days: number
+          subject: string
+        }
+        Update: {
+          alert_date?: string
+          body?: string
+          created_at?: string
+          id?: string
+          order_id?: string
+          overdue_by_days?: number
+          pending_days?: number
+          recipients?: Json
+          sent_at?: string | null
+          stage_id?: string | null
+          standard_days?: number
+          subject?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_delay_alerts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_delay_alerts_stage_id_fkey"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           authorization: string | null
