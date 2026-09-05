@@ -91,6 +91,11 @@ export interface OrderFilters {
    * (e.g. the Dashboard's recent-orders-style uses elsewhere) — ignored if page/pageSize
    * are set. */
   limit?: number;
+  /** Column to sort by — restricted to SORTABLE_COLUMNS (a plain user-facing key, not
+   * a raw DB column name, so a request can never sort by an arbitrary/unintended
+   * column). Defaults to updated_at desc (most-recently-synced first) when unset. */
+  sortBy?: SortableColumn;
+  sortDir?: "asc" | "desc";
   /** Include the 5 internal stock/inventory customer codes (see STOCK_CUSTOMER_CODES).
    * Defaults to false — they're excluded from every normal view, same as the old tool. */
   includeStock?: boolean;
@@ -105,6 +110,21 @@ export interface OrderListResult {
 }
 
 const SWATCH_MAX_SQFT = 4;
+
+/** Every column the Orders table lets someone sort by — a fixed whitelist mapping a
+ * plain user-facing key to the real DB column, so a request can never sort by an
+ * arbitrary column. Stage/On-Time aren't here: Stage's real order is display_order on
+ * the joined `stages` row, not the stage_id text, and On Time is computed, not stored —
+ * neither is a plain column sort. */
+export const SORTABLE_COLUMNS = {
+  otn: "otn_no",
+  merchant: "merchant_name",
+  design: "design",
+  quality: "quality",
+  pendingDays: "current_status_pending_days",
+  revisedExFactory: "revised_ex_factory_date",
+} as const;
+export type SortableColumn = keyof typeof SORTABLE_COLUMNS;
 
 /** Normalizes a filter value that might arrive as a single string or an array (a plain
  * <select multiple>'s query params, or a hand-built URL) into a clean string array. */
@@ -240,7 +260,14 @@ function applyOrderFilters(supabase: SupabaseClient, filters: OrderFilters) {
  * this just applies the UI's own filters on top of whatever set that already is, with
  * real pagination (see OrderListResult.totalCount) rather than a single growing cap. */
 export async function listOrders(supabase: SupabaseClient, filters: OrderFilters = {}): Promise<OrderListResult> {
-  let query = applyOrderFilters(supabase, filters).order("updated_at", { ascending: false });
+  // filters.sortBy is a plain string round-tripped through a URL, not something the
+  // type system can actually guarantee is one of SORTABLE_COLUMNS's keys — falls back
+  // to the default rather than asking PostgREST to sort by an undefined/arbitrary
+  // column if someone hand-crafts an invalid ?sortBy=.
+  const isValidSort = Boolean(filters.sortBy && filters.sortBy in SORTABLE_COLUMNS);
+  const sortColumn = isValidSort ? SORTABLE_COLUMNS[filters.sortBy as SortableColumn] : "updated_at";
+  const ascending = isValidSort ? filters.sortDir !== "desc" : false; // default: updated_at desc
+  let query = applyOrderFilters(supabase, filters).order(sortColumn, { ascending, nullsFirst: false });
 
   if (filters.page || filters.pageSize) {
     const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;

@@ -1,11 +1,48 @@
 import Link from "next/link";
 import { StageChip, OnTimeBadge } from "./StageChip";
 import { onTimeStatus } from "@/lib/tat";
-import type { OrderRow, StageRow } from "@/lib/queries/orders";
+import type { OrderRow, StageRow, SortableColumn } from "@/lib/queries/orders";
+
+interface SortableHeaderProps {
+  column: SortableColumn;
+  label: string;
+  currentSort?: SortableColumn;
+  currentDir: "asc" | "desc";
+  sortLinkFor: (column: SortableColumn, dir: "asc" | "desc") => string;
+}
+
+/** Clicking a sortable header sorts descending first (matches how everyone actually
+ * wants to see e.g. pending days or OTN — biggest/most-recent first), clicking again
+ * flips to ascending; an inactive column always starts from descending. Plain GET links,
+ * not client state — consistent with the rest of this page. */
+function SortableHeader({ column, label, currentSort, currentDir, sortLinkFor }: SortableHeaderProps) {
+  const isActive = currentSort === column;
+  const nextDir = isActive && currentDir === "desc" ? "asc" : "desc";
+  return (
+    <th className="px-4 py-3 font-medium">
+      <Link href={sortLinkFor(column, nextDir)} className="flex items-center gap-1 hover:text-foreground">
+        {label}
+        <span className="text-[10px]">{isActive ? (currentDir === "desc" ? "▼" : "▲") : "⇅"}</span>
+      </Link>
+    </th>
+  );
+}
 
 // Plain semantic <table>, same idiom as apps/hub's TeamTable — a scannable list with a
 // per-row link is simple enough not to need react-aria's collection machinery.
-export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageRow[] }) {
+export function OrdersTable({
+  rows,
+  stages,
+  currentSort,
+  currentDir = "desc",
+  sortLinkFor,
+}: {
+  rows: OrderRow[];
+  stages: StageRow[];
+  currentSort?: SortableColumn;
+  currentDir?: "asc" | "desc";
+  sortLinkFor: (column: SortableColumn, dir: "asc" | "desc") => string;
+}) {
   const stageById = new Map(stages.map((s) => [s.id, s]));
 
   if (!rows.length) {
@@ -17,12 +54,12 @@ export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageR
       <table className="w-full text-left text-sm">
         <thead>
           <tr className="border-b-2 border-border text-xs uppercase text-muted">
-            <th className="px-4 py-3 font-medium">OTN / Item</th>
-            <th className="px-4 py-3 font-medium">Merchant</th>
-            <th className="px-4 py-3 font-medium">Design / Quality</th>
+            <SortableHeader column="otn" label="OTN / Item" currentSort={currentSort} currentDir={currentDir} sortLinkFor={sortLinkFor} />
+            <SortableHeader column="merchant" label="Merchant" currentSort={currentSort} currentDir={currentDir} sortLinkFor={sortLinkFor} />
+            <SortableHeader column="design" label="Design / Quality" currentSort={currentSort} currentDir={currentDir} sortLinkFor={sortLinkFor} />
             <th className="px-4 py-3 font-medium">Stage</th>
-            <th className="px-4 py-3 font-medium">Days in Stage</th>
-            <th className="px-4 py-3 font-medium">Rev. Ex-Factory</th>
+            <SortableHeader column="pendingDays" label="Days in Stage" currentSort={currentSort} currentDir={currentDir} sortLinkFor={sortLinkFor} />
+            <SortableHeader column="revisedExFactory" label="Rev. Ex-Factory" currentSort={currentSort} currentDir={currentDir} sortLinkFor={sortLinkFor} />
             <th className="px-4 py-3 font-medium">On Time</th>
           </tr>
         </thead>
