@@ -22,7 +22,7 @@ export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageR
             <th className="px-4 py-3 font-medium">Design / Quality</th>
             <th className="px-4 py-3 font-medium">Stage</th>
             <th className="px-4 py-3 font-medium">Days in Stage</th>
-            <th className="px-4 py-3 font-medium">Promised Delivery</th>
+            <th className="px-4 py-3 font-medium">Rev. Ex-Factory</th>
             <th className="px-4 py-3 font-medium">On Time</th>
           </tr>
         </thead>
@@ -50,7 +50,12 @@ export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageR
                   <StageChip code={stage?.code ?? null} label={stage?.display_name ?? "Unresolved"} />
                 </td>
                 <td className="px-4 py-3">{order.current_status_pending_days ?? "—"}</td>
-                <td className="px-4 py-3">{order.promised_delivery_date ?? "—"}</td>
+                {/* revised_ex_factory_date, not promised_delivery_date — confirmed
+                    2026-09-05 (via the pre-Atlas tool's own investigation, same ERP
+                    feed) that Promised Delivery Date is essentially always blank in
+                    real data; this is the actual delay/expectancy signal, and what
+                    onTimeStatus below already falls back to. */}
+                <td className="px-4 py-3">{order.revised_ex_factory_date ?? "—"}</td>
                 <td className="px-4 py-3">
                   <OnTimeBadge status={status} />
                 </td>

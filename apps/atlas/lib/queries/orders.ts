@@ -30,34 +30,296 @@ export async function listStages(supabase: SupabaseClient): Promise<StageRow[]> 
   return data ?? [];
 }
 
+// Page sizes offered on the Orders list — same options the old tool offered
+// (50/100/250/500/1000, default 100), see PAGE_SIZE_OPTIONS below.
+export const PAGE_SIZE_OPTIONS = [50, 100, 250, 500, 1000] as const;
+export const DEFAULT_PAGE_SIZE = 100;
+
+export type ConstructionType = "knotted" | "tufted" | "handloom" | "other" | "swatch";
+export type AgingBucket = "0-7" | "8-15" | "16-30" | "30+";
+export type DelayStatusFilter = "late" | "soon" | "late_or_soon";
+export type YesNo = "yes" | "no";
+
 export interface OrderFilters {
-  stageId?: string;
-  customerNo?: string;
-  search?: string; // matches otn_no/item_no/design/merchant_name
+  /** Broad free-text search — mirrors the old tool's "search the whole row," just over
+   * the specific fields it's most useful against rather than the literal whole JSON row:
+   * OTN, Item No., Sales Order No., Customer No., Merchant, Order-Wise Merchant,
+   * Customer PO No., Quality, Design, Size, Follow-up Person, raw ERP status. */
+  search?: string;
+  /** Every field below is an exact multi-select, same semantics as the old tool's
+   * comma-list filters (matchMulti) — a row matches if its value is ANY of the given
+   * ones. Accepts a single value or an array (a plain <select multiple> submits an
+   * array of same-named query params, which Next.js's searchParams already gives you
+   * as string[] — no comma-splitting needed on this end). */
+  stageId?: string | string[];
+  customerNo?: string | string[];
+  merchantName?: string | string[];
+  orderWiseMerchant?: string | string[];
+  followUpPerson?: string | string[];
+  customerPoNo?: string | string[];
+  quality?: string | string[];
+  design?: string | string[];
+  size?: string | string[];
+  productionOrderStatus?: string | string[];
+  priority?: string | string[];
+  /** Bucketed by current_status_pending_days — see AgingBucket. A row with no pending-
+   * days value is excluded whenever this filter is set, same as the old tool (there's
+   * no "unknown" bucket to opt into). */
+  aging?: AgingBucket;
+  onHold?: YesNo;
+  quickShip?: YesNo;
+  /** Computed against revised_ex_factory_date, not promised_delivery_date — confirmed
+   * against the live feed that promised_delivery_date is essentially always blank (see
+   * the live-preview prototype's own finding, same ERP feed); revised_ex_factory_date is
+   * the real signal every delay computation in this app already uses. "Late"/"soon" are
+   * meaningless once an order has reached a terminal stage, so those are excluded too —
+   * requires `terminalStageIds` (compute once from listStages() and pass through). */
+  delayStatus?: DelayStatusFilter;
+  terminalStageIds?: string[];
+  /** Date range on revised_ex_factory_date (yyyy-mm-dd strings). */
+  dueFrom?: string;
+  dueTo?: string;
+  /** Construction-type classification, same rules as the old tool: knotted = Quality
+   * contains a "/" (e.g. "8/8"), tufted/handloom = Quality contains that word, "swatch"
+   * overrides all of the above (Std Cubage > 0 and < 4 sq ft — a sample, not a rug), and
+   * "other" is none of the above. */
+  ctype?: ConstructionType;
+  /** 1-based page number, paired with pageSize — see PAGE_SIZE_OPTIONS. */
+  page?: number;
+  pageSize?: number;
+  /** Legacy escape hatch for callers that just want "the first N, no real pagination"
+   * (e.g. the Dashboard's recent-orders-style uses elsewhere) — ignored if page/pageSize
+   * are set. */
   limit?: number;
   /** Include the 5 internal stock/inventory customer codes (see STOCK_CUSTOMER_CODES).
    * Defaults to false — they're excluded from every normal view, same as the old tool. */
   includeStock?: boolean;
 }
 
-/** RLS already scopes which rows come back (admin/production/shipping/sales/merchant) —
- * this just applies the UI's own filters on top of whatever set that already is. */
-export async function listOrders(supabase: SupabaseClient, filters: OrderFilters = {}): Promise<OrderRow[]> {
-  let query = supabase.from("orders").select("*").order("updated_at", { ascending: false }).limit(filters.limit ?? 500);
+export interface OrderListResult {
+  rows: OrderRow[];
+  /** Total rows matching the filters (before pagination) — powers "Showing X-Y of Z"
+   * and the page-count. Comes from PostgREST's exact count on the same query, not a
+   * second round trip. */
+  totalCount: number;
+}
+
+const SWATCH_MAX_SQFT = 4;
+
+/** Normalizes a filter value that might arrive as a single string or an array (a plain
+ * <select multiple>'s query params, or a hand-built URL) into a clean string array. */
+function toList(value: string | string[] | undefined): string[] {
+  if (value === undefined) return [];
+  return (Array.isArray(value) ? value : [value]).map((v) => v.trim()).filter(Boolean);
+}
+
+/** ANDs the construction-type classification onto `query`. See OrderFilters.ctype's doc
+ * for the exact rules — ported from the old tool / live-preview prototype's logic,
+ * expressed as PostgREST filters rather than a client-side row-by-row check so it works
+ * against the full table, not just whatever page happens to be loaded. */
+function applyConstructionTypeFilter(query: any, ctype: ConstructionType) {
+  const notSwatch = `std_cubage.lte.0,std_cubage.gte.${SWATCH_MAX_SQFT},std_cubage.is.null`;
+  switch (ctype) {
+    case "swatch":
+      return query.gt("std_cubage", 0).lt("std_cubage", SWATCH_MAX_SQFT);
+    case "knotted":
+      return query.like("quality", "%/%").or(notSwatch);
+    case "tufted":
+      return query.ilike("quality", "%tufted%").or(notSwatch);
+    case "handloom":
+      return query.ilike("quality", "%handloom%").or(notSwatch);
+    case "other":
+      return query
+        .not("quality", "like", "%/%")
+        .not("quality", "ilike", "%tufted%")
+        .not("quality", "ilike", "%handloom%")
+        .or(notSwatch);
+  }
+}
+
+/** Shared by listOrders/listOrderFacets — every "real customer order" view starts from
+ * this same base: stock/inventory codes excluded (unless opted back in), every
+ * multi-select applied as an exact IN-match, aging/on-hold/quick-ship/delay/date-range/
+ * construction-type applied as their respective conditions. Kept as one function so the
+ * facets query and the list query can never quietly drift out of sync with each other. */
+function applyOrderFilters(supabase: SupabaseClient, filters: OrderFilters) {
+  let query = supabase.from("orders").select("*", { count: "exact" });
 
   if (!filters.includeStock) query = query.not("customer_no", "in", `(${STOCK_CUSTOMER_CODES.join(",")})`);
-  if (filters.stageId) query = query.eq("stage_id", filters.stageId);
-  if (filters.customerNo) query = query.eq("customer_no", filters.customerNo);
+
+  const stageIds = toList(filters.stageId);
+  if (stageIds.length) query = query.in("stage_id", stageIds);
+
+  const customerNos = toList(filters.customerNo);
+  if (customerNos.length) query = query.in("customer_no", customerNos);
+
+  const merchantNames = toList(filters.merchantName);
+  if (merchantNames.length) query = query.in("merchant_name", merchantNames);
+
+  const orderWiseMerchants = toList(filters.orderWiseMerchant);
+  if (orderWiseMerchants.length) query = query.in("order_wise_merchant", orderWiseMerchants);
+
+  const followUpPeople = toList(filters.followUpPerson);
+  if (followUpPeople.length) query = query.in("follow_up_person", followUpPeople);
+
+  const customerPoNos = toList(filters.customerPoNo);
+  if (customerPoNos.length) query = query.in("customer_po_no", customerPoNos);
+
+  const qualities = toList(filters.quality);
+  if (qualities.length) query = query.in("quality", qualities);
+
+  const designs = toList(filters.design);
+  if (designs.length) query = query.in("design", designs);
+
+  const sizes = toList(filters.size);
+  if (sizes.length) query = query.in("size", sizes);
+
+  const prodStatuses = toList(filters.productionOrderStatus);
+  if (prodStatuses.length) query = query.in("production_order_status", prodStatuses);
+
+  const priorities = toList(filters.priority);
+  if (priorities.length) query = query.in("order_priority", priorities.map(Number).filter((n) => !Number.isNaN(n)));
+
+  if (filters.aging) {
+    const [minStr, maxStr] = { "0-7": ["0", "7"], "8-15": ["8", "15"], "16-30": ["16", "30"], "30+": ["31", null] }[
+      filters.aging
+    ];
+    query = query.gte("current_status_pending_days", Number(minStr));
+    if (maxStr) query = query.lte("current_status_pending_days", Number(maxStr));
+  }
+
+  // on_hold/quick_ship are stored as the raw ERP value (see orders-sync.mjs), not a
+  // clean boolean — "yes" means genuinely set to something truthy, "no" means
+  // null/empty/"0"/"no" (case-insensitive), same truthy rule orders-sync itself uses.
+  if (filters.onHold === "yes") query = query.not("on_hold", "is", null).not("on_hold", "in", "(,0,No,no,NO)");
+  if (filters.onHold === "no") query = query.or("on_hold.is.null,on_hold.in.(,0,No,no,NO)");
+  if (filters.quickShip === "yes") query = query.eq("quick_ship", true);
+  if (filters.quickShip === "no") query = query.eq("quick_ship", false);
+
+  if (filters.delayStatus) {
+    const today = new Date().toISOString().slice(0, 10);
+    const in7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    query = query.not("revised_ex_factory_date", "is", null);
+    if (filters.terminalStageIds?.length) query = query.not("stage_id", "in", `(${filters.terminalStageIds.join(",")})`);
+    if (filters.delayStatus === "late") query = query.lt("revised_ex_factory_date", today);
+    else if (filters.delayStatus === "soon") query = query.gte("revised_ex_factory_date", today).lte("revised_ex_factory_date", in7Days);
+    else query = query.lte("revised_ex_factory_date", in7Days); // late_or_soon: <= today+7 covers both
+  }
+
+  if (filters.dueFrom) query = query.gte("revised_ex_factory_date", filters.dueFrom);
+  if (filters.dueTo) query = query.lte("revised_ex_factory_date", filters.dueTo);
+
+  if (filters.ctype) query = applyConstructionTypeFilter(query, filters.ctype);
+
   if (filters.search) {
     const term = `%${filters.search}%`;
     query = query.or(
-      `otn_no.ilike.${term},item_no.ilike.${term},design.ilike.${term},merchant_name.ilike.${term}`,
+      [
+        "otn_no",
+        "item_no",
+        "sales_order_no",
+        "customer_no",
+        "merchant_name",
+        "order_wise_merchant",
+        "customer_po_no",
+        "quality",
+        "design",
+        "size",
+        "follow_up_person",
+        "raw_current_status",
+      ]
+        .map((field) => `${field}.ilike.${term}`)
+        .join(","),
     );
   }
 
-  const { data, error } = await query;
+  return query;
+}
+
+/** RLS already scopes which rows come back (admin/production/shipping/sales/merchant) —
+ * this just applies the UI's own filters on top of whatever set that already is, with
+ * real pagination (see OrderListResult.totalCount) rather than a single growing cap. */
+export async function listOrders(supabase: SupabaseClient, filters: OrderFilters = {}): Promise<OrderListResult> {
+  let query = applyOrderFilters(supabase, filters).order("updated_at", { ascending: false });
+
+  if (filters.page || filters.pageSize) {
+    const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
+    const page = Math.max(1, filters.page ?? 1);
+    const from = (page - 1) * pageSize;
+    query = query.range(from, from + pageSize - 1);
+  } else {
+    query = query.limit(filters.limit ?? 500);
+  }
+
+  const { data, error, count } = await query;
   if (error) throw error;
-  return data ?? [];
+  return { rows: data ?? [], totalCount: count ?? 0 };
+}
+
+export interface OrderFacets {
+  customerNo: string[];
+  merchantName: string[];
+  orderWiseMerchant: string[];
+  followUpPerson: string[];
+  customerPoNo: string[];
+  quality: string[];
+  design: string[];
+  size: string[];
+  productionOrderStatus: string[];
+  priority: string[];
+}
+
+const FACET_COLUMNS = [
+  ["customer_no", "customerNo"],
+  ["merchant_name", "merchantName"],
+  ["order_wise_merchant", "orderWiseMerchant"],
+  ["follow_up_person", "followUpPerson"],
+  ["customer_po_no", "customerPoNo"],
+  ["quality", "quality"],
+  ["design", "design"],
+  ["size", "size"],
+  ["production_order_status", "productionOrderStatus"],
+  ["order_priority", "priority"],
+] as const;
+
+/** Distinct real values for every multi-select filter above, so the Orders page can
+ * offer real options instead of a free-text guess — the same role the old tool's
+ * `/api/facets` endpoint played. One paginated pass over every real customer order
+ * (stock excluded), pulling only these 10 narrow columns, deduping in JS — same pattern
+ * as listAllOrdersForStats, and for the same reason: PostgREST caps a single request at
+ * 1000 rows, and there's no cheap SQL-side "distinct across many columns at once"
+ * available without a bespoke RPC. Fine at today's scale (~10k real orders / a dozen
+ * requests); revisit with a real SQL aggregate if that grows an order of magnitude. */
+export async function listOrderFacets(supabase: SupabaseClient): Promise<OrderFacets> {
+  const columns = FACET_COLUMNS.map(([col]) => col).join(", ");
+  const sets: Record<string, Set<string>> = Object.fromEntries(FACET_COLUMNS.map(([, key]) => [key, new Set<string>()]));
+
+  const PAGE_SIZE = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("orders")
+      .select(columns)
+      .not("customer_no", "in", `(${STOCK_CUSTOMER_CODES.join(",")})`)
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
+      for (const [col, key] of FACET_COLUMNS) {
+        const value = row[col];
+        if (value !== null && value !== undefined && String(value).trim().length) {
+          sets[key].add(String(value).trim());
+        }
+      }
+    }
+    if (!data || data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+
+  const result = {} as OrderFacets;
+  for (const [, key] of FACET_COLUMNS) {
+    result[key as keyof OrderFacets] = [...sets[key]].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }
+  return result;
 }
 
 export interface DashboardStatsRow {
