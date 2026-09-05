@@ -292,7 +292,10 @@ const FACET_COLUMNS = [
  * requests); revisit with a real SQL aggregate if that grows an order of magnitude. */
 export async function listOrderFacets(supabase: SupabaseClient): Promise<OrderFacets> {
   const columns = FACET_COLUMNS.map(([col]) => col).join(", ");
-  const sets: Record<string, Set<string>> = Object.fromEntries(FACET_COLUMNS.map(([, key]) => [key, new Set<string>()]));
+  const sets = Object.fromEntries(FACET_COLUMNS.map(([, key]) => [key, new Set<string>()])) as Record<
+    keyof OrderFacets,
+    Set<string>
+  >;
 
   const PAGE_SIZE = 1000;
   let from = 0;
