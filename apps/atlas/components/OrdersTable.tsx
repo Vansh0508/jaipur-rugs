@@ -11,6 +11,16 @@ interface SortableHeaderProps {
   sortLinkFor: (column: SortableColumn, dir: "asc" | "desc") => string;
 }
 
+/** Both the header block above this table (Orders/Showing-count/Export, in page.tsx)
+ * and this table's own column-header row are sticky while `main` scrolls — direct
+ * feedback, 2026-09-05: "the main orders list top panel" wasn't freezing. Two
+ * independently-sticky pieces can't self-stack (each computes its own stuck position
+ * without knowing about the other), so this is pinned at a fixed offset just below
+ * where the header block lands — an estimate of that block's rendered height, not a
+ * measured one; if the header's own content ever changes noticeably, revisit this
+ * number alongside it. */
+const STICKY_HEADER_OFFSET_PX = 112;
+
 /** Clicking a sortable header sorts descending first (matches how everyone actually
  * wants to see e.g. pending days or OTN — biggest/most-recent first), clicking again
  * flips to ascending; an inactive column always starts from descending. Plain GET links,
@@ -19,7 +29,10 @@ function SortableHeader({ column, label, currentSort, currentDir, sortLinkFor }:
   const isActive = currentSort === column;
   const nextDir = isActive && currentDir === "desc" ? "asc" : "desc";
   return (
-    <th className="px-4 py-3 font-medium">
+    <th
+      className="sticky z-10 border-b-2 border-border bg-background px-4 py-3 font-medium"
+      style={{ top: STICKY_HEADER_OFFSET_PX }}
+    >
       <Link href={sortLinkFor(column, nextDir)} className="flex items-center gap-1 hover:text-foreground">
         {label}
         <span className="text-[10px]">{isActive ? (currentDir === "desc" ? "▼" : "▲") : "⇅"}</span>
@@ -53,14 +66,16 @@ export function OrdersTable({
     <div className="overflow-x-auto rounded-xl border-2 border-border">
       <table className="w-full text-left text-sm">
         <thead>
-          <tr className="border-b-2 border-border text-xs uppercase text-muted">
+          <tr className="text-xs uppercase text-muted">
             <SortableHeader column="otn" label="OTN / Item" currentSort={currentSort} currentDir={currentDir} sortLinkFor={sortLinkFor} />
             <SortableHeader column="merchant" label="Merchant" currentSort={currentSort} currentDir={currentDir} sortLinkFor={sortLinkFor} />
             <SortableHeader column="design" label="Design / Quality" currentSort={currentSort} currentDir={currentDir} sortLinkFor={sortLinkFor} />
             <SortableHeader column="stage" label="Stage" currentSort={currentSort} currentDir={currentDir} sortLinkFor={sortLinkFor} />
             <SortableHeader column="pendingDays" label="Days in Stage" currentSort={currentSort} currentDir={currentDir} sortLinkFor={sortLinkFor} />
             <SortableHeader column="revisedExFactory" label="Rev. Ex-Factory" currentSort={currentSort} currentDir={currentDir} sortLinkFor={sortLinkFor} />
-            <th className="px-4 py-3 font-medium">On Time</th>
+            <th className="sticky z-10 border-b-2 border-border bg-background px-4 py-3 font-medium" style={{ top: STICKY_HEADER_OFFSET_PX }}>
+              On Time
+            </th>
           </tr>
         </thead>
         <tbody>

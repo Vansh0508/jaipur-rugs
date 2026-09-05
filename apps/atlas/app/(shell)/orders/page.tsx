@@ -136,7 +136,13 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
         }}
       />
 
-      <div className="flex items-center justify-between">
+      {/* Sticky at the top of `main`'s own scroll region (not the page — see the shell
+          layout's comment) so the title/count/export bar stays visible while scrolling
+          through a long results list. Direct feedback, 2026-09-05: "the main orders
+          list top panel" wasn't freezing (the sidebar fix alone didn't cover this — it's
+          a separate sticky region). bg-background is required on anything sticky here,
+          otherwise scrolled-past rows show through underneath it. */}
+      <div className="sticky top-0 z-20 -mx-8 -mt-8 flex items-center justify-between bg-background px-8 pb-4 pt-8">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Orders</h1>
           <p className="text-sm text-muted">
