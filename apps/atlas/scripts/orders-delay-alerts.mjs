@@ -207,6 +207,72 @@ async function main() {
   console.log(
     `[orders-delay-alerts] checked=${totalChecked} breached=${totalBreached} newAlertsToday=${totalNewAlerts} (already-alerted-today rows are skipped, not counted as new)`,
   );
+
+  await sendUnsentAlerts();
+}
+
+// --- Real sending, via Resend's HTTP API directly (not the MCP connector — that's
+// only for this chat session's own interactive use; a cron script needs its own API
+// key). Verified live 2026-09-06: domain signal.jaipurrugsai.cloud confirmed working
+// end-to-end (DNS verified, a real test email delivered to a real inbox) before this
+// was wired in — this is NOT the final production sender address, just what was
+// available to prove the pipeline; revisit before relying on this long-term.
+//
+// Only sends to recipients with a real resolved email (today: just the salesperson,
+// when they've self-registered — see the recipient-building loop above). An alert with
+// zero resolved emails stays unsent and simply sits on the /alerts page for a human to
+// read and forward by hand, same as before this was wired up.
+async function sendUnsentAlerts() {
+  const resendApiKey = process.env.RESEND_API_KEY;
+  const fromAddress = process.env.DELAY_ALERT_FROM_EMAIL;
+  if (!resendApiKey || !fromAddress) {
+    console.log("[orders-delay-alerts] RESEND_API_KEY or DELAY_ALERT_FROM_EMAIL not set — skipping send, alerts stay on /alerts only.");
+    return;
+  }
+
+  const { data: unsent, error } = await supabaseAdmin
+    .from("order_delay_alerts")
+    .select("id, subject, body, recipients")
+    .is("sent_at", null);
+  if (error) {
+    console.error("[orders-delay-alerts] fetching unsent alerts failed:", error.message);
+    return;
+  }
+
+  let sent = 0;
+  let skippedNoEmail = 0;
+  let failed = 0;
+  for (const alert of unsent ?? []) {
+    const toEmails = [...new Set((alert.recipients ?? []).map((r) => r.email).filter(Boolean))];
+    if (!toEmails.length) {
+      skippedNoEmail++;
+      continue;
+    }
+
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: fromAddress, to: toEmails, subject: alert.subject, text: alert.body }),
+    });
+
+    if (!response.ok) {
+      failed++;
+      console.error(`[orders-delay-alerts] send failed for alert ${alert.id}:`, await response.text());
+      continue;
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from("order_delay_alerts")
+      .update({ sent_at: new Date().toISOString() })
+      .eq("id", alert.id);
+    if (updateError) {
+      console.error(`[orders-delay-alerts] marking alert ${alert.id} sent failed:`, updateError.message);
+      continue;
+    }
+    sent++;
+  }
+
+  console.log(`[orders-delay-alerts] send pass: sent=${sent} skipped(no resolved email)=${skippedNoEmail} failed=${failed}`);
 }
 
 main().catch((err) => {
