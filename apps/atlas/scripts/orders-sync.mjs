@@ -75,18 +75,26 @@ if (!mssqlBaseConfig.server || !mssqlBaseConfig.database || !mssqlBaseConfig.use
   process.exit(1);
 }
 
-/** Confirmed live 2026-09-07: connecting encrypted to this server (addressed by raw IP
- * — MSSQL_SERVER=192.168.0.41, no hostname) fails outright with "Setting the TLS
- * ServerName to an IP address is not permitted" — Node's TLS module enforces RFC 6066
- * (SNI must be a hostname, never an IP-literal), and tedious doesn't correctly fall back
- * to skipping SNI for an IP server in every code path. Neither an empty
- * `options.serverName` nor any other tedious-level workaround avoided it. Since
- * `MSSQL_TRUST_SERVER_CERTIFICATE=true` was already given (certificate identity was
- * never being validated anyway) and this address is only reachable on the internal
- * office LAN — never the public internet — falling back to a plain, unencrypted
- * connection for this specific, known failure is a reasonable trade-off, made loudly
- * (logged) rather than silently. Tries encrypted first: if MSSQL_SERVER is ever changed
- * to a real hostname, this automatically uses real encryption with zero code changes. */
+/** Confirmed live 2026-09-07: connecting encrypted to this server (addressed by raw IP —
+ * MSSQL_SERVER=192.168.0.41, no hostname) fails, but with a DIFFERENT error depending on
+ * the Node/OpenSSL build actually running it:
+ *   - Newer Node (local dev machine, v26): hard-rejects synchronously before any network
+ *     traffic — "Setting the TLS ServerName to an IP address is not permitted" (Node's
+ *     TLS module enforcing RFC 6066: SNI must be a hostname, never an IP-literal).
+ *   - Older Node (this office server, v22): only warns (DEP0123) and proceeds, then the
+ *     actual TLS handshake fails server-side instead — "unsupported protocol" (an SSL/TLS
+ *     version-negotiation mismatch between this OpenSSL build and the SQL Server's).
+ * Both are connection-phase failures with no real fix available (tedious doesn't
+ * correctly skip SNI for an IP server in every code path; neither an empty
+ * `options.serverName` nor any other tedious-level workaround avoided the first one).
+ * Rather than pattern-match increasingly many specific error strings across Node
+ * versions, catch any connection-phase failure during the encrypted attempt (ESOCKET, or
+ * mssql's own ConnectionError) and fall back. Safe because `MSSQL_TRUST_SERVER_CERTIFICATE
+ * =true` was already given (certificate identity was never being validated anyway) and
+ * this address is only reachable on the internal office LAN — never the public internet.
+ * Made loudly (logged), not silently. Tries encrypted first: if MSSQL_SERVER is ever
+ * changed to a real hostname, this automatically uses real encryption with zero code
+ * changes, since a real hostname wouldn't hit either failure. */
 async function connectWithEncryptionFallback() {
   const encryptedConfig = {
     ...mssqlBaseConfig,
@@ -98,11 +106,10 @@ async function connectWithEncryptionFallback() {
   try {
     return await sql.connect(encryptedConfig);
   } catch (err) {
-    const isIpSniIssue = /ServerName to an IP address is not permitted/i.test(err?.message ?? "")
-      || /ServerName to an IP address is not permitted/i.test(err?.originalError?.message ?? "");
-    if (!isIpSniIssue) throw err;
+    const isConnectionPhaseFailure = err?.code === "ESOCKET" || err?.name === "ConnectionError";
+    if (!isConnectionPhaseFailure) throw err;
     console.warn(
-      "[orders-sync] WARNING: encrypted MSSQL connection failed (IP address can't be used as a TLS SNI hostname) — falling back to an unencrypted connection. Only safe because this server is internal-office-LAN-only, never internet-facing. See this script's connectWithEncryptionFallback() comment.",
+      `[orders-sync] WARNING: encrypted MSSQL connection failed (${err?.message ?? err}) — falling back to an unencrypted connection. Only safe because this server is internal-office-LAN-only, never internet-facing. See this script's connectWithEncryptionFallback() comment.`,
     );
     return await sql.connect({ ...mssqlBaseConfig, options: { ...encryptedConfig.options, encrypt: false } });
   }
