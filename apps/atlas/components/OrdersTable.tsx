@@ -255,6 +255,14 @@ function buildClipboardHtml(selected: OrderRow[], stageById: Map<string, StageRo
 // column headers correctly while the body scrolls (fixed 2026-09-05 after a manual
 // position:sticky-with-a-guessed-offset attempt turned out fragile), and gives every
 // column a real drag-to-resize handle.
+//
+// variant="secondary" — Hero UI's default ("primary") deliberately wraps the table in
+// its own gray padded card with a large border-radius (the actual white table renders
+// as an inset card inside that), by design. Stacked with our own rounded-xl border-2 on
+// ResizableContainer below, that produced three nested visual boundaries — direct
+// feedback, 2026-09-07: "there is one table behind also from the original table" (a
+// visible shadow/duplicate-card look, not a data issue). "secondary" has no root
+// background/padding/rounding of its own, leaving just the one border we already draw.
 export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageRow[] }) {
   const stageById = useMemo(() => new Map(stages.map((s) => [s.id, s])), [stages]);
   const buildLink = useLinkBuilder();
@@ -355,7 +363,7 @@ export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageR
         )}
       </div>
 
-      <Table className="h-full min-h-0 flex-1">
+      <Table variant="secondary" className="h-full min-h-0 flex-1">
         <Table.ResizableContainer className="h-full overflow-y-auto overflow-x-auto rounded-xl border-2 border-border">
           <Table.Content aria-label="Orders">
             <Table.Header className="sticky top-0 z-10 bg-surface-secondary text-xs uppercase text-muted">
