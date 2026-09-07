@@ -796,14 +796,17 @@ export type Database = {
           br_color_name: string | null
           construction: string | null
           created_at: string
+          current_location: string | null
           current_status_pending_days: number | null
           customer_no: string | null
           customer_po_no: string | null
+          customer_service_zone: string | null
           design: string | null
           erp_synced_at: string
           expected_ready_date: string | null
           follow_up_person: string | null
           gr_color_name: string | null
+          hsn_sac_no: string | null
           id: string
           india_collection: string | null
           item_description: string | null
@@ -814,6 +817,7 @@ export type Database = {
           order_priority: number | null
           order_wise_merchant: string | null
           original_ex_factory_date: string | null
+          original_ex_india_date: string | null
           otn_no: string
           pile_fibre: string | null
           pile_height: string | null
@@ -826,6 +830,8 @@ export type Database = {
           raw_current_status: string | null
           remark: string | null
           revised_ex_factory_date: string | null
+          revised_ex_india_date: string | null
+          sales_line_no: number | null
           sales_order_date: string | null
           sales_order_no: string | null
           salesperson_code: string | null
@@ -845,14 +851,17 @@ export type Database = {
           br_color_name?: string | null
           construction?: string | null
           created_at?: string
+          current_location?: string | null
           current_status_pending_days?: number | null
           customer_no?: string | null
           customer_po_no?: string | null
+          customer_service_zone?: string | null
           design?: string | null
           erp_synced_at?: string
           expected_ready_date?: string | null
           follow_up_person?: string | null
           gr_color_name?: string | null
+          hsn_sac_no?: string | null
           id?: string
           india_collection?: string | null
           item_description?: string | null
@@ -863,6 +872,7 @@ export type Database = {
           order_priority?: number | null
           order_wise_merchant?: string | null
           original_ex_factory_date?: string | null
+          original_ex_india_date?: string | null
           otn_no: string
           pile_fibre?: string | null
           pile_height?: string | null
@@ -875,6 +885,8 @@ export type Database = {
           raw_current_status?: string | null
           remark?: string | null
           revised_ex_factory_date?: string | null
+          revised_ex_india_date?: string | null
+          sales_line_no?: number | null
           sales_order_date?: string | null
           sales_order_no?: string | null
           salesperson_code?: string | null
@@ -894,14 +906,17 @@ export type Database = {
           br_color_name?: string | null
           construction?: string | null
           created_at?: string
+          current_location?: string | null
           current_status_pending_days?: number | null
           customer_no?: string | null
           customer_po_no?: string | null
+          customer_service_zone?: string | null
           design?: string | null
           erp_synced_at?: string
           expected_ready_date?: string | null
           follow_up_person?: string | null
           gr_color_name?: string | null
+          hsn_sac_no?: string | null
           id?: string
           india_collection?: string | null
           item_description?: string | null
@@ -912,6 +927,7 @@ export type Database = {
           order_priority?: number | null
           order_wise_merchant?: string | null
           original_ex_factory_date?: string | null
+          original_ex_india_date?: string | null
           otn_no?: string
           pile_fibre?: string | null
           pile_height?: string | null
@@ -924,6 +940,8 @@ export type Database = {
           raw_current_status?: string | null
           remark?: string | null
           revised_ex_factory_date?: string | null
+          revised_ex_india_date?: string | null
+          sales_line_no?: number | null
           sales_order_date?: string | null
           sales_order_no?: string | null
           salesperson_code?: string | null

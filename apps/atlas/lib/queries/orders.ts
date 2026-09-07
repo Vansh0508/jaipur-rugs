@@ -113,16 +113,21 @@ const SWATCH_MAX_SQFT = 4;
 
 /** Every column the Orders table lets someone sort by — a fixed whitelist mapping a
  * plain user-facing key to the real DB column, so a request can never sort by an
- * arbitrary column. Stage and On-Time aren't here: a real attempt at sorting Stage by
- * the joined stages.display_order didn't actually work in practice (confirmed live
- * 2026-09-05) and was removed rather than left silently broken — worth revisiting for
- * real later. On-Time is computed client-side, not stored anywhere to sort by. */
+ * arbitrary column. Stage isn't here: a real attempt at sorting Stage by the joined
+ * stages.display_order didn't actually work in practice (confirmed live 2026-09-05) and
+ * was removed rather than left silently broken — worth revisiting for real later.
+ * Stage Standard (TAT) and On-Time also aren't here — both are computed, not stored
+ * anywhere to sort by — see OrdersTable.tsx's client-side computedSort instead. */
 export const SORTABLE_COLUMNS = {
   otn: "otn_no",
   merchant: "merchant_name",
   design: "design",
   quality: "quality",
+  size: "size",
+  construction: "construction",
   pendingDays: "current_status_pending_days",
+  originalExFactory: "original_ex_factory_date",
+  salesOrderDate: "sales_order_date",
   revisedExFactory: "revised_ex_factory_date",
 } as const;
 export type SortableColumn = keyof typeof SORTABLE_COLUMNS;

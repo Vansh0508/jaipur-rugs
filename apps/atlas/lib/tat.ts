@@ -53,6 +53,12 @@ export function onTimeStatus(
   if (isTerminalStage) return "on_track";
   const target = promisedDeliveryDate ?? revisedExFactoryDate;
   if (!target) return "unknown";
+  // Confirmed live 2026-09-07: 1,600+ real rows carry "1753-01-01" in Rev Ex Factory —
+  // SQL Server's DateTime.MinValue, the ERP's "no date set" placeholder, not a real
+  // date. orders-sync.mjs now converts this to null at the source going forward, but
+  // guard here too so rows not yet re-synced don't show as wildly "delayed" in the
+  // meantime — same as if there were no date at all.
+  if (Number(target.slice(0, 4)) < 1900) return "unknown";
   const targetMs = new Date(target).getTime();
   if (Number.isNaN(targetMs)) return "unknown";
   return Date.now() > targetMs ? "delayed" : "on_track";

@@ -13,10 +13,27 @@
 // See db/orders/007_orders_sync_move_to_server.sql for the migration that un-schedules
 // the old pg_cron job.
 //
+// Source switched 2026-09-07: reads the real NAV MSSQL database directly
+// (`NAV-002-Rug List - Main` view) instead of the public
+// https://webapi.jaipurrugs.com/api/ERP/rug-list feed. Confirmed live that day: the
+// public feed was both stale (lagging real NAV by hundreds of Sales Orders — see
+// ERP_AND_EXTERNAL_REQUESTS.md request #3) and narrower (missing Customer Service Zone,
+// Original/Rev Ex India, HSN/SAC No, Sales Line No_, Current Location — request #6 —
+// even though the database already has all of them). This view was chosen over the
+// `... - ERP` view (215 cols) because it's the only one confirmed to also carry
+// Salesperson Code (225 cols total); every field this script needs is present.
+//
 // Run manually:
 //   cd apps/atlas && node --env-file=.env.local scripts/orders-sync.mjs
 // Scheduled via a Linux cron entry on the server (see deploy notes in architecture.md),
 // not pg_cron — nothing in Postgres calls this anymore.
+//
+// *** MSSQL_PASSWORD cannot be rotated — not even by the NAV admin (confirmed directly
+// by Ayaan, 2026-09-07). Treat apps/atlas/.env.local on whichever server holds it with
+// more care than any other secret here: never in git, never in chat, never echoed by a
+// log line. MSSQL_SERVER is an internal office-network address — this script can only
+// run from a machine with a network route to it (the office server; NOT a public server
+// like the Hostinger VPS). ***
 //
 // Needs, in apps/atlas/.env.local on the server (NOT committed to git):
 //   NEXT_PUBLIC_SUPABASE_URL         (already there for the Next.js app)
@@ -24,11 +41,17 @@
 //                                     Edge Function's built-in service role did; get it
 //                                     from the Supabase Dashboard's Project Settings ->
 //                                     API page, "service_role" secret)
+//   MSSQL_SERVER / MSSQL_PORT / MSSQL_DATABASE / MSSQL_USER / MSSQL_PASSWORD /
+//   MSSQL_ENCRYPT / MSSQL_TRUST_SERVER_CERTIFICATE  (see .env.example's comment)
 
 import { createClient } from "@supabase/supabase-js";
+import sql from "mssql";
 
-const ERP_FEED_URL = "https://webapi.jaipurrugs.com/api/ERP/rug-list";
 const BATCH_SIZE = 500;
+// One row per (Sales Order No_, Sales Line No_, Item No_) in the source view — matches
+// what the public feed already returned (confirmed 2026-09-07: item_no is unique per
+// row here too), so the existing dedup-by-item_no in processBatch below still applies.
+const NAV_VIEW = "[NAV-002-Rug List - Main]";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -37,6 +60,53 @@ if (!supabaseUrl || !serviceRoleKey) {
   process.exit(1);
 }
 const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+
+const mssqlBaseConfig = {
+  server: process.env.MSSQL_SERVER,
+  port: Number(process.env.MSSQL_PORT || 1433),
+  database: process.env.MSSQL_DATABASE,
+  user: process.env.MSSQL_USER,
+  password: process.env.MSSQL_PASSWORD,
+  connectionTimeout: 30000,
+  requestTimeout: 180000, // ~180k-row query — the public feed's own fetch had no timeout either
+};
+if (!mssqlBaseConfig.server || !mssqlBaseConfig.database || !mssqlBaseConfig.user || !mssqlBaseConfig.password) {
+  console.error("Missing one or more MSSQL_* environment variables — see .env.example.");
+  process.exit(1);
+}
+
+/** Confirmed live 2026-09-07: connecting encrypted to this server (addressed by raw IP
+ * — MSSQL_SERVER=192.168.0.41, no hostname) fails outright with "Setting the TLS
+ * ServerName to an IP address is not permitted" — Node's TLS module enforces RFC 6066
+ * (SNI must be a hostname, never an IP-literal), and tedious doesn't correctly fall back
+ * to skipping SNI for an IP server in every code path. Neither an empty
+ * `options.serverName` nor any other tedious-level workaround avoided it. Since
+ * `MSSQL_TRUST_SERVER_CERTIFICATE=true` was already given (certificate identity was
+ * never being validated anyway) and this address is only reachable on the internal
+ * office LAN — never the public internet — falling back to a plain, unencrypted
+ * connection for this specific, known failure is a reasonable trade-off, made loudly
+ * (logged) rather than silently. Tries encrypted first: if MSSQL_SERVER is ever changed
+ * to a real hostname, this automatically uses real encryption with zero code changes. */
+async function connectWithEncryptionFallback() {
+  const encryptedConfig = {
+    ...mssqlBaseConfig,
+    options: {
+      encrypt: process.env.MSSQL_ENCRYPT !== "false",
+      trustServerCertificate: process.env.MSSQL_TRUST_SERVER_CERTIFICATE !== "false",
+    },
+  };
+  try {
+    return await sql.connect(encryptedConfig);
+  } catch (err) {
+    const isIpSniIssue = /ServerName to an IP address is not permitted/i.test(err?.message ?? "")
+      || /ServerName to an IP address is not permitted/i.test(err?.originalError?.message ?? "");
+    if (!isIpSniIssue) throw err;
+    console.warn(
+      "[orders-sync] WARNING: encrypted MSSQL connection failed (IP address can't be used as a TLS SNI hostname) — falling back to an unencrypted connection. Only safe because this server is internal-office-LAN-only, never internet-facing. See this script's connectWithEncryptionFallback() comment.",
+    );
+    return await sql.connect({ ...mssqlBaseConfig, options: { ...encryptedConfig.options, encrypt: false } });
+  }
+}
 
 function str(row, key) {
   const v = row[key];
@@ -58,11 +128,19 @@ function num(row, key) {
 // Only pass through something that actually looks like a date; anything else becomes
 // null rather than failing the whole batch's upsert.
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+// Confirmed live 2026-09-07: 1,600+ real rows carry "1753-01-01" in Rev_Ex Factory /
+// Original Ex Factory — SQL Server's DateTime.MinValue, the ERP's own "no date set"
+// placeholder leaking through as a syntactically valid date. It passed DATE_ONLY_RE
+// (right shape, implausible value) and was silently stored as a real date, which then
+// made ~1,600 orders show as wildly "Delayed" (On Time badge) or ~99,000 days overdue
+// (Stage Standard fallback) instead of correctly having no date to compare against.
+// Same "no" as null, not a real date.
 function dateOnly(row, key) {
   const v = str(row, key);
   if (!v) return null;
   const candidate = v.slice(0, 10);
-  return DATE_ONLY_RE.test(candidate) ? candidate : null;
+  if (!DATE_ONLY_RE.test(candidate)) return null;
+  return Number(candidate.slice(0, 4)) < 1900 ? null : candidate;
 }
 
 function bool(row, key) {
@@ -97,22 +175,26 @@ function mapErpRowToOrder(row, stageId) {
     otn_no: str(row, "OTN No_") ?? "",
     item_no: str(row, "Item No_") ?? "",
     sales_order_no: str(row, "Sales Order No_"),
+    sales_line_no: num(row, "Sales Line No_"),
     serial_no: str(row, "Serial No_"),
     production_order_no: str(row, "Production Order No_"),
     customer_no: str(row, "Customer No_"),
     merchant_name: str(row, "Merchant Name"),
     order_wise_merchant: str(row, "Order Wise Merchant"),
     customer_po_no: str(row, "Customer PO No_"),
-    salesperson_code: str(row, "Salesperson Code") ?? str(row, "Sales Person Code"),
+    salesperson_code: str(row, "Salesperson Code"),
     raw_current_status: str(row, "Current Status"),
     stage_id: stageId ?? null,
-    current_status_pending_days:
-      num(row, "Current Staus Pending Days") ?? num(row, "Current Status Pending Days"),
+    current_status_pending_days: num(row, "Current Staus Pending Days"),
     production_order_status: str(row, "Production Order Status"),
     on_hold: str(row, "On Hold"),
     order_priority: num(row, "Order Priority"),
-    authorization: str(row, "Authorization"),
-    remark: str(row, "Remark"),
+    // Authorization and Remark: confirmed absent from the NAV database itself
+    // (2026-09-07 — no column of either name in NAV-002-Rug List - Main), not just
+    // unmapped here. Left explicitly null rather than guessed at or silently dropped
+    // from the object entirely.
+    authorization: null,
+    remark: null,
     quality: str(row, "Quality"),
     design: str(row, "Design"),
     size: str(row, "Size"),
@@ -135,9 +217,18 @@ function mapErpRowToOrder(row, stageId) {
     revised_ex_factory_date: dateOnly(row, "Rev_Ex Factory"),
     original_ex_factory_date: dateOnly(row, "Original Ex Factory"),
     promised_delivery_date: dateOnly(row, "Promised Delivery Date"),
-    expected_ready_date: dateOnly(row, "Expected Ready Date"),
+    // Expected Ready Date: confirmed absent from the NAV database under that or any
+    // obviously-equivalent name (2026-09-07) — "Expected Receipt Date" exists but its
+    // semantic equivalence isn't confirmed, so left null rather than guessed.
+    expected_ready_date: null,
     follow_up_person: str(row, "Follow Up Person"),
     project_coordinator: str(row, "Project Coodinator"),
+    // New 2026-09-07 — see db/orders/013_nav_direct_fields.sql.
+    customer_service_zone: str(row, "Customer Service Zone"),
+    original_ex_india_date: dateOnly(row, "Original Ex India"),
+    revised_ex_india_date: dateOnly(row, "Rev_Ex India"),
+    hsn_sac_no: str(row, "HSN/SAC No"),
+    current_location: str(row, "Current Location"),
     erp_synced_at: new Date().toISOString(),
   };
 }
@@ -252,10 +343,39 @@ async function main() {
   }
   const stageState = { exactMap, prefixRules, otherStageId };
 
-  console.log(`[orders-sync] fetching ${ERP_FEED_URL} ...`);
-  const erpResponse = await fetch(ERP_FEED_URL);
-  if (!erpResponse.ok) throw new Error(`ERP feed returned ${erpResponse.status}`);
-  const rows = await erpResponse.json();
+  console.log(`[orders-sync] connecting to NAV MSSQL (${NAV_VIEW}) ...`);
+  const pool = await connectWithEncryptionFallback();
+  let rows;
+  try {
+    // Date columns are CONVERTed to a plain 'yyyy-mm-dd' varchar right here in SQL
+    // (style 23), rather than left as datetime and converted client-side — sidesteps
+    // any ambiguity in how the mssql/tedious driver would otherwise interpret a
+    // timezone-less SQL Server DATETIME as a JS Date. Aliased back to the same column
+    // names dateOnly() below already expects, so no other code needs to change.
+    const result = await pool.request().query(`
+      SELECT
+        [OTN No_], [Item No_], [Sales Order No_], [Sales Line No_], [Serial No_],
+        [Production Order No_], [Customer No_], [Merchant Name], [Order Wise Merchant],
+        [Customer PO No_], [Salesperson Code], [Current Status],
+        [Current Staus Pending Days], [Production Order Status], [On Hold],
+        [Order Priority], [Quality], [Design], [Size], [Size In Cm], [Shape],
+        [Construction], [India Collection], [Pile Fibre], [Pile Height],
+        [GR Color Name], [BR Color Name], [Matching Code], [Backing], [Std Cubage],
+        [Item Description], [US Item Code], [Quick Ship], [Warehouse Shipment Created],
+        [Follow Up Person], [Project Coodinator], [Customer Service Zone],
+        [HSN/SAC No], [Current Location],
+        CONVERT(varchar(10), [Sales Order Date], 23) AS [Sales Order Date],
+        CONVERT(varchar(10), [Rev_Ex Factory], 23) AS [Rev_Ex Factory],
+        CONVERT(varchar(10), [Original Ex Factory], 23) AS [Original Ex Factory],
+        CONVERT(varchar(10), [Promised Delivery Date], 23) AS [Promised Delivery Date],
+        CONVERT(varchar(10), [Original Ex India], 23) AS [Original Ex India],
+        CONVERT(varchar(10), [Rev_Ex India], 23) AS [Rev_Ex India]
+      FROM ${NAV_VIEW}
+    `);
+    rows = result.recordset;
+  } finally {
+    await pool.close();
+  }
   console.log(`[orders-sync] fetched ${rows.length} rows, upserting in batches of ${BATCH_SIZE} ...`);
 
   const counters = { upserted: 0, stageEventsInserted: 0 };

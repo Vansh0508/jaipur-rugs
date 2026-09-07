@@ -14,6 +14,17 @@ import type { OrderRow, StageRow, SortableColumn } from "@/lib/queries/orders";
 // links locally off the current URL (useSearchParams) rather than needing a function
 // prop passed across the server/client boundary, which Next.js doesn't allow.
 
+/** A handful of date columns display the raw ERP value directly (unlike onTimeStatus/
+ * stageStandard, which already compute against it) — this keeps those displays (and the
+ * copy-to-Excel/email output) from showing "1753-01-01" (SQL Server's DateTime.MinValue,
+ * the ERP's own "no date set" placeholder, confirmed live 2026-09-07) as if it were a
+ * real date. orders-sync.mjs now converts this to null at the source going forward, but
+ * rows not yet re-synced still carry the stale value until the next sync run. */
+function displayDate(value: string | null | undefined): string {
+  if (!value) return "—";
+  return Number(value.slice(0, 4)) < 1900 ? "—" : value;
+}
+
 /** Builds a link that changes only `sortBy`/`sortDir` (or `page`, for pagination),
  * preserving every other current query param — same logic the page used to do
  * server-side, just running client-side now since this whole table is a client
@@ -59,19 +70,32 @@ function SortableLabel({ column, label, currentSort, currentDir, buildLink }: So
   );
 }
 
-type TatSortDir = "asc" | "desc" | null;
+type ComputedSortKind = "tat" | "onTime";
+type ComputedSort = { kind: ComputedSortKind; dir: "asc" | "desc" } | null;
 
-/** Stage Standard (TAT) is a computed value, not a real column — there's nothing in the
- * database to ask Postgres to sort by, so unlike every other sortable column here, this
- * one only re-orders whatever page of rows is already loaded (client-side), not the
- * full filtered/paginated set. Null (no standard exists for this status, or the order
- * is on hold) always sorts last regardless of direction, matching every other sort in
- * this app. */
-function TatSortableLabel({ dir, onToggle }: { dir: TatSortDir; onToggle: () => void }) {
+/** Stage Standard (TAT) and On Time are both computed values, not real columns — there's
+ * nothing in the database to ask Postgres to sort by, so unlike every other sortable
+ * column here, these two only re-order whatever page of rows is already loaded
+ * (client-side), not the full filtered/paginated set. Only one of the two can be active
+ * at once (clicking one takes over from the other), matching how the server-side sort
+ * links above also only ever have one active column. Null always sorts last regardless
+ * of direction, matching every other sort in this app. */
+function ComputedSortableLabel({
+  label,
+  kind,
+  computedSort,
+  onToggle,
+}: {
+  label: string;
+  kind: ComputedSortKind;
+  computedSort: ComputedSort;
+  onToggle: (kind: ComputedSortKind) => void;
+}) {
+  const isActive = computedSort?.kind === kind;
   return (
-    <button type="button" onClick={onToggle} className="flex items-center gap-1 hover:text-foreground">
-      Stage Standard (TAT)
-      <span className="text-[10px]">{dir === "desc" ? "▼" : dir === "asc" ? "▲" : "⇅"}</span>
+    <button type="button" onClick={() => onToggle(kind)} className="flex items-center gap-1 hover:text-foreground">
+      {label}
+      <span className="text-[10px]">{isActive ? (computedSort!.dir === "desc" ? "▼" : "▲") : "⇅"}</span>
     </button>
   );
 }
@@ -87,36 +111,67 @@ function tatSortValue(order: OrderRow): number | null {
     orderPriority: order.order_priority,
     onHold: order.on_hold,
     currentStatusPendingDays: order.current_status_pending_days,
+    revisedExFactoryDate: order.revised_ex_factory_date,
   });
   if (standard.standardDays === null) return null;
   return (order.current_status_pending_days ?? 0) - standard.standardDays;
 }
 
-/** navigator.clipboard.writeText needs a secure context (HTTPS, or localhost) — this
- * server is plain HTTP (confirmed live 2026-09-05: the copy button failed with
- * "Couldn't copy" for exactly this reason, same root cause as the earlier login-cookie
- * bug). Falls back to the classic hidden-textarea + execCommand("copy") approach, which
- * doesn't require a secure context — the same fallback the old tool itself used for
- * this exact reason. */
-async function copyToClipboard(text: string): Promise<boolean> {
-  if (typeof navigator !== "undefined" && navigator.clipboard && window.isSecureContext) {
+/** Worst-first ordinal for the On Time badge — "delayed" sorts above "unknown" sorts
+ * above "on_track", same worst-first convention as tatSortValue above. */
+function onTimeSortValue(order: OrderRow, stageById: Map<string, StageRow>): number {
+  const stage = order.stage_id ? stageById.get(order.stage_id) : undefined;
+  const status = onTimeStatus(order.promised_delivery_date, order.revised_ex_factory_date, stage?.is_terminal ?? false);
+  return status === "delayed" ? 2 : status === "unknown" ? 1 : 0;
+}
+
+/** Copies BOTH a plain-text (tab-separated) and a real HTML `<table>` representation of
+ * the same rows onto the clipboard at once. Direct feedback, 2026-09-06: pasting the
+ * old plain-text-only copy straight into an Outlook email showed up as raw
+ * tab-separated text (see the real GACHOT/Artemest dispatch-email screenshot this was
+ * built from), not a formatted table — Outlook (and Word, and rich-text email bodies
+ * generally) reads the clipboard's HTML flavor when one's present, so without it there
+ * was no way to get an actual bordered table by pasting directly into a mail body.
+ * Excel/plain editors still get the tab-separated flavor exactly as before — browsers
+ * expose the full multi-flavor clipboard item to every paste target,
+ * each one just picks whichever flavor it understands.
+ *
+ * navigator.clipboard.write (multi-flavor) needs a secure context (HTTPS, or localhost)
+ * — now true for atlas.jaipurrugsai.cloud, but NOT the plain-HTTP office server
+ * (confirmed live 2026-09-05: writeText failed there for exactly this reason, same root
+ * cause as the earlier login-cookie bug). Falls back to a hidden CONTENTEDITABLE div
+ * (not a plain textarea — a textarea can only ever carry plain text) holding the real
+ * HTML, selected via Range/Selection and copied with execCommand("copy"), which does
+ * carry the selection's HTML formatting and works without a secure context. */
+async function copyToClipboard(text: string, html: string): Promise<boolean> {
+  if (typeof navigator !== "undefined" && navigator.clipboard && typeof ClipboardItem !== "undefined" && window.isSecureContext) {
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/plain": new Blob([text], { type: "text/plain" }),
+          "text/html": new Blob([html], { type: "text/html" }),
+        }),
+      ]);
       return true;
     } catch {
-      // fall through to the textarea approach below
+      // fall through to the contenteditable approach below
     }
   }
   try {
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.style.position = "fixed";
-    textarea.style.opacity = "0";
-    document.body.appendChild(textarea);
-    textarea.focus();
-    textarea.select();
+    const holder = document.createElement("div");
+    holder.contentEditable = "true";
+    holder.style.position = "fixed";
+    holder.style.opacity = "0";
+    holder.innerHTML = html;
+    document.body.appendChild(holder);
+    const range = document.createRange();
+    range.selectNodeContents(holder);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
     const ok = document.execCommand("copy");
-    document.body.removeChild(textarea);
+    selection?.removeAllRanges();
+    document.body.removeChild(holder);
     return ok;
   } catch {
     return false;
@@ -146,8 +201,8 @@ function buildClipboardRows(selected: OrderRow[], stageById: Map<string, StageRo
         o.otn_no, o.item_no, o.sales_order_no, o.customer_no, o.quality, o.design,
         o.gr_color_name, o.br_color_name, o.shape, o.size, o.construction, o.serial_no,
         o.std_cubage, o.raw_current_status, stage?.display_name ?? "",
-        o.current_status_pending_days, o.original_ex_factory_date, o.sales_order_date,
-        o.revised_ex_factory_date,
+        o.current_status_pending_days,
+        displayDate(o.original_ex_factory_date), displayDate(o.sales_order_date), displayDate(o.revised_ex_factory_date),
       ]
         .map((v) => (v === null || v === undefined ? "" : String(v)))
         .join("\t"),
@@ -156,13 +211,52 @@ function buildClipboardRows(selected: OrderRow[], stageById: Map<string, StageRo
   return lines.join("\n");
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Same rows/columns as buildClipboardRows above, as a real HTML `<table>` instead of
+ * tab-separated text — see copyToClipboard's doc for why both are needed. Inline
+ * `border` attributes/styles (not a <style> block or CSS classes) deliberately: Outlook
+ * and most email clients strip <style> blocks and class-based styling from pasted/sent
+ * HTML, but keep inline styles, so this is the only reliable way for the table to
+ * actually show its borders once pasted into a real email body rather than one used
+ * only within the browser itself. */
+function buildClipboardHtml(selected: OrderRow[], stageById: Map<string, StageRow>): string {
+  const headers = [
+    "OTN No_", "Item No_", "Sales Order No_", "Customer No_", "Quality", "Design",
+    "GR Color Name", "BR Color Name", "Shape", "Size", "Construction", "Serial No_",
+    "Std Cubage", "Current Status", "Stage", "Days in Stage", "Original Ex Factory",
+    "Sales Order Date", "Rev Ex-Factory",
+  ];
+  const cellStyle = "border:1px solid #999;padding:4px 8px;font-family:Calibri,Arial,sans-serif;font-size:11pt;";
+  const headStyle = `${cellStyle}background:#f2f2f2;font-weight:bold;text-align:left;`;
+  const headerRow = `<tr>${headers.map((h) => `<th style="${headStyle}">${escapeHtml(h)}</th>`).join("")}</tr>`;
+  const bodyRows = selected
+    .map((o) => {
+      const stage = o.stage_id ? stageById.get(o.stage_id) : undefined;
+      const cells = [
+        o.otn_no, o.item_no, o.sales_order_no, o.customer_no, o.quality, o.design,
+        o.gr_color_name, o.br_color_name, o.shape, o.size, o.construction, o.serial_no,
+        o.std_cubage, o.raw_current_status, stage?.display_name ?? "",
+        o.current_status_pending_days,
+        displayDate(o.original_ex_factory_date), displayDate(o.sales_order_date), displayDate(o.revised_ex_factory_date),
+      ];
+      return `<tr>${cells
+        .map((v) => `<td style="${cellStyle}">${escapeHtml(v === null || v === undefined ? "" : String(v))}</td>`)
+        .join("")}</tr>`;
+    })
+    .join("");
+  return `<table style="border-collapse:collapse;">${headerRow}${bodyRows}</table>`;
+}
+
 // Real Table component (Hero UI, via @jaipur-rugs/ui-kit), not a hand-rolled <table> —
 // its Table.ResizableContainer + sticky Table.Header is what actually freezes the
 // column headers correctly while the body scrolls (fixed 2026-09-05 after a manual
 // position:sticky-with-a-guessed-offset attempt turned out fragile), and gives every
 // column a real drag-to-resize handle.
 export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageRow[] }) {
-  const stageById = new Map(stages.map((s) => [s.id, s]));
+  const stageById = useMemo(() => new Map(stages.map((s) => [s.id, s])), [stages]);
   const buildLink = useLinkBuilder();
   const searchParams = useSearchParams();
   const currentSort = searchParams.get("sortBy") ?? undefined;
@@ -171,22 +265,28 @@ export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageR
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
-  const [tatSortDir, setTatSortDir] = useState<TatSortDir>(null);
+  const [computedSort, setComputedSort] = useState<ComputedSort>(null);
 
   const sortedRows = useMemo(() => {
-    if (!tatSortDir) return rows;
+    if (!computedSort) return rows;
+    const valueFor = (order: OrderRow) =>
+      computedSort.kind === "tat" ? tatSortValue(order) : onTimeSortValue(order, stageById);
     return [...rows].sort((a, b) => {
-      const av = tatSortValue(a);
-      const bv = tatSortValue(b);
+      const av = valueFor(a);
+      const bv = valueFor(b);
       if (av === null && bv === null) return 0;
       if (av === null) return 1; // nulls always last, regardless of direction
       if (bv === null) return -1;
-      return tatSortDir === "desc" ? bv - av : av - bv;
+      return computedSort.dir === "desc" ? bv - av : av - bv;
     });
-  }, [rows, tatSortDir]);
+  }, [rows, computedSort, stageById]);
 
-  function toggleTatSort() {
-    setTatSortDir((prev) => (prev === null ? "desc" : prev === "desc" ? "asc" : null));
+  function toggleComputedSort(kind: ComputedSortKind) {
+    setComputedSort((prev) => {
+      if (!prev || prev.kind !== kind) return { kind, dir: "desc" };
+      if (prev.dir === "desc") return { kind, dir: "asc" };
+      return null;
+    });
   }
 
   function toggleRow(id: string) {
@@ -212,7 +312,7 @@ export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageR
   async function copySelected() {
     const selected = rows.filter((o) => selectedIds.has(o.id));
     if (!selected.length) return;
-    const ok = await copyToClipboard(buildClipboardRows(selected, stageById));
+    const ok = await copyToClipboard(buildClipboardRows(selected, stageById), buildClipboardHtml(selected, stageById));
     setCopyStatus(
       ok
         ? `Copied ${selected.length} row${selected.length === 1 ? "" : "s"} — paste into Excel/email.`
@@ -281,11 +381,11 @@ export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageR
                 <Table.ColumnResizer />
               </Table.Column>
               <Table.Column id="size" defaultWidth={100} minWidth={70}>
-                Size
+                <SortableLabel column="size" label="Size" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
                 <Table.ColumnResizer />
               </Table.Column>
               <Table.Column id="construction" defaultWidth={120} minWidth={90}>
-                Construction
+                <SortableLabel column="construction" label="Construction" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
                 <Table.ColumnResizer />
               </Table.Column>
               {/* Stage is deliberately plain text, not sortable — a real attempt to sort
@@ -301,15 +401,15 @@ export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageR
                 <Table.ColumnResizer />
               </Table.Column>
               <Table.Column id="stageStandard" defaultWidth={170} minWidth={130}>
-                <TatSortableLabel dir={tatSortDir} onToggle={toggleTatSort} />
+                <ComputedSortableLabel label="Stage Standard (TAT)" kind="tat" computedSort={computedSort} onToggle={toggleComputedSort} />
                 <Table.ColumnResizer />
               </Table.Column>
               <Table.Column id="originalExFactory" defaultWidth={130} minWidth={100}>
-                Original Ex Factory
+                <SortableLabel column="originalExFactory" label="Original Ex Factory" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
                 <Table.ColumnResizer />
               </Table.Column>
               <Table.Column id="salesOrderDate" defaultWidth={120} minWidth={100}>
-                Sales Order Date
+                <SortableLabel column="salesOrderDate" label="Sales Order Date" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
                 <Table.ColumnResizer />
               </Table.Column>
               <Table.Column id="revisedExFactory" defaultWidth={130} minWidth={100}>
@@ -317,7 +417,7 @@ export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageR
                 <Table.ColumnResizer />
               </Table.Column>
               <Table.Column id="onTime" defaultWidth={100} minWidth={80}>
-                On Time
+                <ComputedSortableLabel label="On Time" kind="onTime" computedSort={computedSort} onToggle={toggleComputedSort} />
               </Table.Column>
             </Table.Header>
             <Table.Body>
@@ -332,6 +432,7 @@ export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageR
                   orderPriority: order.order_priority,
                   onHold: order.on_hold,
                   currentStatusPendingDays: order.current_status_pending_days,
+    revisedExFactoryDate: order.revised_ex_factory_date,
                 });
                 return (
                   <Table.Row key={order.id} id={order.id}>
@@ -372,14 +473,14 @@ export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageR
                         </span>
                       )}
                     </Table.Cell>
-                    <Table.Cell>{order.original_ex_factory_date ?? "—"}</Table.Cell>
-                    <Table.Cell>{order.sales_order_date ?? "—"}</Table.Cell>
+                    <Table.Cell>{displayDate(order.original_ex_factory_date)}</Table.Cell>
+                    <Table.Cell>{displayDate(order.sales_order_date)}</Table.Cell>
                     {/* revised_ex_factory_date, not promised_delivery_date — confirmed
                         2026-09-05 (via the pre-Atlas tool's own investigation, same ERP
                         feed) that Promised Delivery Date is essentially always blank in
                         real data; this is the actual delay/expectancy signal, and what
                         onTimeStatus above already falls back to. */}
-                    <Table.Cell>{order.revised_ex_factory_date ?? "—"}</Table.Cell>
+                    <Table.Cell>{displayDate(order.revised_ex_factory_date)}</Table.Cell>
                     <Table.Cell>
                       <OnTimeBadge status={status} />
                     </Table.Cell>

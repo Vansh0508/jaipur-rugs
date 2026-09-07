@@ -67,6 +67,31 @@ function loomStandardDays(quality, size) {
   return Math.ceil((dimFt * 12) / ratePerDay);
 }
 
+// Interim fallback for At-Loom orders whose quality has no known weaving rate yet (see
+// loomStandardDays above returning null for these) — confirmed directly by Ayaan,
+// 2026-09-06: "if Rev Ex Factory is 30th September, it should be off loom and moved to
+// finishing at least 12 days before" that date, regardless of quality/size. Temporary
+// until real per-quality rates are provided (tracked via "Atlas_TAT_gaps_to_fill.xlsx",
+// covers 80/100/60 LINE, Tuf Viscose Mix, Dhurrie, Jute Dhurrie, Woolen Dhurrie, TUF
+// NOR) — remove once every quality in that sheet has a real rate. Only applied when the
+// real weaving-rate formula can't produce a number at all — an order with a known rate
+// keeps using that. Purely date-driven, same lockstep copy as lib/stageTat.ts.
+const LOOM_MUST_EXIT_DAYS_BEFORE_REV_EX_FACTORY = 12;
+function loomFallbackStandardDays(revisedExFactoryDate, pendingDays) {
+  if (!revisedExFactoryDate) return null;
+  // Confirmed live 2026-09-07: some rows carry "1753-01-01" as Rev Ex Factory — SQL
+  // Server's DateTime.MinValue, the ERP's own "no date set" placeholder — treat as no
+  // real date, same as lib/stageTat.ts's lockstep copy.
+  if (Number(revisedExFactoryDate.slice(0, 4)) < 1900) return null;
+  const target = new Date(`${revisedExFactoryDate}T00:00:00Z`).getTime();
+  if (Number.isNaN(target)) return null;
+  const now = new Date();
+  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const daysUntilRevExFactory = Math.round((target - todayUtc) / (24 * 60 * 60 * 1000));
+  const marginDays = daysUntilRevExFactory - LOOM_MUST_EXIT_DAYS_BEFORE_REV_EX_FACTORY;
+  return pendingDays + marginDays;
+}
+
 const STATUS_TAT_RULES = [
   { pattern: /order\s*process/i, days: 1 },
   { pattern: /design/i, days: 15, priority0Days: 7 },
@@ -87,7 +112,9 @@ function stageStandard(order) {
   if (isSwatch(order.std_cubage)) {
     standardDays = SAMPLE_TOTAL_DAYS;
   } else if (order.raw_current_status && /loom/i.test(order.raw_current_status) && !/preloom|pre-loom/i.test(order.raw_current_status)) {
-    standardDays = loomStandardDays(order.quality, order.size);
+    standardDays =
+      loomStandardDays(order.quality, order.size) ??
+      loomFallbackStandardDays(order.revised_ex_factory_date, order.current_status_pending_days ?? 0);
   } else {
     const rule = order.raw_current_status ? STATUS_TAT_RULES.find((r) => r.pattern.test(order.raw_current_status)) : undefined;
     standardDays = rule ? (order.order_priority === 0 && rule.priority0Days !== undefined ? rule.priority0Days : rule.days) : null;

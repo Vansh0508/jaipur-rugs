@@ -11,39 +11,6 @@ guessed. See the referenced date/finding for how each was verified.
 
 ## Open requests
 
-### 1. Add "Customer Service Zone" to the ERP API feed
-**Ask:** NAV admin — add the `Customer Service Zone` column (ARCHIVE / B2B / B2C /
-BIG BOX / EXHIBITION / GROUP CO. / JLI / MAKE2STOCK / SAMPLE / SUBSIDIARY) to
-`https://webapi.jaipurrugs.com/api/ERP/rug-list`'s response.
-**Why:** it's the first input to the real Follow-Up-Person routing table (see below) —
-without it, Atlas can't correctly route a delay alert to the right production contact.
-**Confirmed:** field exists in the fuller NAV Excel export (`NAV-002-Rug-ListAll.xlsx`,
-column GA) with real populated values — confirmed absent from the live API feed by
-listing every key in a real feed row directly (2026-09-06).
-
-### 2. Add "Original Ex India" and "Rev_Ex India" to the ERP API feed
-**Ask:** NAV admin — add both columns to the same API feed.
-**Why:** genuinely different dates from Original/Rev Ex Factory, not duplicates — across
-a real 149,464-row export, wherever both fields are populated they differ in **67%** of
-rows, sometimes by months (one example: India date Jan 20, Factory date Apr 30). Atlas
-currently has no visibility into whichever business step these represent.
-**Also ask:** what exactly each date represents (likely "left the factory" vs. a
-separate export/customs step, but not confirmed) — worth clarifying at the same time,
-since Atlas will want to label/use it correctly once it's added.
-**Confirmed:** compared every row of `Ex India.xlsx` against Original/Rev Ex Factory
-directly (2026-09-05).
-
-### 3. Why does the ERP API feed lag real NAV data?
-**Ask:** whoever maintains `https://webapi.jaipurrugs.com/api/ERP/rug-list` — is there a
-scheduled job feeding this feed from NAV, and when did it last run successfully?
-**Why:** two real orders (`JR/SO/2627/07100`, `JR/SO/2627/07110`), confirmed punched and
-visible in NAV's own rug list, are entirely absent from the API feed. The feed's newest
-Sales Order at the time was `JR/SO/2627/06707` — several hundred orders behind. Fetched
-the live feed twice, minutes apart, and got the *exact same* newest order both times —
-strong evidence this is a stale snapshot, not a live query, and whatever refreshes it
-isn't running (or isn't running often enough).
-**Confirmed:** live, repeated fetches of the real feed (2026-09-05/06).
-
 ### 4. "Follow Up Person" is blank for most real orders
 **Ask:** NAV/ERP team (Dinesh's team) — populate this field for every order at the
 source, per the real routing rule described below, so Atlas doesn't need a fallback
@@ -75,9 +42,10 @@ routing table, confirmed directly by Ayaan (2026-09-05), keyed on Customer Servi
     | Archive | any | Surendra | Avinash Kumar |
     | Group Co. | — | *(Ayaan to fill in manually)* | *(Ayaan to fill in manually)* |
 
-  **Not yet built into Atlas** — waiting on request #1 (Zone isn't in the API feed yet)
-  and on real email addresses for each name above (asked Ayaan directly, 2026-09-06 —
-  he'll provide once this table's format is confirmed understood, which it now is).
+  **Not yet built into Atlas** — Customer Service Zone itself is no longer the blocker
+  (Atlas has read it directly from NAV since 2026-09-07, see Resolved below); still
+  waiting on real email addresses for each name above (asked Ayaan directly, 2026-09-06
+  — he'll provide once this table's format is confirmed understood, which it now is).
 
 ### 5. Unmapped ERP status text silently falls into "Other"
 **Ask:** NAV/ERP team — any order status text that doesn't match Atlas's known
@@ -92,8 +60,53 @@ Projects" > Ayaan).
   ("Operations"/backend contact for each salesperson) has no mapping anywhere in this
   schema at all, and no equivalent roster was provided (unlike Follow-Up-Person above).
   Needs either a small admin-maintained roster or a self-service path, once decided.
+- **`authorization`, `remark`, `expected_ready_date`** — these `orders` columns exist
+  but nothing populates them anymore (confirmed 2026-09-07: none of "Authorization",
+  "Remark", or "Expected Ready Date" exist under those names in the NAV database either
+  — see Resolved below). Not currently blocking anything, but worth a real decision:
+  drop the columns, or find out from NAV what (if anything) they should actually map to.
 
 ## Resolved
 
-*(move an item here, with the date and how it was resolved, once a department actually
-delivers — don't just delete it, so the history of what was asked/fixed stays visible.)*
+- **2026-09-07 — requests #1 (Customer Service Zone), #2 (Original/Rev Ex India), #3
+  (feed lag), and #6 (HSN/SAC No, Sales Line No_, Current Location):** all resolved the
+  same way — Atlas's sync (`orders-sync.mjs`) now reads the real NAV MSSQL database
+  directly (`NAV-002-Rug List - Main` view, server `192.168.0.41` — credentials
+  deliberately never written to this repo or git; they live in a local, **un-rotatable**
+  file outside git, treated with more care than any other secret here) instead of the
+  public `webapi.jaipurrugs.com/api/ERP/rug-list` feed.
+
+  Confirmed directly, live, before switching:
+  - Every field requests #1, #2, and #6 asked for already existed in this database —
+    it was never a "NAV needs to add data" problem, only "the public feed exposes a
+    narrower 34-column projection of data NAV already has in full." Added to `orders`
+    as `customer_service_zone`, `original_ex_india_date`, `revised_ex_india_date`,
+    `hsn_sac_no`, `sales_line_no`, `current_location`
+    (`db/orders/013_nav_direct_fields.sql`).
+  - The database is genuinely live, fixing request #3's lag for good — the two orders
+    proven missing from the public feed (`JR/SO/2627/07100`, `07110`) are both present
+    here with real current statuses, and the newest order at the time was dated that
+    same day.
+  - **Correction to an earlier claim in this file:** request #6 previously said "Ground
+    Color"/"Border Color" were just a different label for `GR Color Name`/`BR Color
+    Name`. Checked directly against the real database — they're genuinely different:
+    Ground/Border Color are color **codes** (e.g. `0204-23`), GR/BR Color Name are the
+    color **names** (e.g. `Fog`). Not added to `orders` yet since nothing asked for them
+    specifically, but they're real, available, distinct data if ever needed.
+  - `Authorization`, `Remark`, and `Expected Ready Date` still don't exist under those
+    names anywhere in the NAV database either (checked the same day) — these 3 columns
+    stay unpopulated (explicitly `null`, not guessed) regardless of source; see "Still
+    open on Atlas's own side" above.
+  - A real, unrelated engineering snag surfaced and was fixed along the way: Node's
+    `mssql`/`tedious` driver refuses an encrypted connection when the server is
+    addressed by a raw IP (Node enforces RFC 6066 — TLS's SNI extension can't be an
+    IP-literal), which this server is (`192.168.0.41`, no hostname). `orders-sync.mjs`
+    now tries encrypted first and falls back to unencrypted specifically for this known
+    failure (logged loudly, not silent) — safe here since `MSSQL_TRUST_SERVER_CERTIFICATE
+    =true` already meant certificate identity wasn't being validated anyway, and this
+    address is internal-office-LAN-only, never internet-facing.
+
+  **Note:** this only works from a machine with network access to the office LAN — the
+  public Hostinger VPS deployment has no route to `192.168.0.41`, so `orders-sync.mjs`
+  can only run on/from the office network now, same constraint as the old
+  service-role-key requirement already implied.

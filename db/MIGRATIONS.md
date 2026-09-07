@@ -48,6 +48,10 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | (2026-09-02) | `orders_sync_move_to_server` | orders | `db/orders/008_orders_sync_move_to_server.sql` |
 | (2026-09-02) | `orders_select_perf_fix` | orders | `db/orders/009_orders_select_perf_fix.sql` |
 | (2026-09-02) | `salesperson_codes_self_service` | orders | `db/orders/010_salesperson_codes_self_service.sql` |
+| `20260905151709` | `management_department_self_service` | orders | `db/orders/011_management_department_self_service.sql` |
+| `20260905151821` | `department_access_grants_unique_index` | orders | *(no repo file — applied directly, not yet backfilled)* |
+| `20260905160648` | `delay_alerts` | orders | `db/orders/012_delay_alerts.sql` |
+| `20260907053134` | `nav_direct_fields` | orders | `db/orders/013_nav_direct_fields.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared

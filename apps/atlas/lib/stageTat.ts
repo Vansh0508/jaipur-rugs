@@ -24,6 +24,42 @@ export interface StageStandardResult {
 const SWATCH_MAX_SQFT = 4;
 const SAMPLE_TOTAL_DAYS = 15;
 
+/** Interim fallback for At-Loom orders whose quality has no known weaving rate yet (see
+ * `loomStandardDays` below returning null for these) — confirmed directly by Ayaan,
+ * 2026-09-06: "if Rev Ex Factory is 30th September, it should be off loom and moved to
+ * finishing at least 12 days before" that date, regardless of quality/size. Temporary
+ * until real per-quality rates are provided (tracked via "Atlas_TAT_gaps_to_fill.xlsx",
+ * covers 80/100/60 LINE, Tuf Viscose Mix, Dhurrie, Jute Dhurrie, Woolen Dhurrie, TUF
+ * NOR) — remove this fallback once every quality in that sheet has a real rate.
+ * Deliberately applied only when the real weaving-rate formula can't produce a number at
+ * all — an order with a known rate keeps using that, this never overrides it. */
+const LOOM_MUST_EXIT_DAYS_BEFORE_REV_EX_FACTORY = 12;
+
+/** Purely date-driven — deliberately ignores how many days the order has actually spent
+ * at Loom (pendingDays only enters at the very end, to express the result in the same
+ * "standardDays vs pendingDays" shape every other rule already uses), matching how the
+ * rule was actually described: it's about the Rev Ex Factory deadline, not about how
+ * long weaving normally takes for this quality (which is exactly the number we don't
+ * have yet for these qualities). Returns null if there's no Rev Ex Factory date to
+ * measure against — nothing to compute a standard from in that case either. */
+function loomFallbackStandardDays(revisedExFactoryDate: string | null, pendingDays: number): number | null {
+  if (!revisedExFactoryDate) return null;
+  // Confirmed live 2026-09-07: some rows carry "1753-01-01" as Rev Ex Factory — SQL
+  // Server's DateTime.MinValue, the ERP's own "no date set" placeholder leaking through
+  // as a syntactically valid date string (it passes orders-sync.mjs's date-format
+  // check, since that only validates shape, not plausibility). Without this guard these
+  // would compute as ~99,000 days overdue instead of correctly falling back to
+  // "no standard" — same as if the date were genuinely null.
+  if (Number(revisedExFactoryDate.slice(0, 4)) < 1900) return null;
+  const target = new Date(`${revisedExFactoryDate}T00:00:00Z`).getTime();
+  if (Number.isNaN(target)) return null;
+  const now = new Date();
+  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const daysUntilRevExFactory = Math.round((target - todayUtc) / (24 * 60 * 60 * 1000));
+  const marginDays = daysUntilRevExFactory - LOOM_MUST_EXIT_DAYS_BEFORE_REV_EX_FACTORY;
+  return pendingDays + marginDays;
+}
+
 /** A rug this small is a swatch/sample, not a real order — gets one flat standard for
  * its whole pipeline instead of a per-stage one. */
 function isSwatch(stdCubage: number | null): boolean {
@@ -95,6 +131,8 @@ export function stageStandard(order: {
   orderPriority: number | null;
   onHold: string | null;
   currentStatusPendingDays: number | null;
+  /** Only used by loomFallbackStandardDays above — every other rule ignores it. */
+  revisedExFactoryDate: string | null;
 }): StageStandardResult {
   const isOnHold = Boolean(order.onHold && order.onHold.trim() && !/^(0|no)$/i.test(order.onHold.trim()));
   if (isOnHold) return { status: "on_hold", standardDays: null, overBy: null };
@@ -103,7 +141,9 @@ export function stageStandard(order: {
   if (isSwatch(order.stdCubage)) {
     standardDays = SAMPLE_TOTAL_DAYS;
   } else if (order.rawCurrentStatus && /loom/i.test(order.rawCurrentStatus) && !/preloom|pre-loom/i.test(order.rawCurrentStatus)) {
-    standardDays = loomStandardDays(order.quality, order.size);
+    standardDays =
+      loomStandardDays(order.quality, order.size) ??
+      loomFallbackStandardDays(order.revisedExFactoryDate, order.currentStatusPendingDays ?? 0);
   } else {
     const rule = order.rawCurrentStatus
       ? STATUS_TAT_RULES.find((r) => r.pattern.test(order.rawCurrentStatus!))
