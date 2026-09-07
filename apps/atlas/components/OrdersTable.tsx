@@ -263,7 +263,18 @@ function buildClipboardHtml(selected: OrderRow[], stageById: Map<string, StageRo
 // feedback, 2026-09-07: "there is one table behind also from the original table" (a
 // visible shadow/duplicate-card look, not a data issue). "secondary" has no root
 // background/padding/rounding of its own, leaving just the one border we already draw.
-export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageRow[] }) {
+export function OrdersTable({
+  rows,
+  stages,
+  followUpPersonEmails,
+}: {
+  rows: OrderRow[];
+  stages: StageRow[];
+  /** Name -> email, for the Follow Up Person column's hover/click-to-copy — display
+   * convenience only, not the (still-unbuilt) automated alert routing. A name with no
+   * entry here just has no confirmed email on file; never guessed client-side either. */
+  followUpPersonEmails: Record<string, string>;
+}) {
   const stageById = useMemo(() => new Map(stages.map((s) => [s.id, s])), [stages]);
   const buildLink = useLinkBuilder();
   const searchParams = useSearchParams();
@@ -274,6 +285,10 @@ export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageR
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const [computedSort, setComputedSort] = useState<ComputedSort>(null);
+  // Which row's Follow Up Person email was just copied — flashes "Copied" on that one
+  // cell for 1.5s, keyed by order id so it never de-syncs across the two lookups
+  // sharing the same name (e.g. two orders both "SURENDRA DHAKAD").
+  const [copiedEmailOrderId, setCopiedEmailOrderId] = useState<string | null>(null);
 
   const sortedRows = useMemo(() => {
     if (!computedSort) return rows;
@@ -327,6 +342,14 @@ export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageR
         : "Couldn't copy — try selecting fewer rows or a different browser.",
     );
     setTimeout(() => setCopyStatus(null), 3000);
+  }
+
+  async function copyFollowUpPersonEmail(orderId: string, email: string) {
+    const ok = await copyToClipboard(email, email);
+    if (ok) {
+      setCopiedEmailOrderId(orderId);
+      setTimeout(() => setCopiedEmailOrderId((current) => (current === orderId ? null : current)), 1500);
+    }
   }
 
   if (!rows.length) {
@@ -424,6 +447,18 @@ export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageR
                 <SortableLabel column="revisedExFactory" label="Rev. Ex-Factory" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
                 <Table.ColumnResizer />
               </Table.Column>
+              <Table.Column id="revisedExIndia" defaultWidth={120} minWidth={100}>
+                <SortableLabel column="revisedExIndia" label="Rev. Ex-India" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
+                <Table.ColumnResizer />
+              </Table.Column>
+              <Table.Column id="currentLocation" defaultWidth={150} minWidth={110}>
+                <SortableLabel column="currentLocation" label="Current Location" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
+                <Table.ColumnResizer />
+              </Table.Column>
+              <Table.Column id="followUpPerson" defaultWidth={160} minWidth={120}>
+                <SortableLabel column="followUpPerson" label="Follow Up Person" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
+                <Table.ColumnResizer />
+              </Table.Column>
               <Table.Column id="onTime" defaultWidth={100} minWidth={80}>
                 <ComputedSortableLabel label="On Time" kind="onTime" computedSort={computedSort} onToggle={toggleComputedSort} />
               </Table.Column>
@@ -490,6 +525,32 @@ export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageR
                         Rev Ex Factory — a different field, not a better version of this
                         one). */}
                     <Table.Cell>{displayDate(order.revised_ex_factory_date)}</Table.Cell>
+                    <Table.Cell>{displayDate(order.revised_ex_india_date)}</Table.Cell>
+                    <Table.Cell>{order.current_location ?? "—"}</Table.Cell>
+                    <Table.Cell>
+                      {(() => {
+                        if (!order.follow_up_person) return "—";
+                        const email = followUpPersonEmails[order.follow_up_person];
+                        if (!email) {
+                          return (
+                            <span title="No email on file for this name" className="text-muted">
+                              {order.follow_up_person}
+                            </span>
+                          );
+                        }
+                        const justCopied = copiedEmailOrderId === order.id;
+                        return (
+                          <button
+                            type="button"
+                            title={justCopied ? "Copied!" : `${email} — click to copy`}
+                            onClick={() => copyFollowUpPersonEmail(order.id, email)}
+                            className="text-left hover:underline"
+                          >
+                            {justCopied ? "Copied!" : order.follow_up_person}
+                          </button>
+                        );
+                      })()}
+                    </Table.Cell>
                     <Table.Cell>
                       <OnTimeBadge status={status} />
                     </Table.Cell>

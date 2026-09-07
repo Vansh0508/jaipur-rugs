@@ -2,6 +2,7 @@ import {
   listOrders,
   listOrderFacets,
   listStages,
+  listFollowUpPersonEmails,
   PAGE_SIZE_OPTIONS,
   DEFAULT_PAGE_SIZE,
   type OrderFilters,
@@ -43,7 +44,11 @@ function toArray(value: string | string[] | undefined): string[] {
 export default async function OrdersPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
   const supabase = await getServerSupabaseClient();
-  const [stages, facets] = await Promise.all([listStages(supabase), listOrderFacets(supabase)]);
+  const [stages, facets, followUpPersonEmails] = await Promise.all([
+    listStages(supabase),
+    listOrderFacets(supabase),
+    listFollowUpPersonEmails(supabase),
+  ]);
   const terminalStageIds = stages.filter((s) => s.is_terminal).map((s) => s.id);
 
   const pageSize = Number(toSingle(params.pageSize)) || DEFAULT_PAGE_SIZE;
@@ -167,7 +172,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
       ) : null}
 
       <div className="min-h-0 flex-1">
-        <OrdersTable rows={orders} stages={stages} />
+        <OrdersTable rows={orders} stages={stages} followUpPersonEmails={followUpPersonEmails} />
       </div>
 
       <div className="flex shrink-0 items-center justify-between text-sm text-muted">

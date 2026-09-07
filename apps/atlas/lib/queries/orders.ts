@@ -30,10 +30,12 @@ export async function listStages(supabase: SupabaseClient): Promise<StageRow[]> 
   return data ?? [];
 }
 
-// Page sizes offered on the Orders list — same options the old tool offered
-// (50/100/250/500/1000, default 100), see PAGE_SIZE_OPTIONS below.
-export const PAGE_SIZE_OPTIONS = [50, 100, 250, 500, 1000] as const;
-export const DEFAULT_PAGE_SIZE = 100;
+// Page sizes offered on the Orders list. Direct feedback, 2026-09-07: default down to
+// 25 (was 100) with 50/100 also offered — narrower set than the old tool's
+// 50/100/250/500/1000 now that the real table is ~46k rows (post the NAV-direct sync
+// switch) rather than the old ~14k, where a 500/1000-row page was a heavier fetch.
+export const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+export const DEFAULT_PAGE_SIZE = 25;
 
 export type ConstructionType = "knotted" | "tufted" | "handloom" | "other" | "swatch";
 export type AgingBucket = "0-7" | "8-15" | "16-30" | "30+";
@@ -129,6 +131,9 @@ export const SORTABLE_COLUMNS = {
   originalExFactory: "original_ex_factory_date",
   salesOrderDate: "sales_order_date",
   revisedExFactory: "revised_ex_factory_date",
+  revisedExIndia: "revised_ex_india_date",
+  currentLocation: "current_location",
+  followUpPerson: "follow_up_person",
 } as const;
 export type SortableColumn = keyof typeof SORTABLE_COLUMNS;
 
@@ -429,4 +434,19 @@ export async function getShippingDetail(
   const { data, error } = await supabase.from("shipping_details").select("*").eq("order_id", orderId).maybeSingle();
   if (error) throw error;
   return data;
+}
+
+/** Name -> email lookup for the Orders table's Follow Up Person column (hover/click to
+ * copy — see db/orders/014_follow_up_person_directory.sql). Display/copy convenience
+ * only, NOT the automated delay-alert routing table (that's a separate, still-unbuilt
+ * thing — see ERP_AND_EXTERNAL_REQUESTS.md request #5). A name with no entry here just
+ * means no confirmed email was found in the company directory — never guessed. */
+export async function listFollowUpPersonEmails(supabase: SupabaseClient): Promise<Record<string, string>> {
+  const { data, error } = await supabase.from("follow_up_person_directory").select("name, email");
+  if (error) throw error;
+  const result: Record<string, string> = {};
+  for (const row of data ?? []) {
+    if (row.email) result[row.name] = row.email;
+  }
+  return result;
 }

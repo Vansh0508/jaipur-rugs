@@ -46,6 +46,14 @@ routing table, confirmed directly by Ayaan (2026-09-05), keyed on Customer Servi
   (Atlas has read it directly from NAV since 2026-09-07, see Resolved below); still
   waiting on real email addresses for each name above (asked Ayaan directly, 2026-09-06
   — he'll provide once this table's format is confirmed understood, which it now is).
+  Ayaan's explicit instruction, 2026-09-07: **don't build the automated routing yet** —
+  he wants to confirm it with production once more first. What *is* built in the
+  meantime is a much smaller, separate thing: a plain Follow Up Person column on the
+  Orders table showing each order's real `follow_up_person` name (now populated
+  directly from NAV), with the matching email (where a confirmed one exists — see
+  `db/orders/014_follow_up_person_directory.sql`) available on hover/click-to-copy for
+  manual use. Not automated routing, not sending anything — just making an email easier
+  to find and copy by hand.
 
 ### 5. Unmapped ERP status text silently falls into "Other"
 **Ask:** NAV/ERP team — any order status text that doesn't match Atlas's known
@@ -53,6 +61,20 @@ stage-mapping list quietly lands in a generic "Other" bucket instead of being fl
 Not a one-time bug — will keep recurring as new/unusual status text appears in NAV.
 **Also tracked as an Asana task** (see MIGRATIONS.md's Atlas section / Asana "AI
 Projects" > Ayaan).
+
+### 7. "Vishnu Prasad Nagar" (Follow Up Person) has no company email on record
+**Ask:** whoever maintains the company email directory
+(darpan.jaipurrugs.com/storage/email-ext-list) — is there a real email for this person
+under a different spelling, or do they genuinely not have a company email account?
+**Why:** confirmed live 2026-09-07 — of the 10 distinct real values in
+`orders.follow_up_person`, this is the **second-most common by volume** (7,962 of
+~46,000 order lines) but the only one of the top 5 with no match anywhere in the
+directory (checked by name, and by pulling the full Production & SCM department roster
+directly — genuinely absent, not a search-thoroughness issue). Three much lower-volume
+names (Gopal Lal Meena — 123, Nishant Singh — 2, Mambhu — 1) are also unmatched, but
+Vishnu Prasad Nagar is the one actually worth asking about.
+**Confirmed:** searched the live company directory directly, multiple passes (exact
+name, partial/surname, full department roster) — 2026-09-07.
 
 ## Still open on Atlas's own side (not a department ask, but blocked on it)
 
