@@ -3,6 +3,7 @@ import { StageTimeline } from "@jaipur-rugs/ui-kit";
 import { getServerSupabaseClient } from "@/lib/supabaseClient.server";
 import { getOrder, getOrderStageEvents, getShippingDetail, listStages } from "@/lib/queries/orders";
 import { computeStageDurations, formatDuration, onTimeStatus } from "@/lib/tat";
+import { stageStandard } from "@/lib/stageTat";
 import { stageColorClassName } from "@/lib/stageColors";
 import { StageChip, OnTimeBadge } from "@/components/StageChip";
 import { ShippingDetailForm } from "@/components/ShippingDetailForm";
@@ -26,7 +27,21 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
   const stageById = new Map(stages.map((s) => [s.id, s]));
   const currentStage = order.stage_id ? stageById.get(order.stage_id) : undefined;
-  const status = onTimeStatus(order.promised_delivery_date, order.revised_ex_factory_date, currentStage?.is_terminal ?? false);
+  const standard = stageStandard({
+    rawCurrentStatus: order.raw_current_status,
+    quality: order.quality,
+    size: order.size,
+    stdCubage: order.std_cubage,
+    orderPriority: order.order_priority,
+    onHold: order.on_hold,
+    currentStatusPendingDays: order.current_status_pending_days,
+  });
+  const status = onTimeStatus(
+    order.promised_delivery_date,
+    order.revised_ex_factory_date,
+    currentStage?.is_terminal ?? false,
+    standard.standardDays,
+  );
   const durations = computeStageDurations(events.map((e) => ({ stageId: e.stage_id, enteredAt: e.entered_at })));
 
   const timelineSteps = stages.map((stage) => ({

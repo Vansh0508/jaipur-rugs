@@ -54,54 +54,59 @@ function maxDimensionFt(size) {
   return maxFt > 0 ? maxFt : null;
 }
 
-function loomStandardDays(quality, size) {
+// Exact per-quality knotting rate (inches/day), zero-priority orders only — confirmed
+// directly by production, 2026-09-07 ("Zero Priority Per Day Standard Work.xlsx").
+// Non-zero-priority orders, and any zero-priority quality not listed here, still use
+// the tiered fallback below. See lib/stageTat.ts's lockstep copy for the full rationale.
+const ZERO_PRIORITY_KNOTTED_RATE = {
+  "3/16": 8, "3/20": 8, "3/25": 8, "4/25": 6, "5/5": 6, "6.5/36": 6, "6/5": 6, "6/6": 4,
+  "6/8": 5.5, "8/8": 3, "9/9": 2.25, "10/10": 2, "10/14": 2, "11/11": 1.75, "14/14": 1,
+  "7/7": 4, "9/7": 3, "5/16": 7, "3.5/18": 10, "4/15": 10, "3/12": 10, "4/22": 10,
+  "3/13": 10, "3.5/22": 10, "7/22": 6, "3.5/18 WL": 10, "8/6": 5.5, "2.5/14": 10,
+  "6/20": 6, "5/15": 6, "6/4": 6, "3/7": 8, "5/25": 7, "3/15": 8, "5/22": 7, "5/21": 7,
+  "3.5/25": 8, "3/10": 8, "5.5/30": 8, "5/32": 8, "4.25/30": 8, "5/35": 8,
+};
+
+// Handloom and Dhurrie/flat-weave both get a flat 12 days, same as Tufted — confirmed
+// directly by production, 2026-09-07 (replaces Handloom's old flat 8 and flat-weave's
+// old "no standard at all" / date-driven interim fallback, now removed entirely). See
+// lib/stageTat.ts's lockstep copy for the full rationale.
+function loomStandardDays(quality, size, orderPriority) {
   if (!quality) return null;
-  if (/handloom/i.test(quality)) return 8;
+  if (/handloom/i.test(quality)) return 12;
   if (/tufted/i.test(quality)) return 12;
-  const knotMatch = quality.match(/(\d+)\s*\/\s*\d+/);
-  if (!knotMatch) return null;
-  const knotCount = Number(knotMatch[1]);
-  const ratePerDay = knotCount < 6 ? 3 : knotCount <= 9 ? 2 : knotCount <= 11 ? 1.5 : 1;
+
+  const knotMatch = quality.match(/(\d+(?:\.\d+)?)\s*\/\s*\d+(?:\.\d+)?(?:\s+\S+)?/);
+  if (!knotMatch) return 12; // dhurrie/flat-weave — same flat standard as Tufted/Handloom
+
   const dimFt = maxDimensionFt(size);
   if (dimFt === null) return null;
+
+  let ratePerDay;
+  if (orderPriority === 0) {
+    const trimmed = quality.trim();
+    ratePerDay = ZERO_PRIORITY_KNOTTED_RATE[trimmed] ?? ZERO_PRIORITY_KNOTTED_RATE[knotMatch[0].split(/\s+/)[0]];
+  }
+  if (ratePerDay === undefined) {
+    const knotCount = Number(knotMatch[1]);
+    ratePerDay = knotCount < 6 ? 3 : knotCount <= 9 ? 2 : knotCount <= 11 ? 1.5 : 1;
+  }
   return Math.ceil((dimFt * 12) / ratePerDay);
 }
 
-// Interim fallback for At-Loom orders whose quality has no known weaving rate yet (see
-// loomStandardDays above returning null for these) — confirmed directly by Ayaan,
-// 2026-09-06: "if Rev Ex Factory is 30th September, it should be off loom and moved to
-// finishing at least 12 days before" that date, regardless of quality/size. Temporary
-// until real per-quality rates are provided (tracked via "Atlas_TAT_gaps_to_fill.xlsx",
-// covers 80/100/60 LINE, Tuf Viscose Mix, Dhurrie, Jute Dhurrie, Woolen Dhurrie, TUF
-// NOR) — remove once every quality in that sheet has a real rate. Only applied when the
-// real weaving-rate formula can't produce a number at all — an order with a known rate
-// keeps using that. Purely date-driven, same lockstep copy as lib/stageTat.ts.
-const LOOM_MUST_EXIT_DAYS_BEFORE_REV_EX_FACTORY = 12;
-function loomFallbackStandardDays(revisedExFactoryDate, pendingDays) {
-  if (!revisedExFactoryDate) return null;
-  // Confirmed live 2026-09-07: some rows carry "1753-01-01" as Rev Ex Factory — SQL
-  // Server's DateTime.MinValue, the ERP's own "no date set" placeholder — treat as no
-  // real date, same as lib/stageTat.ts's lockstep copy.
-  if (Number(revisedExFactoryDate.slice(0, 4)) < 1900) return null;
-  const target = new Date(`${revisedExFactoryDate}T00:00:00Z`).getTime();
-  if (Number.isNaN(target)) return null;
-  const now = new Date();
-  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const daysUntilRevExFactory = Math.round((target - todayUtc) / (24 * 60 * 60 * 1000));
-  const marginDays = daysUntilRevExFactory - LOOM_MUST_EXIT_DAYS_BEFORE_REV_EX_FACTORY;
-  return pendingDays + marginDays;
-}
-
+// Updated 2026-09-07 from production's own edits to "Atlas_Current_TAT_Rules.xlsx" —
+// Design and PPC deliberately left unchanged (ambiguous text, not a single number). See
+// lib/stageTat.ts's lockstep copy for the full rationale.
 const STATUS_TAT_RULES = [
-  { pattern: /order\s*process/i, days: 1 },
+  { pattern: /order\s*process/i, days: 2, priority0Days: 2 },
   { pattern: /design/i, days: 15, priority0Days: 7 },
   { pattern: /ppc/i, days: 1 },
-  { pattern: /stores?/i, days: 10 },
-  { pattern: /branch/i, days: 7 },
-  { pattern: /in[\s-]*transit/i, days: 10 },
-  { pattern: /repair/i, days: 2 },
-  { pattern: /finish(ing)?/i, days: 15 },
-  { pattern: /check(ing)?|inspection/i, days: 2 },
+  { pattern: /stores?/i, days: 10, priority0Days: 12 },
+  { pattern: /branch/i, days: 10, priority0Days: 7 },
+  { pattern: /in[\s-]*transit/i, days: 10, priority0Days: 7 },
+  { pattern: /repair/i, days: 2, priority0Days: 3 },
+  { pattern: /finish(ing)?/i, days: 15, priority0Days: 10 },
+  { pattern: /check(ing)?|inspection/i, days: 2, priority0Days: 2 },
 ];
 
 function stageStandard(order) {
@@ -112,9 +117,7 @@ function stageStandard(order) {
   if (isSwatch(order.std_cubage)) {
     standardDays = SAMPLE_TOTAL_DAYS;
   } else if (order.raw_current_status && /loom/i.test(order.raw_current_status) && !/preloom|pre-loom/i.test(order.raw_current_status)) {
-    standardDays =
-      loomStandardDays(order.quality, order.size) ??
-      loomFallbackStandardDays(order.revised_ex_factory_date, order.current_status_pending_days ?? 0);
+    standardDays = loomStandardDays(order.quality, order.size, order.order_priority);
   } else {
     const rule = order.raw_current_status ? STATUS_TAT_RULES.find((r) => r.pattern.test(order.raw_current_status)) : undefined;
     standardDays = rule ? (order.order_priority === 0 && rule.priority0Days !== undefined ? rule.priority0Days : rule.days) : null;

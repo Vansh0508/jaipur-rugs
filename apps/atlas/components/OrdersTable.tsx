@@ -26,6 +26,22 @@ function displayDate(value: string | null | undefined): string {
   return Number(value.slice(0, 4)) < 1900 ? "—" : value;
 }
 
+/** Total Days = today minus Sales Order Date — added 2026-09-07 per direct production
+ * feedback on a real bug: "Days in Stage" only counts time in the current SUB-status
+ * (e.g. "At Stores"), not the order's whole age. Real example given live: an order
+ * showed "3 days" (days since it moved to Stores) when it had actually been sitting for
+ * 34-39 days total since it was placed. This column is the simple, unambiguous total —
+ * confirmed exact formula: "today minus mein sales order date". Deliberately not
+ * sortable on its own: it's a direct function of Sales Order Date, which already is. */
+function totalDaysSinceSalesOrder(salesOrderDate: string | null): number | null {
+  if (!salesOrderDate || Number(salesOrderDate.slice(0, 4)) < 1900) return null;
+  const startMs = new Date(`${salesOrderDate}T00:00:00Z`).getTime();
+  if (Number.isNaN(startMs)) return null;
+  const now = new Date();
+  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return Math.max(0, Math.round((todayUtc - startMs) / (24 * 60 * 60 * 1000)));
+}
+
 /** Builds a link that changes only `sortBy`/`sortDir` (or `page`, for pagination),
  * preserving every other current query param — same logic the page used to do
  * server-side, just running client-side now since this whole table is a client
@@ -112,18 +128,31 @@ function tatSortValue(order: OrderRow): number | null {
     orderPriority: order.order_priority,
     onHold: order.on_hold,
     currentStatusPendingDays: order.current_status_pending_days,
-    revisedExFactoryDate: order.revised_ex_factory_date,
   });
   if (standard.standardDays === null) return null;
   return (order.current_status_pending_days ?? 0) - standard.standardDays;
 }
 
-/** Worst-first ordinal for the On Time badge — "delayed" sorts above "unknown" sorts
- * above "on_track", same worst-first convention as tatSortValue above. */
+/** Worst-first ordinal for the On Time badge — "delayed" sorts above "late" sorts above
+ * "unknown" sorts above "on_track", same worst-first convention as tatSortValue above. */
 function onTimeSortValue(order: OrderRow, stageById: Map<string, StageRow>): number {
   const stage = order.stage_id ? stageById.get(order.stage_id) : undefined;
-  const status = onTimeStatus(order.promised_delivery_date, order.revised_ex_factory_date, stage?.is_terminal ?? false);
-  return status === "delayed" ? 2 : status === "unknown" ? 1 : 0;
+  const standard = stageStandard({
+    rawCurrentStatus: order.raw_current_status,
+    quality: order.quality,
+    size: order.size,
+    stdCubage: order.std_cubage,
+    orderPriority: order.order_priority,
+    onHold: order.on_hold,
+    currentStatusPendingDays: order.current_status_pending_days,
+  });
+  const status = onTimeStatus(
+    order.promised_delivery_date,
+    order.revised_ex_factory_date,
+    stage?.is_terminal ?? false,
+    standard.standardDays,
+  );
+  return status === "delayed" ? 3 : status === "late" ? 2 : status === "unknown" ? 1 : 0;
 }
 
 /** Copies BOTH a plain-text (tab-separated) and a real HTML `<table>` representation of
@@ -440,6 +469,12 @@ export function OrdersTable({
                 <SortableLabel column="pendingDays" label="Days in Stage" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
                 <Table.ColumnResizer />
               </Table.Column>
+              {/* Not sortable on its own — see totalDaysSinceSalesOrder's comment; sort
+                  by Sales Order Date for the same ordering. */}
+              <Table.Column id="totalDays" defaultWidth={110} minWidth={90}>
+                Total Days
+                <Table.ColumnResizer />
+              </Table.Column>
               <Table.Column id="stageStandard" defaultWidth={170} minWidth={130}>
                 <ComputedSortableLabel label="Stage Standard (TAT)" kind="tat" computedSort={computedSort} onToggle={toggleComputedSort} />
                 <Table.ColumnResizer />
@@ -478,7 +513,6 @@ export function OrdersTable({
             <Table.Body>
               {sortedRows.map((order) => {
                 const stage = order.stage_id ? stageById.get(order.stage_id) : undefined;
-                const status = onTimeStatus(order.promised_delivery_date, order.revised_ex_factory_date, stage?.is_terminal ?? false);
                 const standard = stageStandard({
                   rawCurrentStatus: order.raw_current_status,
                   quality: order.quality,
@@ -487,8 +521,13 @@ export function OrdersTable({
                   orderPriority: order.order_priority,
                   onHold: order.on_hold,
                   currentStatusPendingDays: order.current_status_pending_days,
-    revisedExFactoryDate: order.revised_ex_factory_date,
                 });
+                const status = onTimeStatus(
+                  order.promised_delivery_date,
+                  order.revised_ex_factory_date,
+                  stage?.is_terminal ?? false,
+                  standard.standardDays,
+                );
                 return (
                   <Table.Row key={order.id} id={order.id}>
                     {selectMode ? (
@@ -521,6 +560,7 @@ export function OrdersTable({
                       <StageChip code={stage?.code ?? null} label={stage?.display_name ?? "Unresolved"} />
                     </Table.Cell>
                     <Table.Cell>{order.current_status_pending_days ?? "—"}</Table.Cell>
+                    <Table.Cell>{totalDaysSinceSalesOrder(order.sales_order_date) ?? "—"}</Table.Cell>
                     <Table.Cell>
                       {standard.status === "on_hold" || standard.status === "no_standard" ? (
                         <span className="text-muted">—</span>

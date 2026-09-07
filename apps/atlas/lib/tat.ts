@@ -55,12 +55,24 @@ export function formatDuration(ms: number): string {
  * wrong results: confirmed live, real orders sitting 500+ days past their Rev Ex Factory
  * date were showing "On track" because Promised Delivery Date happened to be a real but
  * much later (sometimes years later) date — not a data error, just a different field
- * that was never meant to override this signal. */
+ * that was never meant to override this signal.
+ *
+ * "late" added 2026-09-07, confirmed with production during a live walkthrough: an order
+ * can still be "on track" by the plain today-vs-Rev-Ex-Factory check while already
+ * unable to make that date — e.g. an order at Loom with an 18-day stage standard, where
+ * today + 18 days would already land past Rev Ex Factory, even though today itself
+ * hasn't. Production's own words, live-translated: "if stage standard is 18 [days]...
+ * today plus 18 days, if that's more than your expected [Rev Ex Factory], show them
+ * that" — and explicitly, when asked to confirm before this went to the sales team: "flag
+ * it as Late not delayed" (a real request from a later message, not this same call) —
+ * kept as its own third state rather than folded into "delayed", since it's a
+ * projection, not a fact yet. */
 export function onTimeStatus(
   promisedDeliveryDate: string | null,
   revisedExFactoryDate: string | null,
   isTerminalStage: boolean,
-): "on_track" | "delayed" | "unknown" {
+  stageStandardDays: number | null,
+): "on_track" | "late" | "delayed" | "unknown" {
   if (isTerminalStage) return "on_track";
   const target = revisedExFactoryDate ?? promisedDeliveryDate;
   if (!target) return "unknown";
@@ -72,5 +84,11 @@ export function onTimeStatus(
   if (Number(target.slice(0, 4)) < 1900) return "unknown";
   const targetMs = new Date(target).getTime();
   if (Number.isNaN(targetMs)) return "unknown";
-  return Date.now() > targetMs ? "delayed" : "on_track";
+  const now = Date.now();
+  if (now > targetMs) return "delayed";
+  if (stageStandardDays !== null) {
+    const predictedMs = now + stageStandardDays * 24 * 60 * 60 * 1000;
+    if (predictedMs > targetMs) return "late";
+  }
+  return "on_track";
 }

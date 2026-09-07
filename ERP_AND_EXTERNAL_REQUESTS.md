@@ -49,22 +49,32 @@ routing table, confirmed directly by Ayaan (2026-09-05), keyed on Customer Servi
   **What *is* built, 2026-09-07:** a Follow Up Person column on the Orders table,
   computed live from this exact routing table — ported directly from Ayaan's own
   reference sheet ("Ex India.xlsx", Sheet2, confirmed to match this section exactly) —
-  with the matching email (where confirmed — see
-  `db/orders/015_follow_up_person_directory_routing_names.sql`, 9 of the 10 names now
-  have a real email; "Shehbaaz" is still unmatched) available on hover/click-to-copy.
-  Explicit instruction: compute from Zone/Priority/Quality, **not** from NAV's raw
+  with the matching email available on hover/click-to-copy. **All 10 names now have a
+  real, confirmed email** (`db/orders/015_follow_up_person_directory_routing_names.sql`
+  + `016_shehbaaz_email.sql` — "Shehbaaz" was the last gap, spelled out and confirmed
+  directly by production in a live meeting: `shabaz.a@jaipurrugs.com`). Explicit
+  instruction: compute from Zone/Priority/Quality, **not** from NAV's raw
   `orders.follow_up_person` text — see `apps/atlas/lib/followUpPerson.ts`. Display/copy
   only, not automated routing or sending.
 
-  **A real gap in this routing table itself, confirmed live 2026-09-07:** it only
-  defines rules for "Knotted" and "Tufted" quality types. Handloom qualities (Handloom,
-  Handloom Double Back, Handloom Viscose — **1,166 real orders**) aren't either, and
-  have no column in the sheet at all, so those orders show no Follow Up Person. Same
-  situation for Dhurrie (526), Accessories (378), and several smaller quality types.
-  Worth asking whoever owns this sheet: is there a Handloom rule that's simply missing
-  from it, or does Handloom genuinely route differently (e.g. always one fixed person)?
-  Also still blank: "GROUP CO." zone (the sheet's own row literally says "Will update
-  manual" — 19 real orders) and the ~243 orders with no Customer Service Zone set at all.
+  **Still an open gap, but partially answered, 2026-09-07:** the routing table only
+  defines rules for "Knotted" and "Tufted" quality types. In the same production
+  meeting, Handloom and Flat-weave were confirmed to route **the same as whichever
+  person Tufted routes to** for that zone/priority — not yet reflected in
+  `lib/followUpPerson.ts` (pending an explicit go-ahead to change it, same as the
+  automated-alert pause above). Still genuinely unresolved: "GROUP CO." zone (the
+  sheet's own row literally says "Will update manual" — 19 real orders) and ~243 orders
+  with no Customer Service Zone set at all.
+
+### 8. Design and PPC stage-standard days need one clarified number each
+**Ask:** Ayaan / production — a single number for each, not a range or a mixed case.
+**Why:** production's own edits to `Atlas_Current_TAT_Rules.xlsx`'s Status-based TAT tab
+came back as text that can't be safely turned into one number: Design's priority-0
+override says "7 for rug 3 days for swatches" (two different cases in one cell — rug vs
+swatch — but swatches already get their own flat 15-day standard elsewhere, so it's
+unclear which case this even applies to), and PPC's says "1-2 Days" (a range). Left
+unchanged in `lib/stageTat.ts` rather than guessed.
+**Confirmed:** read directly from Ayaan's own edited copy of that file, 2026-09-07.
 
 ### 5. Unmapped ERP status text silently falls into "Other"
 **Ask:** NAV/ERP team — any order status text that doesn't match Atlas's known
@@ -100,6 +110,28 @@ name, partial/surname, full department roster) — 2026-09-07.
   drop the columns, or find out from NAV what (if anything) they should actually map to.
 
 ## Resolved
+
+- **2026-09-07 — real TAT numbers and two bugs, from a live walkthrough with
+  production:**
+  - Handloom and Dhurrie/flat-weave now get a real 12-day Loom standard (same as
+    Tufted) — previously Handloom was a guessed flat 8 days and flat-weave had no
+    standard at all (relying on a purely date-driven interim rule, now removed).
+  - Zero-priority Knotted orders now use a real, exact per-quality rate
+    ("Zero Priority Per Day Standard Work.xlsx", 44 qualities) instead of a coarse
+    4-tier guess by knot-count alone — confirmed the two disagree for several real
+    qualities (e.g. "8/8" is really 3, not the tiered guess of 2).
+  - Order Process, Stores, Branch, In Transit, Repair, and Finishing standards all
+    updated from production's direct edits to `Atlas_Current_TAT_Rules.xlsx`. Design and
+    PPC intentionally left unchanged — see request #8.
+  - **New "Late" status**, distinct from "Delayed": previously "On Time" only checked
+    whether today had already passed Rev Ex Factory, which could show "On track" for an
+    order that's already unable to make that date given how long its current stage
+    normally takes. Now: if (today + this stage's standard days) would land past Rev Ex
+    Factory, it shows "Late" — a projection, not yet a literal fact like "Delayed".
+  - **Fixed a real "Days in Stage" bug**: it only ever counted days in the current
+    *sub-status* (e.g. "At Stores"), not the order's real age — a real example showed
+    "3 days" for an order that had actually been around 34-39 days. Added a "Total Days"
+    column (today minus Sales Order Date) alongside it.
 
 - **2026-09-07 — requests #1 (Customer Service Zone), #2 (Original/Rev Ex India), #3
   (feed lag), and #6 (HSN/SAC No, Sales Line No_, Current Location):** all resolved the

@@ -29,7 +29,13 @@ export default async function DashboardPage() {
   const stageById = new Map(stages.map((s) => [s.id, s]));
   const delayedCount = orders.filter((o) => {
     const stage = o.stage_id ? stageById.get(o.stage_id) : undefined;
-    return onTimeStatus(o.promised_delivery_date, o.revised_ex_factory_date, stage?.is_terminal ?? false) === "delayed";
+    // stageStandardDays passed as null — listAllOrdersForStats only selects a narrow
+    // column set for the dashboard's stat aggregates, not the full order (quality, size,
+    // etc.) stageStandard() needs, so the new predictive "late" state never applies here
+    // (guarded off by that null); this preserves the exact same literal "already past
+    // Rev Ex Factory" count this dashboard metric always showed. Full computation runs
+    // in OrdersTable.tsx and the order detail page instead.
+    return onTimeStatus(o.promised_delivery_date, o.revised_ex_factory_date, stage?.is_terminal ?? false, null) === "delayed";
   }).length;
 
   const distinctSalesOrders = new Set(orders.map((o) => o.sales_order_no).filter(Boolean)).size;
