@@ -43,15 +43,26 @@ export function formatDuration(ms: number): string {
 }
 
 /** On-time signal for the build prompt's "simple on-time/delayed signal" — compares
- * today against promised_delivery_date (falling back to revised_ex_factory_date when no
- * promised date is set yet). Terminal stages (delivered) are never "delayed". */
+ * today against revised_ex_factory_date (falling back to promised_delivery_date only
+ * when Rev Ex Factory itself is missing). Terminal stages (delivered) are never
+ * "delayed".
+ *
+ * Precedence flipped 2026-09-07: this originally preferred promised_delivery_date, which
+ * was harmless only because that field was always blank under the old public API feed —
+ * see OrdersTable.tsx's own comment, written at the time, calling revised_ex_factory_date
+ * "the actual delay/expectancy signal". Now that orders-sync.mjs reads real
+ * Promised Delivery Date values directly from NAV, that old precedence produced visibly
+ * wrong results: confirmed live, real orders sitting 500+ days past their Rev Ex Factory
+ * date were showing "On track" because Promised Delivery Date happened to be a real but
+ * much later (sometimes years later) date — not a data error, just a different field
+ * that was never meant to override this signal. */
 export function onTimeStatus(
   promisedDeliveryDate: string | null,
   revisedExFactoryDate: string | null,
   isTerminalStage: boolean,
 ): "on_track" | "delayed" | "unknown" {
   if (isTerminalStage) return "on_track";
-  const target = promisedDeliveryDate ?? revisedExFactoryDate;
+  const target = revisedExFactoryDate ?? promisedDeliveryDate;
   if (!target) return "unknown";
   // Confirmed live 2026-09-07: 1,600+ real rows carry "1753-01-01" in Rev Ex Factory —
   // SQL Server's DateTime.MinValue, the ERP's "no date set" placeholder, not a real

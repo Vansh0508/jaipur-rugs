@@ -475,11 +475,12 @@ export function OrdersTable({ rows, stages }: { rows: OrderRow[]; stages: StageR
                     </Table.Cell>
                     <Table.Cell>{displayDate(order.original_ex_factory_date)}</Table.Cell>
                     <Table.Cell>{displayDate(order.sales_order_date)}</Table.Cell>
-                    {/* revised_ex_factory_date, not promised_delivery_date — confirmed
-                        2026-09-05 (via the pre-Atlas tool's own investigation, same ERP
-                        feed) that Promised Delivery Date is essentially always blank in
-                        real data; this is the actual delay/expectancy signal, and what
-                        onTimeStatus above already falls back to. */}
+                    {/* revised_ex_factory_date, not promised_delivery_date — this is the
+                        actual delay/expectancy signal, and what onTimeStatus above uses
+                        primarily (see its own doc: promised_delivery_date is now real
+                        data since the NAV switch, 2026-09-07, but often years later than
+                        Rev Ex Factory — a different field, not a better version of this
+                        one). */}
                     <Table.Cell>{displayDate(order.revised_ex_factory_date)}</Table.Cell>
                     <Table.Cell>
                       <OnTimeBadge status={status} />

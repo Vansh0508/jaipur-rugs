@@ -26,8 +26,15 @@ export default async function ShellLayout({ children }: { children: ReactNode })
       {/* UserMenu keeps its natural height; SidebarNav fills whatever's left
           (flex-1) and scrolls internally on its own (see that component's comment) —
           so it, and anything portaled into it, never scrolls away with the page.
-          Direct feedback, 2026-09-05: "keep the panel freeze even while scrolling." */}
-      <div className="flex h-full flex-col">
+          Direct feedback, 2026-09-05: "keep the panel freeze even while scrolling."
+          Collapsed to icon-only by default, expands on hover — direct feedback,
+          2026-09-07. `group/sidebar` (a named group, not the bare `group` class) so
+          nested "expand on hover" toggles inside UserMenu/SidebarNav don't collide with
+          any other `group`/`hover` pairing elsewhere on the page. The width transition
+          alone drives the reflow the feedback asked for ("main table and display gets
+          adjusted acc to the size") — `main` is already `flex-1`, so it fills whatever
+          this column isn't using on every frame of the animation, no JS needed. */}
+      <div className="group/sidebar flex h-full w-16 shrink-0 flex-col overflow-hidden border-r-2 border-border transition-[width] duration-200 ease-in-out hover:w-72">
         <UserMenu fullName={access.fullName} />
         <SidebarNav isAdmin={access.isAdmin} />
       </div>
