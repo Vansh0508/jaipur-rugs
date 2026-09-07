@@ -7,6 +7,7 @@ import { Table } from "@jaipur-rugs/ui-kit";
 import { StageChip, OnTimeBadge } from "./StageChip";
 import { onTimeStatus } from "@/lib/tat";
 import { stageStandard } from "@/lib/stageTat";
+import { resolveFollowUpPerson } from "@/lib/followUpPerson";
 import type { OrderRow, StageRow, SortableColumn } from "@/lib/queries/orders";
 
 // Client component (not the plain server component this used to be) — needed for the
@@ -403,6 +404,14 @@ export function OrdersTable({
                 <SortableLabel column="merchant" label="Merchant" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
                 <Table.ColumnResizer />
               </Table.Column>
+              <Table.Column id="customerPo" defaultWidth={130} minWidth={100}>
+                <SortableLabel column="customerPo" label="Customer PO" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
+                <Table.ColumnResizer />
+              </Table.Column>
+              <Table.Column id="salesPerson" defaultWidth={150} minWidth={110}>
+                <SortableLabel column="salesPerson" label="Sales Person" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
+                <Table.ColumnResizer />
+              </Table.Column>
               <Table.Column id="quality" defaultWidth={110} minWidth={80}>
                 <SortableLabel column="quality" label="Quality" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
                 <Table.ColumnResizer />
@@ -455,8 +464,11 @@ export function OrdersTable({
                 <SortableLabel column="currentLocation" label="Current Location" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
                 <Table.ColumnResizer />
               </Table.Column>
+              {/* Not sortable — this column shows a computed value (see the cell below),
+                  not a raw DB column, so a server-side sort by orders.follow_up_person
+                  wouldn't match what's actually displayed. Same reasoning as Stage. */}
               <Table.Column id="followUpPerson" defaultWidth={160} minWidth={120}>
-                <SortableLabel column="followUpPerson" label="Follow Up Person" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
+                Follow Up Person
                 <Table.ColumnResizer />
               </Table.Column>
               <Table.Column id="onTime" defaultWidth={100} minWidth={80}>
@@ -499,6 +511,8 @@ export function OrdersTable({
                       <div>{order.merchant_name ?? "—"}</div>
                       <div className="text-xs text-muted">{order.customer_no ?? "—"}</div>
                     </Table.Cell>
+                    <Table.Cell>{order.customer_po_no ?? "—"}</Table.Cell>
+                    <Table.Cell>{order.order_wise_merchant ?? "—"}</Table.Cell>
                     <Table.Cell>{order.quality ?? "—"}</Table.Cell>
                     <Table.Cell>{order.design ?? "—"}</Table.Cell>
                     <Table.Cell>{order.size ?? "—"}</Table.Cell>
@@ -529,12 +543,23 @@ export function OrdersTable({
                     <Table.Cell>{order.current_location ?? "—"}</Table.Cell>
                     <Table.Cell>
                       {(() => {
-                        if (!order.follow_up_person) return "—";
-                        const email = followUpPersonEmails[order.follow_up_person];
+                        // Computed from the real Zone x Priority x Quality-type routing
+                        // table (lib/followUpPerson.ts), NOT orders.follow_up_person —
+                        // explicit instruction, 2026-09-07: "dont take NAV data for
+                        // follow up person. refer to only [Ex India.xlsx]".
+                        const person = resolveFollowUpPerson({
+                          rawCurrentStatus: order.raw_current_status,
+                          quality: order.quality,
+                          customerServiceZone: order.customer_service_zone,
+                          orderPriority: order.order_priority,
+                          customerNo: order.customer_no,
+                        });
+                        if (!person) return <span className="text-muted">—</span>;
+                        const email = followUpPersonEmails[person];
                         if (!email) {
                           return (
                             <span title="No email on file for this name" className="text-muted">
-                              {order.follow_up_person}
+                              {person}
                             </span>
                           );
                         }
@@ -546,7 +571,7 @@ export function OrdersTable({
                             onClick={() => copyFollowUpPersonEmail(order.id, email)}
                             className="text-left hover:underline"
                           >
-                            {justCopied ? "Copied!" : order.follow_up_person}
+                            {justCopied ? "Copied!" : person}
                           </button>
                         );
                       })()}

@@ -123,6 +123,8 @@ const SWATCH_MAX_SQFT = 4;
 export const SORTABLE_COLUMNS = {
   otn: "otn_no",
   merchant: "merchant_name",
+  customerPo: "customer_po_no",
+  salesPerson: "order_wise_merchant",
   design: "design",
   quality: "quality",
   size: "size",
@@ -133,7 +135,9 @@ export const SORTABLE_COLUMNS = {
   revisedExFactory: "revised_ex_factory_date",
   revisedExIndia: "revised_ex_india_date",
   currentLocation: "current_location",
-  followUpPerson: "follow_up_person",
+  // followUpPerson deliberately absent — the Orders table displays a *computed* value
+  // (lib/followUpPerson.ts), not the raw orders.follow_up_person column, so sorting by
+  // that raw field would silently not match what's shown. Same reasoning as Stage.
 } as const;
 export type SortableColumn = keyof typeof SORTABLE_COLUMNS;
 

@@ -42,18 +42,29 @@ routing table, confirmed directly by Ayaan (2026-09-05), keyed on Customer Servi
     | Archive | any | Surendra | Avinash Kumar |
     | Group Co. | — | *(Ayaan to fill in manually)* | *(Ayaan to fill in manually)* |
 
-  **Not yet built into Atlas** — Customer Service Zone itself is no longer the blocker
-  (Atlas has read it directly from NAV since 2026-09-07, see Resolved below); still
-  waiting on real email addresses for each name above (asked Ayaan directly, 2026-09-06
-  — he'll provide once this table's format is confirmed understood, which it now is).
-  Ayaan's explicit instruction, 2026-09-07: **don't build the automated routing yet** —
-  he wants to confirm it with production once more first. What *is* built in the
-  meantime is a much smaller, separate thing: a plain Follow Up Person column on the
-  Orders table showing each order's real `follow_up_person` name (now populated
-  directly from NAV), with the matching email (where a confirmed one exists — see
-  `db/orders/014_follow_up_person_directory.sql`) available on hover/click-to-copy for
-  manual use. Not automated routing, not sending anything — just making an email easier
-  to find and copy by hand.
+  **Not yet built into Atlas as an automated alert** — Ayaan's explicit instruction,
+  2026-09-07: **don't build the automated routing/alert-sending yet** — he wants to
+  confirm it with production once more first.
+
+  **What *is* built, 2026-09-07:** a Follow Up Person column on the Orders table,
+  computed live from this exact routing table — ported directly from Ayaan's own
+  reference sheet ("Ex India.xlsx", Sheet2, confirmed to match this section exactly) —
+  with the matching email (where confirmed — see
+  `db/orders/015_follow_up_person_directory_routing_names.sql`, 9 of the 10 names now
+  have a real email; "Shehbaaz" is still unmatched) available on hover/click-to-copy.
+  Explicit instruction: compute from Zone/Priority/Quality, **not** from NAV's raw
+  `orders.follow_up_person` text — see `apps/atlas/lib/followUpPerson.ts`. Display/copy
+  only, not automated routing or sending.
+
+  **A real gap in this routing table itself, confirmed live 2026-09-07:** it only
+  defines rules for "Knotted" and "Tufted" quality types. Handloom qualities (Handloom,
+  Handloom Double Back, Handloom Viscose — **1,166 real orders**) aren't either, and
+  have no column in the sheet at all, so those orders show no Follow Up Person. Same
+  situation for Dhurrie (526), Accessories (378), and several smaller quality types.
+  Worth asking whoever owns this sheet: is there a Handloom rule that's simply missing
+  from it, or does Handloom genuinely route differently (e.g. always one fixed person)?
+  Also still blank: "GROUP CO." zone (the sheet's own row literally says "Will update
+  manual" — 19 real orders) and the ~243 orders with no Customer Service Zone set at all.
 
 ### 5. Unmapped ERP status text silently falls into "Other"
 **Ask:** NAV/ERP team — any order status text that doesn't match Atlas's known
