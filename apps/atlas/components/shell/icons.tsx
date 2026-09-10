@@ -86,3 +86,17 @@ export function SignOutIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+/** Sidebar collapse/expand toggle — added 2026-09-10 replacing the old hover-to-expand
+ * behavior with a real click button (direct feedback: "add a collapse icon which
+ * expands and collapses on demand"). A plain left-pointing chevron; the caller rotates
+ * it 180° (a `rotate-180` class) when the sidebar is collapsed, so the same glyph reads
+ * as "collapse" when expanded and "expand" when collapsed, rather than shipping two
+ * mirror-image icons. */
+export function ChevronIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} className={`${base} ${className ?? ""}`}>
+      <path d="M12.5 4.5 7 10l5.5 5.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}

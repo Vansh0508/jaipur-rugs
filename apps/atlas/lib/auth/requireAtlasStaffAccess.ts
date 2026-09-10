@@ -29,6 +29,10 @@ const ATLAS_DEPARTMENT_CODES = ["production", "shipping", "sales", "management"]
 export interface AtlasStaffAccess {
   employeeId: string;
   fullName: string;
+  /** From the Supabase Auth user, not the `employees` row (which has no email column) —
+   * added 2026-09-10 for the sidebar's profile popover. Null in the (unexpected) case an
+   * authenticated Supabase user somehow has no email on the session. */
+  email: string | null;
   /** org-wide admin (orders.read.all) — sees every order, can correct stage/shipping on any of them. */
   isAdmin: boolean;
   /** department codes this employee holds ANY grant on, restricted to the ones Atlas cares about. */
@@ -91,6 +95,7 @@ export async function requireAtlasStaffAccess(
   return {
     employeeId: employee.id,
     fullName: employee.full_name,
+    email: user.email ?? null,
     isAdmin,
     departmentCodes,
     hasSalespersonCodeGrants,
