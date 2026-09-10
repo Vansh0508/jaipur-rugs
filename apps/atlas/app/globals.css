@@ -1,0 +1,21 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+@import "../../../packages/config/tailwind-theme.css";
+
+/* Tailwind v4 auto-detects content within this app's own directory tree, but ui-kit's
+   components live in a sibling workspace package outside that tree — this tells the v4
+   scanner to include it too, replacing v3's JS `content: []` array. */
+@source "../../../packages/ui-kit/src";
+
+/* @heroui/styles defines --background (grey, #f5f5f5) and --surface (white) as raw CSS
+   vars but doesn't register either as a Tailwind utility (unlike --border/--muted/
+   --surface-secondary/etc, which it does register — confirmed by inspecting the compiled
+   output). Added here, app-scoped, rather than in the shared packages/config theme file
+   (AGENTS.md Section 4 — no other app needs these yet), for the shell redesign's grey
+   app background / white detached content card, 2026-09-10. */
+.bg-app {
+  background-color: var(--background);
+}
+.bg-surface {
+  background-color: var(--surface);
+}

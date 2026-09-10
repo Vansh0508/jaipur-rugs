@@ -570,6 +570,267 @@ export async function updateEmployee(supabase: SupabaseClient, input: UpdateEmpl
   return data;
 }
 
+// ---------------------------------------------------------------------------
+// Orders module (apps/atlas) — see db/orders/README.md. Every write here goes through a
+// service-role Edge Function (no client, including admin, has an insert/update RLS
+// policy on any orders-module table) — same posture as the journeys module above.
+
+export interface UpdateOrderStageInput {
+  orderId: string;
+  /** Must match a `stages.code` value — see db/orders/001_orders_core_schema.sql's seed. */
+  stageCode: string;
+}
+
+interface UpdateOrderStageResponse {
+  orderId: string;
+  stageCode: string;
+}
+
+/** Invokes `orders-update-stage`. Production department access or orders.write.all (admin) only. */
+export async function updateOrderStage(supabase: SupabaseClient, input: UpdateOrderStageInput) {
+  const { data, error } = await supabase.functions.invoke<UpdateOrderStageResponse>("orders-update-stage", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface SetShippingDetailInput {
+  orderId: string;
+  weightKg?: number | null;
+  lengthCm?: number | null;
+  widthCm?: number | null;
+  heightCm?: number | null;
+  foldable?: boolean | null;
+  carrier?: string | null;
+  quoteStatus?: "not_requested" | "requested" | "quoted" | "booked";
+  notes?: string | null;
+}
+
+interface SetShippingDetailResponse {
+  id: string;
+  orderId: string;
+}
+
+/**
+ * Invokes `orders-set-shipping-detail`. Only the fields present in `input` are changed —
+ * omitted fields keep whatever's already stored (see the function's own comment); pass
+ * `null` explicitly to clear a field. Production or shipping department access, or
+ * orders.write.all (admin).
+ */
+export async function setShippingDetail(supabase: SupabaseClient, input: SetShippingDetailInput) {
+  const { data, error } = await supabase.functions.invoke<SetShippingDetailResponse>(
+    "orders-set-shipping-detail",
+    { body: input },
+  );
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface GrantCustomerCodesInput {
+  /** The salesperson's own login email — must already have signed up (see
+   * employee-signup); this only grants access, it never creates an account. */
+  employeeEmail: string;
+  /** ERP `Customer No_` codes this salesperson/territory head should see — at least one required. */
+  customerNos: string[];
+}
+
+interface GrantCustomerCodesResponse {
+  employeeId: string;
+  granted: number;
+}
+
+/**
+ * Invokes `merchants-invite` — kept its original name (renaming would ripple through
+ * the deployed function's slug too) though it no longer creates a Clerk-linkable row.
+ * "Merchant" here means a territory head/B2B salesperson (Ayaan's correction,
+ * 2026-09-01), already a normal employee — this just grants that existing employee
+ * visibility into specific ERP customer codes. orders.write.all (admin) only.
+ */
+export async function grantCustomerCodes(supabase: SupabaseClient, input: GrantCustomerCodesInput) {
+  const { data, error } = await supabase.functions.invoke<GrantCustomerCodesResponse>("merchants-invite", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+interface AddOwnSalespersonCodesResponse {
+  employeeId: string;
+  added: string[];
+}
+
+/**
+ * Invokes `salesperson-codes-add` — self-service, always the CALLER'S OWN account
+ * (resolved server-side from their session, never a client-supplied id). No approval
+ * step (explicit product decision, 2026-09-02): there's no reliable way to derive a
+ * name<->code mapping from the ERP feed, so a person typing in their own already-known
+ * code is the real answer — see db/orders/010_salesperson_codes_self_service.sql.
+ */
+export async function addOwnSalespersonCodes(supabase: SupabaseClient, codes: string[]) {
+  const { data, error } = await supabase.functions.invoke<AddOwnSalespersonCodesResponse>(
+    "salesperson-codes-add",
+    { body: { codes } },
+  );
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+interface AddOwnCustomerCodesResponse {
+  employeeId: string;
+  added: string[];
+}
+
+/**
+ * Invokes `customer-codes-add` — the customer-code counterpart to
+ * addOwnSalespersonCodes, added 2026-09-10 alongside registering "Back Ops" as a real
+ * department. Same posture: self-service, always the CALLER'S OWN account, no approval
+ * step, effective immediately. Use this (not addOwnSalespersonCodes) when the value the
+ * person typed is an ERP customer number (e.g. "24523", "34836") rather than a
+ * salesperson code (e.g. "SALES-0039") — see db/orders/017_backops_department_self_service.sql
+ * for why the two were previously easy to conflate (pasting a customer code into the
+ * salesperson-code form silently added it as a salesperson code, which then matched
+ * nothing).
+ */
+export async function addOwnCustomerCodes(supabase: SupabaseClient, codes: string[]) {
+  const { data, error } = await supabase.functions.invoke<AddOwnCustomerCodesResponse>(
+    "customer-codes-add",
+    { body: { codes } },
+  );
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export type SelfServiceDepartmentCode = "management" | "production" | "backops";
+
+interface JoinDepartmentResponse {
+  employeeId: string;
+  departmentCode: string;
+}
+
+/**
+ * Invokes `join-department` — self-service, always the CALLER'S OWN account, always at
+ * the lowest access level ('view'). "management", "production", and (added 2026-09-10)
+ * "backops" are accepted — NOT "sales" (that department code means blanket view-all; an
+ * individual salesperson must stay scoped to their own codes via addOwnSalespersonCodes
+ * instead) — matching the explicit product decision, 2026-09-05: "Management, Production
+ * should [see] all orders... and not [be] bind[ing] with any customer code." Unlike
+ * management/production, joining "backops" grants NO order visibility by itself — it
+ * only marks org placement; a Back Ops employee still needs their own sales and/or
+ * customer code(s) via addOwnSalespersonCodes / addOwnCustomerCodes. NAV/QC/Shipping
+ * still aren't self-service ("will come in later stage," same decision).
+ */
+export async function joinOwnDepartment(supabase: SupabaseClient, departmentCode: SelfServiceDepartmentCode) {
+  const { data, error } = await supabase.functions.invoke<JoinDepartmentResponse>("join-department", {
+    body: { departmentCode },
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Orders workflow layer (db/orders/004) — the structured replacement for the
+// order@/mzpreview@ email relay. Prototyped and load-tested in a local preview tool
+// against the real live ERP feed before this schema/these functions were written; see
+// db/orders/README.md and apps/atlas/README.md.
+
+export interface CreateOrderRequestInput {
+  orderId: string;
+  requestTypeCode: "process_order" | "create_warehouse" | "post_warehouse" | "qc_review";
+  /** Required for create_warehouse; optional elsewhere — there is no accounts department, the requester supplies it. */
+  psft?: string;
+  note?: string;
+}
+
+interface CreateOrderRequestResponse {
+  request: { id: string; status: "open" | "blocked"; blockedReason: string | null; psft: string | null; warehouseNo: string | null; createdAt: string };
+  qcLocation: string | null;
+}
+
+/** Invokes `orders-create-request`. Open to any active employee — filing is the write-side equivalent of sending an email today. */
+export async function createOrderRequest(supabase: SupabaseClient, input: CreateOrderRequestInput) {
+  const { data, error } = await supabase.functions.invoke<CreateOrderRequestResponse>("orders-create-request", { body: input });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface ActionOrderRequestInput {
+  requestId: string;
+  status: "in_progress" | "done" | "rejected";
+  /** Required to mark a process_order request done — the ack IS the number. */
+  soNo?: string;
+  /** Required to mark a create_warehouse request done — referenced by every later step. */
+  warehouseNo?: string;
+  note?: string;
+}
+
+/** Invokes `orders-action-request`. Gated by the request type's owning department, or orders.write.all (admin). */
+export async function actionOrderRequest(supabase: SupabaseClient, input: ActionOrderRequestInput) {
+  const { data, error } = await supabase.functions.invoke<{ requestId: string; status: string }>("orders-action-request", { body: input });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+/** Invokes `orders-mark-request-seen` — the receipt that kills "maine dekha nahi." Open to any active employee. */
+export async function markOrderRequestSeen(supabase: SupabaseClient, requestId: string) {
+  const { data, error } = await supabase.functions.invoke<{ ok: true }>("orders-mark-request-seen", { body: { requestId } });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface RecordOrderMilestoneInput {
+  orderId: string;
+  milestone: "qc_done" | "packed" | "dispatched" | "awb_issued";
+  /** For awb_issued, this IS the AWB number, not a comment — the tracking link is generated from it. */
+  note?: string;
+}
+
+/** Invokes `orders-record-milestone`. Gated to production/shipping/nav access, or orders.write.all (admin). */
+export async function recordOrderMilestone(supabase: SupabaseClient, input: RecordOrderMilestoneInput) {
+  const { data, error } = await supabase.functions.invoke<{ ok: true }>("orders-record-milestone", { body: input });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+interface EscalateOrderResponse {
+  to: string;
+  level: number;
+  nextLevel: string | null;
+}
+
+/**
+ * Invokes `orders-escalate-order` — climbs the real named chain (Amit Dagar → Vishal
+ * Verma & Sumit Yadav → the Director) one rung per call, per order. Throws once already
+ * at the top level ("nowhere further to go") rather than a generic rate limit.
+ */
+export async function escalateOrder(supabase: SupabaseClient, orderId: string, reason?: string) {
+  const { data, error } = await supabase.functions.invoke<EscalateOrderResponse>("orders-escalate-order", { body: { orderId, reason } });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
 /**
  * `supabase.functions.invoke` surfaces a non-2xx response as a generic FunctionsHttpError
  * whose `.context` is the raw Response — the structured `{ error, conflict }` body isn't

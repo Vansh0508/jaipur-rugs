@@ -27,6 +27,10 @@ Do not introduce a second UI kit, a second charting library, a second ORM, or a 
 
 **Recorded override (2026-08-19):** Hub's employee avatars (`employees.avatar_path`) use a public Supabase Storage bucket (`employee-avatars`), same rationale and same one-off scope as the driver-photos override above — not a general license for future modules. See `db/team-members/006_hub_onboarding_and_admin.sql` and `lib/env.ts` in `apps/hub`.
 
+**Recorded override (2026-08-22):** `apps/atlas`'s external/merchant login uses **Clerk**, not Supabase Auth — a deliberate, discussed decision (not a silent one; the user explicitly chose it over the two Supabase-native options originally proposed — a lightweight cookie-identify flow or Supabase Auth magic link). Internal staff on Atlas still use the exact same Supabase Auth pattern as every other app; Clerk is scoped to the `/merchant/*` route tree only and is **not** promoted into `packages/auth` (Section 4 — a shared package change needs more than one app's need; no other app has an external audience yet). RLS recognizes a Clerk session via Supabase's Third-Party Auth integration (a one-time Dashboard configuration — Authentication → Third-Party Auth → Clerk — not something a migration can do; see `db/orders/README.md`). `merchants.clerk_user_id` is the join key, set only by `supabase/functions/merchants-link-clerk-account`, which verifies the Clerk session token itself via `@clerk/backend` rather than depending on that Dashboard integration being configured. If a second app ever needs external/customer auth, that's the point to revisit whether Clerk support belongs in `packages/auth` instead of being re-added per-app.
+
+**Recorded override (2026-08-22):** `packages/ui-kit` gained a small `react-bits`-pattern motion layer (`CountUp`, `StageTimeline`) for `apps/atlas`'s dashboard totals and per-order stage timeline, per Section 1.1's own recommendation — confirmed with the user before adding `framer-motion` as a dependency. These are **first-party implementations matching react-bits' visual patterns, not vendored react-bits source** — the build pass that added them had no way to pull and audit that source directly (`jsrepo`, the CLI react-bits distributes through, needs an interactive session). Whoever wants the literal upstream components should treat this as a from-scratch replacement, not an upgrade path.
+
 ---
 
 ## 2. Repo Layout (target state)
@@ -38,6 +42,7 @@ jaipur-rugs/
 │   ├── admin/                   # grouping folder — one department, two independently deployed apps
 │   │   ├── feedback-app/        # Vercel — employees/guests rate in-house drivers (Phase 1)
 │   │   └── internal-portal/     # on-premise — driver mgmt, reporting (Phase 2, placeholder only)
+│   ├── atlas/                    # cross-functional — merchant/production/shipping/sales order visibility (see db/orders/)
 │   ├── inventory/               # department app, added when its DB module ships
 │   ├── production/
 │   └── ...
@@ -107,7 +112,7 @@ Do not write frontend code against a schema that hasn't had its RLS policies def
 
 ## 5. Independent Per-App Deployment
 
-- Each app in `apps/` is its own Vercel project, its own subdomain (`os.jaipurrugs.com`, `inventory.jaipurrugs.com`, ...), its own environment variables.
+- Each app in `apps/` is its own Vercel project, its own subdomain (`os.jaipurrugs.com`, `inventory.jaipurrugs.com`, ...), its own environment variables. **`apps/atlas` is the one recorded exception**: it doesn't run on Vercel at all — it's deployed as a real Node process (Docker + Traefik on a Hostinger VPS, and PM2 on an internal office server; both point at the same Supabase database). See `apps/atlas/README.md`'s "Deployment" section and `deploy/atlas/README.md` before assuming Vercel conventions apply to it.
 - Session sharing across subdomains is handled by `packages/auth` setting the Supabase Auth cookie with `domain: .jaipurrugs.com` — this logic must not be reimplemented per-app. If an app needs custom session behavior, that's a signal to extend `packages/auth`, not to fork it.
 - A shared session proves "logged in," never "authorized for this app." Every app independently re-verifies the user's role/department access via RLS-scoped queries on load, and redirects unauthorized users back to the Hub launcher rather than rendering a broken or empty page.
 - No app, including Hub, ever holds a Supabase **service-role key**. If a task seems to require one client-side or in an app's server code, that's a design error — route the write through `db-management` instead.
@@ -161,6 +166,8 @@ Do not write frontend code against a schema that hasn't had its RLS policies def
 ## 10. Open Items to Track (not yet decided in this repo)
 
 - The DB scoring matrix that orders department module build priority is referenced by the monorepo plan but not yet captured as its own document — create it in `architecture.md` when the first department module is being prioritized, rather than deciding order informally.
+- ~~`architecture.md` doesn't exist in-repo yet~~ — **done, 2026-08-22**: created as part of the orders/`apps/atlas` build with a Module Tracker covering every module to date. The DB scoring matrix above is still not captured there — still open.
+- **`orders` module written but NOT YET APPLIED** to `matnispbauvvlnbsuzxq` (`db/orders/001`-`003`, backing `apps/atlas`) — same "written, not proof of applied" distinction this section already calls out for `supabase/functions/*`. The agent that wrote it had no live Supabase credentials in its session. See `db/MIGRATIONS.md`'s "Pending" section and `apps/atlas/README.md`'s numbered follow-up list before assuming any of it is live.
 - ~~Confirm the live Supabase project ID/name before any agent runs a migration~~ — **done, 2026-08-17**: the live project is `matnispbauvvlnbsuzxq` ("research-and-development-webapp"). It was not a clean slate — see `db/MIGRATIONS.md` for what else has run against it and why that history looks the way it does. Both `team-members` and `feedback` migrations (schema + advisor fixes) are applied and advisor-clean. `supabase/functions/*` are written but **not yet deployed** — that's still open.
 - ~~Where `db-management` lives~~ — decided in Section 4: Supabase Edge Functions under `supabase/functions/`, called via `packages/db-management-client`.
 - **Every migration that lands must be recorded in `db/MIGRATIONS.md`** (project, version, module, repo file), not just written as a `.sql` file — a `db/<module>/*.sql` file existing on disk is not proof it was ever applied; `db/MIGRATIONS.md` is what confirms that. Treat updating it as part of step 5 of Section 3.1, not an optional afterthought.

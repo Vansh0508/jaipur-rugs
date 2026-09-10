@@ -12,6 +12,13 @@ verify_jwt = false
 # yet at this bootstrap step (mirrors guest-signup). No JWT to gate on.
 verify_jwt = false
 
+[functions.employee-signup]
+# Open self-service sign-up (apps/atlas/app/signup, added 2026-09-02, and originally
+# apps/hub) — a brand-new person has no session yet by definition. Already correctly
+# `false` in the live deployment; this entry was just missing from this file, same
+# documentation gap as the five orders-module functions fixed 2026-08-27.
+verify_jwt = false
+
 [functions.submit-feedback]
 # Neither reviewer path (guestId or employeeId) carries a Supabase session anymore — both
 # are plain data labels in the request body, not a JWT. No JWT to gate on.
@@ -43,4 +50,49 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.upload-driver-photo]
+verify_jwt = true
+
+# Orders module (apps/atlas) — see db/orders/README.md. One auth system (Supabase Auth)
+# throughout; Clerk was briefly used for "merchants" before 2026-09-01's correction that
+# those are internal salespeople, not external customers — see
+# db/orders/006_merchant_auth_consolidation.sql.
+[functions.orders-sync]
+# Invoked by db/orders/003_orders_sync_cron.sql's pg_cron job, not a user session — no
+# JWT to gate on. Checks its own shared-secret header instead (see the function source);
+# this is NOT "no auth," it's "a different kind of auth than PostgREST's JWT gate."
+verify_jwt = false
+
+[functions.orders-update-stage]
+verify_jwt = true
+
+[functions.orders-set-shipping-detail]
+verify_jwt = true
+
+[functions.merchants-invite]
+verify_jwt = true
+
+[functions.merchants-link-clerk-account]
+# RETIRED 2026-09-01 — kept deployed only as a static 410 stub (see the function
+# source), verify_jwt off since it's a plain informational response to anyone who still
+# has the old URL, not a real auth-gated endpoint.
+verify_jwt = false
+
+# 004's workflow layer — every one of these expects a real employee session
+# (requireActiveEmployee/requireAtlasAccess both call anonClient.auth.getUser()), so
+# `true` (the CLI default when a function has no entry at all — these five were simply
+# missing from this file, not intentionally defaulted) is correct; listed explicitly for
+# the same defense-in-depth documentation reason as every function above.
+[functions.orders-create-request]
+verify_jwt = true
+
+[functions.orders-action-request]
+verify_jwt = true
+
+[functions.orders-mark-request-seen]
+verify_jwt = true
+
+[functions.orders-record-milestone]
+verify_jwt = true
+
+[functions.orders-escalate-order]
 verify_jwt = true

@@ -22,6 +22,48 @@ export interface AuthorizedEmployee {
 }
 
 /**
+ * The minimal gate: any active employee, no permission/department check. Used for
+ * Atlas actions that are intentionally open to any signed-in staff member — filing a
+ * work request (order punch, warehouse create, QC review) is the write-side equivalent
+ * of "any back-ops person can email order@ today," not something that needs a
+ * department grant. Actioning a request (marking it done) still goes through
+ * requireAtlasAccess with the owning department — this only gates *filing*.
+ */
+export async function requireActiveEmployee(
+  supabaseAdmin: SupabaseClient,
+  supabaseUrl: string,
+  anonKey: string,
+  req: Request,
+): Promise<AuthorizedEmployee> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) {
+    throw new AuthzError("missing Authorization header", 401);
+  }
+  const anonClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const {
+    data: { user },
+    error: userError,
+  } = await anonClient.auth.getUser();
+  if (userError || !user) {
+    throw new AuthzError("not authenticated", 401);
+  }
+  const { data: employee, error: employeeError } = await supabaseAdmin
+    .from("employees")
+    .select("id, status")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+  if (employeeError) {
+    throw new AuthzError(employeeError.message, 500);
+  }
+  if (!employee || employee.status !== "active") {
+    throw new AuthzError("no active employee record for this account", 403);
+  }
+  return { employeeId: employee.id, authUserId: user.id };
+}
+
+/**
  * Verifies the request carries a valid session for an active employee who holds an
  * admin-level department_access_grants row on the 'admin' department — the single
  * authorization primitive for the whole Internal Portal (mirrors
@@ -182,6 +224,109 @@ export async function requireEmployeePermission(
   }
 
   throw new AuthzError(`missing required permission: ${permissionKey}`, 403);
+}
+
+/**
+ * Atlas module (apps/atlas) authorization — mirrors requireEmployeePermission's shape but
+ * additionally accepts department_access_grants on any of the given department codes
+ * (production/shipping/sales), not just a permission key. Used by
+ * orders-update-stage/orders-set-shipping-detail: admin (orders.write.all) or a grant on
+ * the department that owns the field being written.
+ *
+ * Re-implements the check as plain queries rather than calling
+ * private.has_atlas_department_access/private.employee_has_permission directly, for the
+ * same reason requireInternalPortalAdmin does — private.* functions aren't
+ * PostgREST-exposed to any caller, service-role included.
+ */
+export async function requireAtlasAccess(
+  supabaseAdmin: SupabaseClient,
+  supabaseUrl: string,
+  anonKey: string,
+  req: Request,
+  options: { permissionKey?: string; departmentCodes?: string[] } = {},
+): Promise<AuthorizedEmployee> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) {
+    throw new AuthzError("missing Authorization header", 401);
+  }
+
+  const anonClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const {
+    data: { user },
+    error: userError,
+  } = await anonClient.auth.getUser();
+  if (userError || !user) {
+    throw new AuthzError("not authenticated", 401);
+  }
+
+  const { data: employee, error: employeeError } = await supabaseAdmin
+    .from("employees")
+    .select("id, status, primary_role_id")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+  if (employeeError) {
+    throw new AuthzError(employeeError.message, 500);
+  }
+  if (!employee || employee.status !== "active") {
+    throw new AuthzError("no active employee record for this account", 403);
+  }
+
+  if (options.permissionKey) {
+    const { data: permission } = await supabaseAdmin
+      .from("permissions")
+      .select("id")
+      .eq("key", options.permissionKey)
+      .maybeSingle();
+    if (permission) {
+      if (employee.primary_role_id) {
+        const { data: viaPrimaryRole } = await supabaseAdmin
+          .from("role_permissions")
+          .select("id")
+          .eq("role_id", employee.primary_role_id)
+          .eq("permission_id", permission.id)
+          .maybeSingle();
+        if (viaPrimaryRole) return { employeeId: employee.id, authUserId: user.id };
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      const { data: employeeRoles } = await supabaseAdmin
+        .from("employee_roles")
+        .select("role_id, valid_from, valid_to")
+        .eq("employee_id", employee.id)
+        .lte("valid_from", today);
+      const currentRoleIds = (employeeRoles ?? [])
+        .filter((er) => !er.valid_to || er.valid_to >= today)
+        .map((er) => er.role_id);
+      if (currentRoleIds.length > 0) {
+        const { data: viaAssignedRole } = await supabaseAdmin
+          .from("role_permissions")
+          .select("id")
+          .in("role_id", currentRoleIds)
+          .eq("permission_id", permission.id)
+          .maybeSingle();
+        if (viaAssignedRole) return { employeeId: employee.id, authUserId: user.id };
+      }
+    }
+  }
+
+  if (options.departmentCodes?.length) {
+    const { data: grant, error: grantError } = await supabaseAdmin
+      .from("department_access_grants")
+      .select("id, access_level, departments!inner(code)")
+      .eq("employee_id", employee.id)
+      .in("departments.code", options.departmentCodes)
+      .in("access_level", ["manage", "admin"])
+      .maybeSingle();
+    if (grantError) {
+      throw new AuthzError(grantError.message, 500);
+    }
+    if (grant) {
+      return { employeeId: employee.id, authUserId: user.id };
+    }
+  }
+
+  throw new AuthzError("not authorized for this Atlas action", 403);
 }
 
 /** Converts a thrown AuthzError (or anything else) into a JSON error Response. */

@@ -38,8 +38,27 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | (2026-08-18) | `employee_code_phone_login` | feedback | `db/feedback/006_employee_code_phone_login.sql` |
 | `20260819000000` (approx) | `hub_onboarding_and_admin` | team-members | `db/team-members/006_hub_onboarding_and_admin.sql` |
 | `20260819000001` (approx) | `hub_next_employee_code_advisor_fix` | team-members | `db/team-members/007_hub_advisor_fixes.sql` |
+| `20260827102505` | `orders_core_schema` | orders | `db/orders/001_orders_core_schema.sql` |
+| `20260827102520` | `orders_rls` | orders | `db/orders/002_orders_rls.sql` |
+| `20260827102535` | `orders_sync_cron` | orders | `db/orders/003_orders_sync_cron.sql` |
+| `20260827102559` | `orders_workflow_and_escalation` | orders | `db/orders/004_workflow_and_escalation.sql` |
+| `20260827102803` + `20260827102953` | `orders_advisor_fixes` + `orders_advisor_fixes_2` | orders | `db/orders/005_advisor_fixes.sql` |
+| `20260901062335` | `merchant_auth_consolidation` | orders | `db/orders/006_merchant_auth_consolidation.sql` |
+| (2026-09-02) | `orders_sync_secret_rpc_bridge` | orders | `db/orders/007_orders_sync_secret_rpc_bridge.sql` |
+| (2026-09-02) | `orders_sync_move_to_server` | orders | `db/orders/008_orders_sync_move_to_server.sql` |
+| (2026-09-02) | `orders_select_perf_fix` | orders | `db/orders/009_orders_select_perf_fix.sql` |
+| (2026-09-02) | `salesperson_codes_self_service` | orders | `db/orders/010_salesperson_codes_self_service.sql` |
+| `20260905151709` | `management_department_self_service` | orders | `db/orders/011_management_department_self_service.sql` |
+| `20260905151821` | `department_access_grants_unique_index` | orders | *(no repo file — applied directly, not yet backfilled)* |
+| `20260905160648` | `delay_alerts` | orders | `db/orders/012_delay_alerts.sql` |
+| `20260907053134` | `nav_direct_fields` | orders | `db/orders/013_nav_direct_fields.sql` |
+| `20260907091911` | `follow_up_person_directory` | orders | `db/orders/014_follow_up_person_directory.sql` |
+| `20260907094425` | `follow_up_person_directory_routing_names` | orders | `db/orders/015_follow_up_person_directory_routing_names.sql` |
+| `20260907161313` | `shehbaaz_email` | orders | `db/orders/016_shehbaaz_email.sql` |
+| `20260910054158` | `seed_backops_department` | orders | *(applied via `execute_sql`/`apply_migration` before this row's repo file existed — see 017 below)* |
+| `20260910060119` | `backops_department_self_service` | orders | `db/orders/017_backops_department_self_service.sql` |
 
-First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows above (2026-08-19). Security and performance advisors were
+First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
 (006, 008) rather than deferred. The only standing findings as of this ledger: an
 INFO-level "guests has RLS enabled but no policies for `anon`/unauthenticated" (intentional
@@ -306,6 +325,40 @@ an internal `source/` folder, so a shared file must be named with a leading `../
 the repo path literally) instead nests it under `source/` and the bundle fails with
 `Module not found`.
 
+**Orders module / Atlas (2026-08-27, new — `db/orders/001`–`005`):** built for
+`apps/atlas` — unified merchant/production/shipping/sales order visibility, replacing the
+standalone `Track JR Orders` tool, plus a workflow layer (structured work requests,
+milestones, an append-only audit log, the real named production-escalation chain) that
+replaces the order@/mzpreview@ email relay. Every design choice was prototyped and
+load-tested against the live ERP feed in a local preview tool before being written as
+these migrations (see `apps/atlas/README.md` and `architecture.md`). Target project
+re-confirmed against real table contents (not name alone) on 2026-08-27 — see the
+"Project" note above; the two-project ambiguity was also independently flagged in a
+Slack exchange with Vansh Gupta the same day, directing all modules into this one shared
+project rather than a new one, matching this ledger's existing guidance.
+
+Two real issues hit and fixed during application, both now folded into the source files:
+1. **`authorization` is a reserved word in Postgres** (`CREATE`/`SET ... AUTHORIZATION`) —
+   `001_orders_core_schema.sql`'s `orders.authorization` column failed with a syntax error
+   until quoted as `"authorization"`. Fixed in the source file itself (not a follow-up
+   migration, since nothing had been applied yet when it was caught).
+2. **`auth_rls_initplan` exact-shape gotcha**: wrapping the whole `->>` expression in
+   `select` — `(select (auth.jwt() ->> 'sub'))` — did NOT clear the advisor's WARN on this
+   project/Postgres version for `merchants_select`/`merchant_customer_codes_select`;
+   only wrapping the bare function call, `(select auth.jwt()) ->> 'sub'`, did. Confirmed
+   by re-running `get_advisors` after each attempt. `005_advisor_fixes.sql` carries the
+   working shape and the note for any future `auth.jwt()`/`auth.uid()` policy in this
+   module. (`private.can_view_order()`'s internal `auth.jwt() ->> 'sub'` call, inside a
+   SECURITY DEFINER SQL function rather than a bare policy `qual`, is invisible to this
+   specific advisor check — a known limitation, not something this pass chased further.)
+
+Advisor-clean after `005`: zero security findings beyond the pre-existing project-wide
+`auth_leaked_password_protection` WARN (unrelated, not from this module); zero performance
+findings beyond expected `unused_index` INFO notices on these brand-new, zero-traffic
+tables. `003_orders_sync_cron.sql`'s scheduled job is applied but fails closed (401) until
+the `orders-sync` Edge Function is deployed and the `orders_sync_secret` Vault entry is
+created — neither done yet, see "Still pending" below.
+
 ## Pre-existing history on this project (context, not part of this module's schema)
 
 This project was not a clean slate. Its migration history (`supabase_migrations.schema_migrations`)
@@ -360,3 +413,136 @@ were, since neither corresponds to anything in this repo.
   assuming this ledger entry is stale.
 - `vehicles.qr_code_url` is nullable and unpopulated for all 14 rows — the QR-generation
   endpoint doesn't exist yet (explicitly deferred, per the Internal Portal spec).
+
+## Orders module — still pending (schema + Edge Functions deployed, this is what's left)
+
+`db/orders/001`–`006` are applied and advisor-clean (see the module paragraph above). All
+10 Edge Functions (there are 10, not 9 — an earlier count in this file was off by one:
+`orders-sync`, `orders-update-stage`, `orders-set-shipping-detail`, `merchants-invite`,
+`merchants-link-clerk-account`, `orders-create-request`, `orders-action-request`,
+`orders-mark-request-seen`, `orders-record-milestone`, `orders-escalate-order`) are
+deployed (2026-08-27) and `ACTIVE`, smoke-tested with real HTTP calls (each one's own
+auth gate returns the expected error for a request that shouldn't be let through — not
+just "the deploy call returned success"). `supabase/config.toml` also picked up explicit
+`verify_jwt` entries for the five functions that were missing them (functionally the CLI
+default already matched — `true`, since all five expect a real employee session — this
+just closes a documentation gap matching every other function's explicit entry).
+
+**Admin role extended (2026-08-27):** the existing `Admin` role (bound to `vansh.g@pixxeldigital.com`, `PIX-001`, since the Hub module's original seed) did not automatically pick up `orders.read.all`/`orders.write.all` when `001` added them — Hub's original seed was a one-time "bind to every permission that exists right now," not an ongoing auto-bind. Explicitly granted both to `Admin` via a plain `role_permissions` insert, confirmed by the user, so that account can actually see/manage orders once real data exists. As of the same check: `orders` has 0 rows (`orders-sync` has never run), `merchants` has 0 rows (deliberately unseeded), and of the 3 employees with a completed signup, only `shipping@jaipurrugs.com` (a `shipping` department grant) passed the staff gate before this change — `Admin` now does too. Ayaan's own admin account (`EMP-011`, `ayaan.k@jaipurrugs.com`) was created the same way on 2026-09-01 via a direct `employee-signup` call (Hub itself was never deployed to the pilot server — see below), bound to the same `Admin` role.
+
+**Merchant auth consolidated onto Supabase Auth (2026-09-01, `006_merchant_auth_consolidation.sql`):** "merchants" turned out to mean internal Jaipur Rugs territory heads/B2B salespeople, not external customers — the real trigger was setting up Dinesh Choudhary (`dinesh.c@jaipurrugs.com`, territory head, 72 real ERP customer codes cross-checked against the live feed) and discovering the Clerk-based merchant login was broken in two independent, unfixable-from-this-session ways: `CLERK_SECRET_KEY` was never set as an Edge Function secret, and Clerk was never configured as a Supabase Third-Party Auth provider either. Rather than fix both, removed the whole second auth system: the `merchants` table is dropped, `merchant_customer_codes` now links directly to `employees` (nullable `employee_id` until that person actually signs up — same pattern as `escalation_levels.notify_employee_id`), `can_view_order()`'s merchant branch matches the caller's own employee id instead of a Clerk JWT, `apps/atlas/app/merchant/*` and `lib/merchant/*` are deleted, `merchants-invite` now grants an *existing* employee visibility into customer codes (no account creation), and `merchants-link-clerk-account` is retired as a static 410 stub (no delete-function tool available in this session). Dinesh's 72 codes are seeded but `employee_id` is still null for all of them — **he needs to sign up via the normal `employee-signup` flow (same as everyone else) before his access actually works**; nothing auto-links him.
+
+**ERP sync pipeline resolved, then moved off Edge Functions entirely (2026-09-02).**
+What was "Set `ORDERS_SYNC_SECRET`" below turned out to have no path forward via any
+tool in this session (no MCP tool sets project-level Edge Function secrets, and none
+ever will by design) — worked around via `007_orders_sync_secret_rpc_bridge.sql`
+(Postgres Vault + a `service_role`-only RPC bridge) instead, needing no Dashboard visit.
+`orders-sync` was then redeployed with a stream-parser rewrite to fix a real
+`WORKER_RESOURCE_LIMIT` failure on the ~120k-row/~145MB live feed — but a real
+invocation still failed the same way, twice, at a near-identical ~9.5s mark. That
+repeatability means it's a fixed platform ceiling (Edge Functions aren't sized for a
+pull this large), not a fixable inefficiency, so `008_orders_sync_move_to_server.sql`
+un-scheduled the pg_cron job entirely and the same logic now runs as a plain Node
+script on the app server itself (`apps/atlas/scripts/orders-sync.mjs`, invoked by a
+system cron entry there — a real machine has no such ceiling). The Edge Function stays
+deployed (harmless) for manual/small-feed use only.
+
+**`/orders` timeout, confirmed and fixed (2026-09-02, `009_orders_select_perf_fix.sql`).**
+The very first real page load against real data (14,214 rows) hit a Postgres statement
+timeout, confirmed via `pm2`'s error log (`{"code":"57014",...,"message":"canceling
+statement due to statement timeout"}`). Cause: `orders_select`'s policy called
+`private.can_view_order(id)` — an opaque function Postgres must invoke once per
+candidate row — whose "coarse" checks (admin permission, department access) don't
+depend on the row at all, yet were being fully re-derived (several joins) for every one
+of 14,214 rows before the `limit 500` could even apply. Fixed by giving `orders_select`
+its own policy that reads the row's own `salesperson_code`/`customer_no` columns
+directly and wraps every row-independent check in `(select ...)` so Postgres treats it
+as an InitPlan (evaluated once, not per row) — confirmed via `EXPLAIN ANALYZE` under a
+simulated real session: total execution time **9.6ms**, with the salesperson/merchant
+branches showing `never executed` (short-circuited once the hoisted admin check came
+back true). Also added `orders_updated_at_idx` — the list view's `order by updated_at
+desc` had no supporting index.
+
+**Self-service salesperson codes (2026-09-02, `010_salesperson_codes_self_service.sql`).**
+Asked directly: "mapping each sales person with the respective sales code is not
+possible" — confirmed by checking the real data (some ERP `Salesperson Code` values
+cover thousands of orders across several different client accounts, so they don't even
+map cleanly to one person each). There is no field in the ERP feed that ties a code to
+a real name, so no admin-compiled mapping was ever going to work. Fixed by generalizing
+`employees.salesperson_code` (a single nullable column, 0 rows ever used it) into
+`employee_salesperson_codes`, the same one-to-many shape `merchant_customer_codes`
+already uses for Dinesh's case — a person adds their own already-known code(s)
+themselves from a new `/my-access` page (or optionally at sign-up), through a new
+`salesperson-codes-add` Edge Function that only ever writes to the CALLER'S OWN
+employee_id. No approval step (explicit product decision — the underlying order data
+isn't confidential between salespeople in the first place), matching exactly how the
+pre-Atlas tool at ai.jaipurrugs.com/track-jr-order/ already treats a salesperson's login
+code as identical to their ERP salesperson code. `proxy.ts` and
+`requireAtlasStaffAccess.ts` both needed a real fix alongside this (not just the swap):
+they were still selecting the now-dropped `employees.salesperson_code` column, which
+would have 500'd on every request — caught before deploying, not after.
+
+Still required before this module is actually usable end-to-end:
+- Confirm `apps/atlas/scripts/orders-sync.mjs` has actually run successfully at least
+  once on the server (real orders populating the `orders` table) and that its cron
+  entry is in place — see the script's own header for the exact command.
+- Link Dinesh Choudhary's `merchant_customer_codes` rows to his real `employee_id` once
+  he signs up (see above) — a one-line `update` by email match, same as `006`'s backfill.
+- Regenerate `packages/supabase-client`'s types — the current `types.ts` has a
+  hand-authored section for this module, clearly flagged at the top of the file, standing
+  in until then.
+
+**Pilot scope, confirmed by Ayaan (2026-08-27):** London — customer code `34836`
+(back-ops: Rahul Sharma, head: Gaurav Mehtani) — a single person, single head, and the
+best-evidenced code in the corpus (the Theodora Jury thread traces punch → PSFT →
+warehouse → AWB end to end on this exact code). Apply the migration, seed **only**
+Rahul Sharma's employee account with a `nav`-adjacent... actually a `sales`/backend
+department grant scoped to this pilot before wider rollout — do not seed the other six
+back-ops staff or their regions yet. `escalation_levels.notify_employee_id` for all
+three rungs (Amit Dagar; Vishal Verma & Sumit Yadav; Yogesh Chaudhary) stays **null**
+until those four people have real employee accounts (via Hub signup) — escalating still
+records correctly without it, it just can't notify yet. Merchant identity (who
+externally, if anyone, gets Clerk self-service login for 34836 in this pilot) is
+still **unconfirmed** — do not seed a `merchants` row with a guessed name/email.
+
+**Back Ops opened up beyond the pilot (2026-09-10, `017_backops_department_self_service.sql`)
+— supersedes the single-person pilot scope above for department membership specifically.**
+Requested directly: register "Back Ops" as a real department, and let Back Ops staff
+self-add their own codes instead of an admin manually seeding each of the remaining six
+people. Two changes, both live:
+
+1. `departments` gained `Back Ops` / `backops` (idempotent insert, safe to re-run).
+   `join-department`'s self-service allow-list gained `"backops"` alongside
+   `management`/`production` — a Back Ops employee can now pick it at sign-up like any
+   other self-service department. Unlike `management`/`production`, `backops` was
+   deliberately **not** added to `private.has_blanket_orders_access()` or
+   `private.can_view_order()`'s blanket department list — joining it only marks org
+   placement, it grants zero order visibility by itself. This keeps the pilot's
+   per-code, deny-by-default posture intact while still letting people identify their
+   department.
+2. **New Edge Function `customer-codes-add`** — the missing counterpart to
+   `salesperson-codes-add` (010). Diagnosed a real reported bug: pasting a customer code
+   (e.g. `24523`, `34836`) into whatever "add my code" UI exists today silently inserted
+   it into `employee_salesperson_codes` (the only self-service endpoint that existed),
+   which never matches `orders.salesperson_code` — so it looked broken, while
+   SALES-XXXX-style codes worked fine through the same path. The schema/RLS side needed
+   **no changes at all** — `orders_select`/`can_view_order` already OR in a
+   `merchant_customer_codes` match, and its unique index
+   (`merchant_customer_codes_employee_customer_idx` on `(employee_id, customer_no)`
+   where `employee_id is not null`) already existed, ready for exactly this upsert
+   pattern. The only gap was the missing endpoint; this closes it. Each Back Ops
+   employee now adds exactly the customer code(s) and/or salesperson code(s) they
+   personally need via these two functions — nobody is hard-coded a default bundle
+   (e.g. all four Back Ops codes) anywhere.
+
+**Not done in this pass, flagged for whoever owns the actual Atlas frontend** (its source
+lives at `G:\Automation\MonoRepo\jaipur-rugs\`, github.com/Vansh0508/jaipur-rugs,
+branch `atlas-workflow-and-deploy` — same repo as this worktree, just possibly a
+different checkout/session): the "my access" page still needs a **Customer code(s)**
+input wired to `customer-codes-add`, distinct from the existing **Salesperson code(s)**
+field wired to `salesperson-codes-add` — right now nothing in the frontend calls the new
+function yet. Also requested but out of reach from a database-only session: trimming the
+department dashboards (open requests, delay alerts, escalation counter, live queue, the
+order-punch/warehouse/QC/PSFT request-filing UI) back down to plain order-tracking only,
+for every department, with the rest explicitly deferred to a later phase — that's a
+frontend layout decision with no database component, so it isn't reflected here.

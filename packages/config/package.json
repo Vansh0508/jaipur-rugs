@@ -2,6 +2,11 @@
   "name": "@jaipur-rugs/config",
   "private": true,
   "version": "0.0.0",
+  "exports": {
+    "./tailwind-theme.css": "./tailwind-theme.css",
+    "./tsconfig.base.json": "./tsconfig.base.json",
+    "./eslint-preset.cjs": "./eslint-preset.cjs"
+  },
   "files": [
     "tsconfig.base.json",
     "eslint-preset.cjs",
