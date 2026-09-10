@@ -1,0 +1,21 @@
+# Keeps `docker build`'s context (everything the Dockerfile's `COPY . .` can see) from
+# dragging in this machine's local node_modules, build caches, and .env files — without
+# this, a local build from this repo root would ship a possibly Windows-built
+# node_modules into the image, which is both wasteful (large, slow to hand to Docker)
+# and gets clobbered right after anyway by the Dockerfile's own
+# `COPY --from=deps /repo/node_modules ./node_modules` (the deps stage installs a real
+# Linux-container node_modules instead). Mirrors .gitignore's own list.
+node_modules
+**/node_modules
+**/node_modules/**
+.git
+.turbo
+.next
+dist
+build
+*.tsbuildinfo
+.env
+.env.local
+.env.*.local
+.DS_Store
+.vercel

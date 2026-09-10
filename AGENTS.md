@@ -112,7 +112,7 @@ Do not write frontend code against a schema that hasn't had its RLS policies def
 
 ## 5. Independent Per-App Deployment
 
-- Each app in `apps/` is its own Vercel project, its own subdomain (`os.jaipurrugs.com`, `inventory.jaipurrugs.com`, ...), its own environment variables.
+- Each app in `apps/` is its own Vercel project, its own subdomain (`os.jaipurrugs.com`, `inventory.jaipurrugs.com`, ...), its own environment variables. **`apps/atlas` is the one recorded exception**: it doesn't run on Vercel at all — it's deployed as a real Node process (Docker + Traefik on a Hostinger VPS, and PM2 on an internal office server; both point at the same Supabase database). See `apps/atlas/README.md`'s "Deployment" section and `deploy/atlas/README.md` before assuming Vercel conventions apply to it.
 - Session sharing across subdomains is handled by `packages/auth` setting the Supabase Auth cookie with `domain: .jaipurrugs.com` — this logic must not be reimplemented per-app. If an app needs custom session behavior, that's a signal to extend `packages/auth`, not to fork it.
 - A shared session proves "logged in," never "authorized for this app." Every app independently re-verifies the user's role/department access via RLS-scoped queries on load, and redirects unauthorized users back to the Hub launcher rather than rendering a broken or empty page.
 - No app, including Hub, ever holds a Supabase **service-role key**. If a task seems to require one client-side or in an app's server code, that's a design error — route the write through `db-management` instead.

@@ -142,8 +142,10 @@ export const SORTABLE_COLUMNS = {
 export type SortableColumn = keyof typeof SORTABLE_COLUMNS;
 
 /** Normalizes a filter value that might arrive as a single string or an array (a plain
- * <select multiple>'s query params, or a hand-built URL) into a clean string array. */
-function toList(value: string | string[] | undefined): string[] {
+ * <select multiple>'s query params, or a hand-built URL) into a clean string array.
+ * Exported — lib/queries/rugLens.ts reuses this exact normalization rather than
+ * redefining it, same reasoning as STOCK_CUSTOMER_CODES being exported above. */
+export function toList(value: string | string[] | undefined): string[] {
   if (value === undefined) return [];
   return (Array.isArray(value) ? value : [value]).map((v) => v.trim()).filter(Boolean);
 }

@@ -50,6 +50,16 @@ export function MerchantsIcon({ className }: IconProps) {
   );
 }
 
+export function RugLensIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} className={`${base} ${className ?? ""}`}>
+      <rect x="2.5" y="5" width="15" height="11" rx="1.5" />
+      <circle cx="10" cy="10.5" r="3" />
+      <path d="M7 5 8.2 3h3.6L13 5" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function AccessIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} className={`${base} ${className ?? ""}`}>

@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { AccessIcon, AlertsIcon, DashboardIcon, MerchantsIcon, OrdersIcon } from "./icons";
+import { AccessIcon, AlertsIcon, DashboardIcon, MerchantsIcon, OrdersIcon, RugLensIcon } from "./icons";
 
 interface NavLink {
   href: string;
@@ -33,6 +33,11 @@ export function SidebarNav({ isAdmin }: { isAdmin: boolean }) {
     { href: "/dashboard", label: "Dashboard", icon: DashboardIcon },
     { href: "/orders", label: "Orders", icon: OrdersIcon },
     { href: "/alerts", label: "Alerts", icon: AlertsIcon },
+    // Shown to everyone with general Atlas access, same as Orders/Alerts — actual
+    // access (Sales/Back Ops/admin, see requireRugLensAccess.ts) is gated by the page
+    // itself, which shows a plain "restricted" notice rather than hiding the link
+    // entirely (this component only knows `isAdmin`, not department grants).
+    { href: "/rug-lens", label: "RugLens", icon: RugLensIcon },
     ...(isAdmin ? [{ href: "/merchants", label: "Merchants", icon: MerchantsIcon }] : []),
     { href: "/my-access", label: "My access", icon: AccessIcon },
   ];

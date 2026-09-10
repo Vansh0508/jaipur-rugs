@@ -8,23 +8,17 @@ import { StageChip, OnTimeBadge } from "./StageChip";
 import { onTimeStatus } from "@/lib/tat";
 import { stageStandard } from "@/lib/stageTat";
 import { resolveFollowUpPerson } from "@/lib/followUpPerson";
+import { displayDate } from "@/lib/displayDate";
+import { copyToClipboard, buildClipboardText, buildClipboardHtml } from "@/lib/clipboardCopy";
 import type { OrderRow, StageRow, SortableColumn } from "@/lib/queries/orders";
 
 // Client component (not the plain server component this used to be) — needed for the
 // row-selection + copy-as-Excel feature (real client state), and for building sort
 // links locally off the current URL (useSearchParams) rather than needing a function
 // prop passed across the server/client boundary, which Next.js doesn't allow.
-
-/** A handful of date columns display the raw ERP value directly (unlike onTimeStatus/
- * stageStandard, which already compute against it) — this keeps those displays (and the
- * copy-to-Excel/email output) from showing "1753-01-01" (SQL Server's DateTime.MinValue,
- * the ERP's own "no date set" placeholder, confirmed live 2026-09-07) as if it were a
- * real date. orders-sync.mjs now converts this to null at the source going forward, but
- * rows not yet re-synced still carry the stale value until the next sync run. */
-function displayDate(value: string | null | undefined): string {
-  if (!value) return "—";
-  return Number(value.slice(0, 4)) < 1900 ? "—" : value;
-}
+//
+// displayDate moved to lib/displayDate.ts, 2026-09-10, so RugLensTable can reuse it —
+// see that file's comment for the original rationale.
 
 /** Total Days = today minus Sales Order Date — added 2026-09-07 per direct production
  * feedback on a real bug: "Days in Stage" only counts time in the current SUB-status
@@ -172,112 +166,42 @@ function onTimeSortValue(order: OrderRow, stageById: Map<string, StageRow>): num
  * cause as the earlier login-cookie bug). Falls back to a hidden CONTENTEDITABLE div
  * (not a plain textarea — a textarea can only ever carry plain text) holding the real
  * HTML, selected via Range/Selection and copied with execCommand("copy"), which does
- * carry the selection's HTML formatting and works without a secure context. */
-async function copyToClipboard(text: string, html: string): Promise<boolean> {
-  if (typeof navigator !== "undefined" && navigator.clipboard && typeof ClipboardItem !== "undefined" && window.isSecureContext) {
-    try {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          "text/plain": new Blob([text], { type: "text/plain" }),
-          "text/html": new Blob([html], { type: "text/html" }),
-        }),
-      ]);
-      return true;
-    } catch {
-      // fall through to the contenteditable approach below
-    }
-  }
-  try {
-    const holder = document.createElement("div");
-    holder.contentEditable = "true";
-    holder.style.position = "fixed";
-    holder.style.opacity = "0";
-    holder.innerHTML = html;
-    document.body.appendChild(holder);
-    const range = document.createRange();
-    range.selectNodeContents(holder);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    const ok = document.execCommand("copy");
-    selection?.removeAllRanges();
-    document.body.removeChild(holder);
-    return ok;
-  } catch {
-    return false;
-  }
-}
+ * carry the selection's HTML formatting and works without a secure context.
+ *
+ * copyToClipboard/buildClipboardText/buildClipboardHtml moved to lib/clipboardCopy.ts,
+ * 2026-09-10, so RugLensTable can produce output in this exact same format — see that
+ * file's comment. Behavior here is unchanged; only the mechanics moved. */
+const RUG_TRACKING_HEADERS = [
+  "OTN No_", "Item No_", "Sales Order No_", "Customer No_", "Quality", "Design",
+  "GR Color Name", "BR Color Name", "Shape", "Size", "Construction", "Serial No_",
+  "Std Cubage", "Current Status", "Stage", "Days in Stage", "Original Ex Factory",
+  "Sales Order Date", "Rev Ex-Factory",
+];
 
-/** Columns included when copying selected rows — a plain-text, tab-separated table
- * (paste straight into Excel/Outlook/email) — the exact real workflow already happening
- * by hand today (see the GACHOT/Artemest dispatch-email screenshot this was built from):
- * someone manually re-typing a rug table into an email every time. Matches the old
- * tool's own "Copy for NAV (Excel row)" precedent, generalized from one order to
+/** Columns included when copying selected rows — the exact real workflow already
+ * happening by hand today (see the GACHOT/Artemest dispatch-email screenshot this was
+ * built from): someone manually re-typing a rug table into an email every time. Matches
+ * the old tool's own "Copy for NAV (Excel row)" precedent, generalized from one order to
  * whichever rows are selected, and widened to the fuller field set real dispatch emails
  * actually carry (GR/BR color, shape, serial no, std cubage) rather than just NAV's own
  * narrower payload shape. */
+function clipboardCells(o: OrderRow, stageById: Map<string, StageRow>): (string | number | null)[] {
+  const stage = o.stage_id ? stageById.get(o.stage_id) : undefined;
+  return [
+    o.otn_no, o.item_no, o.sales_order_no, o.customer_no, o.quality, o.design,
+    o.gr_color_name, o.br_color_name, o.shape, o.size, o.construction, o.serial_no,
+    o.std_cubage, o.raw_current_status, stage?.display_name ?? "",
+    o.current_status_pending_days,
+    displayDate(o.original_ex_factory_date), displayDate(o.sales_order_date), displayDate(o.revised_ex_factory_date),
+  ];
+}
+
 function buildClipboardRows(selected: OrderRow[], stageById: Map<string, StageRow>): string {
-  const headers = [
-    "OTN No_", "Item No_", "Sales Order No_", "Customer No_", "Quality", "Design",
-    "GR Color Name", "BR Color Name", "Shape", "Size", "Construction", "Serial No_",
-    "Std Cubage", "Current Status", "Stage", "Days in Stage", "Original Ex Factory",
-    "Sales Order Date", "Rev Ex-Factory",
-  ];
-  const lines = [headers.join("\t")];
-  for (const o of selected) {
-    const stage = o.stage_id ? stageById.get(o.stage_id) : undefined;
-    lines.push(
-      [
-        o.otn_no, o.item_no, o.sales_order_no, o.customer_no, o.quality, o.design,
-        o.gr_color_name, o.br_color_name, o.shape, o.size, o.construction, o.serial_no,
-        o.std_cubage, o.raw_current_status, stage?.display_name ?? "",
-        o.current_status_pending_days,
-        displayDate(o.original_ex_factory_date), displayDate(o.sales_order_date), displayDate(o.revised_ex_factory_date),
-      ]
-        .map((v) => (v === null || v === undefined ? "" : String(v)))
-        .join("\t"),
-    );
-  }
-  return lines.join("\n");
+  return buildClipboardText(RUG_TRACKING_HEADERS, selected.map((o) => clipboardCells(o, stageById)));
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-/** Same rows/columns as buildClipboardRows above, as a real HTML `<table>` instead of
- * tab-separated text — see copyToClipboard's doc for why both are needed. Inline
- * `border` attributes/styles (not a <style> block or CSS classes) deliberately: Outlook
- * and most email clients strip <style> blocks and class-based styling from pasted/sent
- * HTML, but keep inline styles, so this is the only reliable way for the table to
- * actually show its borders once pasted into a real email body rather than one used
- * only within the browser itself. */
-function buildClipboardHtml(selected: OrderRow[], stageById: Map<string, StageRow>): string {
-  const headers = [
-    "OTN No_", "Item No_", "Sales Order No_", "Customer No_", "Quality", "Design",
-    "GR Color Name", "BR Color Name", "Shape", "Size", "Construction", "Serial No_",
-    "Std Cubage", "Current Status", "Stage", "Days in Stage", "Original Ex Factory",
-    "Sales Order Date", "Rev Ex-Factory",
-  ];
-  const cellStyle = "border:1px solid #999;padding:4px 8px;font-family:Calibri,Arial,sans-serif;font-size:11pt;";
-  const headStyle = `${cellStyle}background:#f2f2f2;font-weight:bold;text-align:left;`;
-  const headerRow = `<tr>${headers.map((h) => `<th style="${headStyle}">${escapeHtml(h)}</th>`).join("")}</tr>`;
-  const bodyRows = selected
-    .map((o) => {
-      const stage = o.stage_id ? stageById.get(o.stage_id) : undefined;
-      const cells = [
-        o.otn_no, o.item_no, o.sales_order_no, o.customer_no, o.quality, o.design,
-        o.gr_color_name, o.br_color_name, o.shape, o.size, o.construction, o.serial_no,
-        o.std_cubage, o.raw_current_status, stage?.display_name ?? "",
-        o.current_status_pending_days,
-        displayDate(o.original_ex_factory_date), displayDate(o.sales_order_date), displayDate(o.revised_ex_factory_date),
-      ];
-      return `<tr>${cells
-        .map((v) => `<td style="${cellStyle}">${escapeHtml(v === null || v === undefined ? "" : String(v))}</td>`)
-        .join("")}</tr>`;
-    })
-    .join("");
-  return `<table style="border-collapse:collapse;">${headerRow}${bodyRows}</table>`;
+function buildOrdersClipboardHtml(selected: OrderRow[], stageById: Map<string, StageRow>): string {
+  return buildClipboardHtml(RUG_TRACKING_HEADERS, selected.map((o) => clipboardCells(o, stageById)));
 }
 
 // Real Table component (Hero UI, via @jaipur-rugs/ui-kit), not a hand-rolled <table> —
@@ -365,7 +289,7 @@ export function OrdersTable({
   async function copySelected() {
     const selected = rows.filter((o) => selectedIds.has(o.id));
     if (!selected.length) return;
-    const ok = await copyToClipboard(buildClipboardRows(selected, stageById), buildClipboardHtml(selected, stageById));
+    const ok = await copyToClipboard(buildClipboardRows(selected, stageById), buildOrdersClipboardHtml(selected, stageById));
     setCopyStatus(
       ok
         ? `Copied ${selected.length} row${selected.length === 1 ? "" : "s"} — paste into Excel/email.`
