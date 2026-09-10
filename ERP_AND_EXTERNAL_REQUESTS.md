@@ -76,6 +76,29 @@ unclear which case this even applies to), and PPC's says "1-2 Days" (a range). L
 unchanged in `lib/stageTat.ts` rather than guessed.
 **Confirmed:** read directly from Ayaan's own edited copy of that file, 2026-09-07.
 
+### 9. The NAV database views themselves still lag real NAV by a few hours
+**Ask:** whoever manages NAV/these views — how often do `NAV-002-Rug List - Main` and
+`NAV-002-Rug List - ERP` actually refresh, and is there a faster, more truly-live source
+to read from instead if same-day visibility matters?
+**Why:** two real orders, confirmed directly by Ayaan — `JR/SO/2627/07353` (punched
+10:30 AM today) and `JR/SO/2627/07363` (processed just now) — are both completely
+absent from *both* database views, checked directly at 12:27 PM the same day (NAV's own
+server clock). This isn't an Atlas problem: this was queried straight against NAV,
+bypassing Atlas's sync entirely, and the gap is already there at the source. Ayaan
+separately confirmed the same ceiling (`07344`) in the actual Rug List tool itself, so
+this is a shared limitation across every NAV-based view available, not specific to
+Atlas's queries.
+**Also revises Resolved request #3 below**: switching Atlas to read the database
+directly (instead of the old public API feed) was a real, measured improvement — it
+fixed the *specific* stale-snapshot problem confirmed back then (two orders missing for
+days, an unchanging newest-order ceiling across repeated fetches). It did not make the
+data perfectly real-time. There's still a real, multi-hour gap between an order being
+punched/processed in NAV and it appearing in either view — smaller than the old public
+feed's lag, but not zero.
+**Confirmed:** live queries against both NAV views directly, 2026-09-10, cross-checked
+against Ayaan's own direct knowledge of both orders' real punch/process times, and
+against the actual Rug List tool showing the same ceiling.
+
 ### 5. Unmapped ERP status text silently falls into "Other"
 **Ask:** NAV/ERP team — any order status text that doesn't match Atlas's known
 stage-mapping list quietly lands in a generic "Other" bucket instead of being flagged.
@@ -148,10 +171,12 @@ name, partial/surname, full department roster) — 2026-09-07.
     as `customer_service_zone`, `original_ex_india_date`, `revised_ex_india_date`,
     `hsn_sac_no`, `sales_line_no`, `current_location`
     (`db/orders/013_nav_direct_fields.sql`).
-  - The database is genuinely live, fixing request #3's lag for good — the two orders
+  - The database is genuinely more live than the public feed was — the two orders
     proven missing from the public feed (`JR/SO/2627/07100`, `07110`) are both present
     here with real current statuses, and the newest order at the time was dated that
-    same day.
+    same day. **Update, 2026-09-10 — not a complete fix**: a real multi-hour lag still
+    exists in these same database views, confirmed directly with two different orders.
+    See request #9 below — better than the old feed, not fully solved.
   - **Correction to an earlier claim in this file:** request #6 previously said "Ground
     Color"/"Border Color" were just a different label for `GR Color Name`/`BR Color
     Name`. Checked directly against the real database — they're genuinely different:
