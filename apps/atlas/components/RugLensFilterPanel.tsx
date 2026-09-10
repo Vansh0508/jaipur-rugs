@@ -3,16 +3,18 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { FacetCheckboxList } from "@/components/FilterPrimitives";
+import { FacetCheckboxList, SingleSelect } from "@/components/FilterPrimitives";
 
-// Same portal-into-sidebar pattern as OrdersFilterPanel.tsx (see that file's comment) —
-// RugLens deliberately has just the one filter Ayaan actually asked for (Location),
-// since the "available open stock" condition itself (open-stock customer codes, PO
-// blank, not on hold) isn't something a user picks — it's what defines this whole view.
+// Same portal-into-sidebar pattern as OrdersFilterPanel.tsx (see that file's comment).
+// RugLens started with just Location (the one filter Ayaan first asked for, since the
+// "available open stock" condition itself — open-stock customer codes, PO blank, not on
+// hold — isn't something a user picks, it's what defines this whole view) and gained
+// Type (Sample/Rug) 2026-09-10 per direct follow-up feedback.
 export interface RugLensFilterPanelProps {
   locationOptions: string[];
   values: {
     location: string[];
+    itemType?: string;
   };
   hasAnyFilter: boolean;
 }
@@ -33,6 +35,18 @@ export function RugLensFilterPanel({ locationOptions, values, hasAnyFilter }: Ru
         label="Location"
         options={locationOptions.map((v) => ({ value: v, label: v }))}
         selected={values.location}
+      />
+
+      {/* Sample = Serial No_ starts with "SS" — see lib/queries/rugLens.ts's
+          applyRugLensFilters for the exact rule (and its null-handling caveat). */}
+      <SingleSelect
+        name="itemType"
+        label="Type"
+        selected={values.itemType}
+        options={[
+          { value: "sample", label: "Sample" },
+          { value: "rug", label: "Rug" },
+        ]}
       />
 
       <div className="flex flex-col gap-2 border-t-2 border-border pt-3">

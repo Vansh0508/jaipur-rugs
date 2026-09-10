@@ -1,4 +1,10 @@
-import { listOpenStock, listRugLensLocations, DEFAULT_PAGE_SIZE, type RugLensFilters } from "@/lib/queries/rugLens";
+import {
+  listOpenStock,
+  listRugLensLocations,
+  DEFAULT_PAGE_SIZE,
+  type RugLensFilters,
+  type RugLensItemType,
+} from "@/lib/queries/rugLens";
 import { listStages } from "@/lib/queries/orders";
 import { getServerSupabaseClient } from "@/lib/supabaseClient.server";
 import { requireRugLensAccess } from "@/lib/auth/requireRugLensAccess";
@@ -42,8 +48,11 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
   const pageSize = Number(toSingle(params.pageSize)) || DEFAULT_PAGE_SIZE;
   const page = Math.max(1, Number(toSingle(params.page)) || 1);
 
+  const itemType = toSingle(params.itemType) as RugLensItemType | undefined;
+
   const filters: RugLensFilters = {
     location: toArray(params.location),
+    itemType,
     page,
     pageSize,
   };
@@ -55,7 +64,7 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
   ]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const hasAnyFilter = toArray(params.location).length > 0;
+  const hasAnyFilter = toArray(params.location).length > 0 || Boolean(itemType);
   const from = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, totalCount);
 
@@ -77,7 +86,7 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
       <RugLensFilterPanel
         locationOptions={locationOptions}
         hasAnyFilter={hasAnyFilter}
-        values={{ location: toArray(params.location) }}
+        values={{ location: toArray(params.location), itemType }}
       />
 
       <div className="flex shrink-0 items-center justify-between">

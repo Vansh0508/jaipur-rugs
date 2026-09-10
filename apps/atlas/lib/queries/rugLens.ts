@@ -24,12 +24,19 @@ import { STOCK_CUSTOMER_CODES, toList } from "./orders";
 
 export type RugLensRow = Tables<"orders">;
 
+export type RugLensItemType = "sample" | "rug";
+
 export interface RugLensFilters {
   /** Current location (warehouse/showroom), exact multi-select — same semantics as
    * every other facet filter in this app: a row matches if its current_location is ANY
    * of the given ones. Free text sourced straight from the NAV sync (current_location),
    * not a controlled vocabulary — see listRugLensLocations for the real distinct list. */
   location?: string | string[];
+  /** Confirmed directly, 2026-09-10: a Serial No_ starting with "SS" is a sample, not a
+   * full rug — see applyRugLensFilters' itemType handling for the exact SQL (has to
+   * handle NULL serials explicitly, or they'd silently vanish from BOTH options under
+   * SQL's normal null-is-neither-true-nor-false comparison rules). */
+  itemType?: RugLensItemType;
   page?: number;
   pageSize?: number;
 }
@@ -59,6 +66,14 @@ function applyRugLensFilters(query: any, filters: RugLensFilters) {
 
   const locations = toList(filters.location);
   if (locations.length) query = query.in("current_location", locations);
+
+  // "Sample" = Serial No_ starts with "SS" (case-insensitive). A NULL serial_no matches
+  // NEITHER `ilike 'SS%'` NOR `not.ilike.SS%` under normal SQL null comparison rules
+  // (both come back UNKNOWN, not true) — without the explicit `.is.null` branch on the
+  // "rug" side, a row with no serial number would silently disappear from both filter
+  // options instead of counting as "not a sample."
+  if (filters.itemType === "sample") query = query.ilike("serial_no", "SS%");
+  if (filters.itemType === "rug") query = query.or("serial_no.is.null,serial_no.not.ilike.SS%");
 
   return query;
 }

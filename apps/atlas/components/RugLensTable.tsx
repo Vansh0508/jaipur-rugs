@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Table } from "@jaipur-rugs/ui-kit";
+import { Table, Modal } from "@jaipur-rugs/ui-kit";
 import { displayDate } from "@/lib/displayDate";
 import { copyToClipboard, buildClipboardText, buildClipboardHtml } from "@/lib/clipboardCopy";
 import type { RugLensRow } from "@/lib/queries/rugLens";
@@ -40,29 +40,49 @@ function clipboardCells(o: RugLensRow, stageById: Map<string, StageRow>): (strin
   ];
 }
 
+/** Same route both the thumbnail and the enlarged lightbox view hit — the API route
+ * always returns the original file bytes untouched (see app/api/rug-lens/photo/route.ts,
+ * "full original quality" — no server-side resize), so the only difference between the
+ * thumbnail and the lightbox is CSS sizing, not a second, bigger request. */
+function photoUrl(design: string, gr: string | null, br: string | null): string {
+  const params = new URLSearchParams({ design });
+  if (gr) params.set("gr", gr);
+  if (br) params.set("br", br);
+  return `/api/rug-lens/photo?${params.toString()}`;
+}
+
 /** Photo cell — points straight at the live read-through API route (see
  * app/api/rug-lens/photo/route.ts). Deliberately just an <img>, no client-side
  * matching logic here: the route does the real Design+GR+BR match server-side (it's
  * the only side that can actually reach the J-Vault share) and this just requests it.
  * A row with no matching photo (or the route being unreachable, e.g. from the public
  * deployment — see that route's header comment) shows a plain placeholder rather than
- * a broken-image icon, via onError. */
-function PhotoCell({ design, gr, br }: { design: string | null; gr: string | null; br: string | null }) {
+ * a broken-image icon, via onError. Clicking it opens the same image full-size — see
+ * the lightbox at the bottom of RugLensTable, added per direct feedback, 2026-09-10. */
+function PhotoCell({
+  design,
+  gr,
+  br,
+  onOpen,
+}: {
+  design: string | null;
+  gr: string | null;
+  br: string | null;
+  onOpen: () => void;
+}) {
   const [failed, setFailed] = useState(false);
   if (!design || failed) {
     return <div className="flex h-16 w-14 shrink-0 items-center justify-center rounded border-2 border-dashed border-border text-[10px] text-muted">No photo</div>;
   }
-  const params = new URLSearchParams({ design });
-  if (gr) params.set("gr", gr);
-  if (br) params.set("br", br);
   return (
     // eslint-disable-next-line @next/next/no-img-element -- server-only route, not a
     // static/optimizable asset next/image can handle.
     <img
-      src={`/api/rug-lens/photo?${params.toString()}`}
+      src={photoUrl(design, gr, br)}
       alt={`${design} ${gr ?? ""} ${br ?? ""}`.trim()}
-      className="h-16 w-14 shrink-0 rounded border-2 border-border object-cover"
+      className="h-16 w-14 shrink-0 cursor-zoom-in rounded border-2 border-border object-cover transition hover:opacity-80"
       onError={() => setFailed(true)}
+      onClick={onOpen}
     />
   );
 }
@@ -73,6 +93,9 @@ export function RugLensTable({ rows, stages }: { rows: RugLensRow[]; stages: Sta
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  // The row currently shown full-size in the lightbox — null when closed. Clicking the
+  // row itself (not just the thumbnail) also opens it, per direct feedback, 2026-09-10.
+  const [enlarged, setEnlarged] = useState<RugLensRow | null>(null);
 
   function toggleRow(id: string) {
     setSelectedIds((prev) => {
@@ -184,6 +207,10 @@ export function RugLensTable({ rows, stages }: { rows: RugLensRow[]; stages: Sta
                 Item No.
                 <Table.ColumnResizer />
               </Table.Column>
+              <Table.Column id="serialNo" defaultWidth={130} minWidth={100}>
+                Serial No.
+                <Table.ColumnResizer />
+              </Table.Column>
               {/* Added per direct feedback, 2026-09-10 — see the clipboard headers'
                   comment above for why these three specifically, and the "Hold
                   Remarks" caveat (it's really the raw on_hold value; there's no
@@ -214,15 +241,36 @@ export function RugLensTable({ rows, stages }: { rows: RugLensRow[]; stages: Sta
                     </Table.Cell>
                   ) : null}
                   <Table.Cell>
-                    <PhotoCell design={row.design} gr={row.gr_color_name} br={row.br_color_name} />
+                    <PhotoCell
+                      design={row.design}
+                      gr={row.gr_color_name}
+                      br={row.br_color_name}
+                      onOpen={() => row.design && setEnlarged(row)}
+                    />
                   </Table.Cell>
-                  <Table.Cell>{row.design ?? "—"}</Table.Cell>
+                  {/* The rest of the row also opens the lightbox on click, not just the
+                      thumbnail ("click the image or the row" — direct feedback,
+                      2026-09-10). A plain onClick on these text cells rather than on
+                      Table.Row itself: Table.Row's underlying primitive doesn't reliably
+                      forward an arbitrary onClick, and doing it per-cell also means the
+                      select-mode checkbox cell (not wrapped here) stays unaffected. */}
+                  <Table.Cell>
+                    <button
+                      type="button"
+                      className="cursor-pointer text-left disabled:cursor-default"
+                      disabled={!row.design}
+                      onClick={() => row.design && setEnlarged(row)}
+                    >
+                      {row.design ?? "—"}
+                    </button>
+                  </Table.Cell>
                   <Table.Cell>{row.gr_color_name ?? "—"}</Table.Cell>
                   <Table.Cell>{row.br_color_name ?? "—"}</Table.Cell>
                   <Table.Cell>{row.quality ?? "—"}</Table.Cell>
                   <Table.Cell>{row.size ?? "—"}</Table.Cell>
                   <Table.Cell>{row.current_location ?? "—"}</Table.Cell>
                   <Table.Cell>{row.item_no ?? "—"}</Table.Cell>
+                  <Table.Cell>{row.serial_no ?? "—"}</Table.Cell>
                   <Table.Cell>{row.customer_no ?? "—"}</Table.Cell>
                   <Table.Cell>{row.on_hold ?? "—"}</Table.Cell>
                   <Table.Cell>{row.customer_po_no ?? "—"}</Table.Cell>
@@ -232,6 +280,38 @@ export function RugLensTable({ rows, stages }: { rows: RugLensRow[]; stages: Sta
           </Table.Content>
         </Table.ResizableContainer>
       </Table>
+
+      {/* Full-size image lightbox — same underlying file as the thumbnail (see
+          photoUrl's comment), just shown large. Added per direct feedback, 2026-09-10. */}
+      <Modal>
+        <Modal.Backdrop isOpen={enlarged !== null} onOpenChange={(open) => !open && setEnlarged(null)}>
+          <Modal.Container placement="center">
+            <Modal.Dialog className="sm:max-w-2xl">
+              {enlarged && (
+                <>
+                  <Modal.CloseTrigger />
+                  <Modal.Header>
+                    <Modal.Heading>
+                      {enlarged.design} — {enlarged.gr_color_name ?? "—"} / {enlarged.br_color_name ?? "—"}
+                    </Modal.Heading>
+                  </Modal.Header>
+                  <Modal.Body>
+                    {enlarged.design ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- same
+                      // server-only route as the thumbnail, see PhotoCell's comment.
+                      <img
+                        src={photoUrl(enlarged.design, enlarged.gr_color_name, enlarged.br_color_name)}
+                        alt={`${enlarged.design} ${enlarged.gr_color_name ?? ""} ${enlarged.br_color_name ?? ""}`.trim()}
+                        className="max-h-[75vh] w-full rounded-lg object-contain"
+                      />
+                    ) : null}
+                  </Modal.Body>
+                </>
+              )}
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
+      </Modal>
     </div>
   );
 }
