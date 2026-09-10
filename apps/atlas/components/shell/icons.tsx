@@ -50,6 +50,16 @@ export function MerchantsIcon({ className }: IconProps) {
   );
 }
 
+export function RugLensIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} className={`${base} ${className ?? ""}`}>
+      <rect x="2.5" y="5" width="15" height="11" rx="1.5" />
+      <circle cx="10" cy="10.5" r="3" />
+      <path d="M7 5 8.2 3h3.6L13 5" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function AccessIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} className={`${base} ${className ?? ""}`}>
@@ -73,6 +83,20 @@ export function SignOutIcon({ className }: IconProps) {
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} className={`${base} ${className ?? ""}`}>
       <path d="M8 17H4.5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1H8" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M12.5 13.5 16 10l-3.5-3.5M16 10H7.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** Sidebar collapse/expand toggle — added 2026-09-10 replacing the old hover-to-expand
+ * behavior with a real click button (direct feedback: "add a collapse icon which
+ * expands and collapses on demand"). A plain left-pointing chevron; the caller rotates
+ * it 180° (a `rotate-180` class) when the sidebar is collapsed, so the same glyph reads
+ * as "collapse" when expanded and "expand" when collapsed, rather than shipping two
+ * mirror-image icons. */
+export function ChevronIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} className={`${base} ${className ?? ""}`}>
+      <path d="M12.5 4.5 7 10l5.5 5.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

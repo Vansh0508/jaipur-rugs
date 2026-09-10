@@ -30,12 +30,16 @@ export async function listStages(supabase: SupabaseClient): Promise<StageRow[]> 
   return data ?? [];
 }
 
-// Page sizes offered on the Orders list. Direct feedback, 2026-09-07: default down to
-// 25 (was 100) with 50/100 also offered — narrower set than the old tool's
-// 50/100/250/500/1000 now that the real table is ~46k rows (post the NAV-direct sync
-// switch) rather than the old ~14k, where a 500/1000-row page was a heavier fetch.
-export const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
-export const DEFAULT_PAGE_SIZE = 25;
+// Page sizes offered on the Orders list. Changed 2026-09-10 to 20/50/100/500 per direct
+// request (was 25/50/100, direct feedback 2026-09-07) — 500 stays available for anyone
+// who really wants one big page despite the heavier fetch; the table itself keeps its
+// column-resize handles rather than switching to a virtualized (fixed-width) rendering
+// mode to handle that size smoothly, a deliberate trade-off (Hero UI's virtualizer and
+// this table's drag-to-resize columns are mutually exclusive — confirmed against its
+// type definitions), so a 500-row page is fully usable, just not quite as buttery a
+// scroll as a virtualized list would be.
+export const PAGE_SIZE_OPTIONS = [20, 50, 100, 500] as const;
+export const DEFAULT_PAGE_SIZE = 20;
 
 export type ConstructionType = "knotted" | "tufted" | "handloom" | "other" | "swatch";
 export type AgingBucket = "0-7" | "8-15" | "16-30" | "30+";
@@ -142,8 +146,10 @@ export const SORTABLE_COLUMNS = {
 export type SortableColumn = keyof typeof SORTABLE_COLUMNS;
 
 /** Normalizes a filter value that might arrive as a single string or an array (a plain
- * <select multiple>'s query params, or a hand-built URL) into a clean string array. */
-function toList(value: string | string[] | undefined): string[] {
+ * <select multiple>'s query params, or a hand-built URL) into a clean string array.
+ * Exported — lib/queries/rugLens.ts reuses this exact normalization rather than
+ * redefining it, same reasoning as STOCK_CUSTOMER_CODES being exported above. */
+export function toList(value: string | string[] | undefined): string[] {
   if (value === undefined) return [];
   return (Array.isArray(value) ? value : [value]).map((v) => v.trim()).filter(Boolean);
 }

@@ -2,29 +2,33 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Table } from "@jaipur-rugs/ui-kit";
+import { useRouter, useSearchParams } from "next/navigation";
+import type { Key, Selection } from "@heroui/react";
+import { Table, Checkbox } from "@jaipur-rugs/ui-kit";
 import { StageChip, OnTimeBadge } from "./StageChip";
+import { ColumnVisibilityMenu, type ColumnDef } from "./ColumnVisibilityMenu";
+import { SelectionActionBar } from "./SelectionActionBar";
 import { onTimeStatus } from "@/lib/tat";
 import { stageStandard } from "@/lib/stageTat";
 import { resolveFollowUpPerson } from "@/lib/followUpPerson";
+import { displayDate } from "@/lib/displayDate";
+import { copyToClipboard, buildClipboardText, buildClipboardHtml } from "@/lib/clipboardCopy";
+import { exportRowsToExcel } from "@/lib/exportToExcel";
+import { useLocalPreference } from "@/lib/useLocalPreference";
 import type { OrderRow, StageRow, SortableColumn } from "@/lib/queries/orders";
 
-// Client component (not the plain server component this used to be) — needed for the
-// row-selection + copy-as-Excel feature (real client state), and for building sort
-// links locally off the current URL (useSearchParams) rather than needing a function
-// prop passed across the server/client boundary, which Next.js doesn't allow.
-
-/** A handful of date columns display the raw ERP value directly (unlike onTimeStatus/
- * stageStandard, which already compute against it) — this keeps those displays (and the
- * copy-to-Excel/email output) from showing "1753-01-01" (SQL Server's DateTime.MinValue,
- * the ERP's own "no date set" placeholder, confirmed live 2026-09-07) as if it were a
- * real date. orders-sync.mjs now converts this to null at the source going forward, but
- * rows not yet re-synced still carry the stale value until the next sync run. */
-function displayDate(value: string | null | undefined): string {
-  if (!value) return "—";
-  return Number(value.slice(0, 4)) < 1900 ? "—" : value;
-}
+// Client component — needed for real client state (row selection, column visibility,
+// the computed-column sort) and for building sort/page links locally off the current
+// URL (useSearchParams), which Next.js doesn't allow passing as a function prop across
+// the server/client boundary.
+//
+// displayDate lives in lib/displayDate.ts so RugLensTable can reuse it — see that
+// file's comment for the original rationale.
+//
+// Selection/sorting/column-visibility rebuilt onto Hero UI's native Table primitives,
+// 2026-09-10 (previously a hand-rolled `selectMode` boolean + manual checkbox column +
+// link-based sort headers). Selection is no longer an opt-in mode — the checkbox
+// column is always there, same as any real Hero UI selection table.
 
 /** Total Days = today minus Sales Order Date — added 2026-09-07 per direct production
  * feedback on a real bug: "Days in Stage" only counts time in the current SUB-status
@@ -61,61 +65,8 @@ function useLinkBuilder() {
   };
 }
 
-interface SortableHeaderProps {
-  column: SortableColumn;
-  label: string;
-  currentSort?: string;
-  currentDir: "asc" | "desc";
-  buildLink: (overrides: Record<string, string | undefined>) => string;
-}
-
-/** Clicking a sortable header sorts descending first (matches how everyone actually
- * wants to see e.g. pending days or OTN — biggest/most-recent first), clicking again
- * flips to ascending; an inactive column always starts from descending. Plain GET links,
- * not client state — the sort has to re-query the full server-side filtered/paginated
- * set, not just re-order whatever page happens to be loaded, so this deliberately
- * doesn't use Table's own allowsSorting/sortDescriptor (built for re-sorting an
- * already-loaded in-memory list client-side). */
-function SortableLabel({ column, label, currentSort, currentDir, buildLink }: SortableHeaderProps) {
-  const isActive = currentSort === column;
-  const nextDir = isActive && currentDir === "desc" ? "asc" : "desc";
-  return (
-    <Link href={buildLink({ sortBy: column, sortDir: nextDir, page: undefined })} className="flex items-center gap-1 hover:text-foreground">
-      {label}
-      <span className="text-[10px]">{isActive ? (currentDir === "desc" ? "▼" : "▲") : "⇅"}</span>
-    </Link>
-  );
-}
-
 type ComputedSortKind = "tat" | "onTime";
 type ComputedSort = { kind: ComputedSortKind; dir: "asc" | "desc" } | null;
-
-/** Stage Standard (TAT) and On Time are both computed values, not real columns — there's
- * nothing in the database to ask Postgres to sort by, so unlike every other sortable
- * column here, these two only re-order whatever page of rows is already loaded
- * (client-side), not the full filtered/paginated set. Only one of the two can be active
- * at once (clicking one takes over from the other), matching how the server-side sort
- * links above also only ever have one active column. Null always sorts last regardless
- * of direction, matching every other sort in this app. */
-function ComputedSortableLabel({
-  label,
-  kind,
-  computedSort,
-  onToggle,
-}: {
-  label: string;
-  kind: ComputedSortKind;
-  computedSort: ComputedSort;
-  onToggle: (kind: ComputedSortKind) => void;
-}) {
-  const isActive = computedSort?.kind === kind;
-  return (
-    <button type="button" onClick={() => onToggle(kind)} className="flex items-center gap-1 hover:text-foreground">
-      {label}
-      <span className="text-[10px]">{isActive ? (computedSort!.dir === "desc" ? "▼" : "▲") : "⇅"}</span>
-    </button>
-  );
-}
 
 /** How many days over (positive) or under (negative) its stage standard this order is —
  * null if there's no standard to compare against at all (excluded from the sort). */
@@ -172,127 +123,104 @@ function onTimeSortValue(order: OrderRow, stageById: Map<string, StageRow>): num
  * cause as the earlier login-cookie bug). Falls back to a hidden CONTENTEDITABLE div
  * (not a plain textarea — a textarea can only ever carry plain text) holding the real
  * HTML, selected via Range/Selection and copied with execCommand("copy"), which does
- * carry the selection's HTML formatting and works without a secure context. */
-async function copyToClipboard(text: string, html: string): Promise<boolean> {
-  if (typeof navigator !== "undefined" && navigator.clipboard && typeof ClipboardItem !== "undefined" && window.isSecureContext) {
-    try {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          "text/plain": new Blob([text], { type: "text/plain" }),
-          "text/html": new Blob([html], { type: "text/html" }),
-        }),
-      ]);
-      return true;
-    } catch {
-      // fall through to the contenteditable approach below
-    }
-  }
-  try {
-    const holder = document.createElement("div");
-    holder.contentEditable = "true";
-    holder.style.position = "fixed";
-    holder.style.opacity = "0";
-    holder.innerHTML = html;
-    document.body.appendChild(holder);
-    const range = document.createRange();
-    range.selectNodeContents(holder);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    const ok = document.execCommand("copy");
-    selection?.removeAllRanges();
-    document.body.removeChild(holder);
-    return ok;
-  } catch {
-    return false;
-  }
-}
+ * carry the selection's HTML formatting and works without a secure context.
+ *
+ * copyToClipboard/buildClipboardText/buildClipboardHtml moved to lib/clipboardCopy.ts,
+ * 2026-09-10, so RugLensTable can produce output in this exact same format — see that
+ * file's comment. Behavior here is unchanged; only the mechanics moved. */
+const RUG_TRACKING_HEADERS = [
+  "OTN No_", "Item No_", "Sales Order No_", "Customer No_", "Quality", "Design",
+  "GR Color Name", "BR Color Name", "Shape", "Size", "Construction", "Serial No_",
+  "Std Cubage", "Current Status", "Stage", "Days in Stage", "Original Ex Factory",
+  "Sales Order Date", "Rev Ex-Factory",
+];
 
-/** Columns included when copying selected rows — a plain-text, tab-separated table
- * (paste straight into Excel/Outlook/email) — the exact real workflow already happening
- * by hand today (see the GACHOT/Artemest dispatch-email screenshot this was built from):
- * someone manually re-typing a rug table into an email every time. Matches the old
- * tool's own "Copy for NAV (Excel row)" precedent, generalized from one order to
+/** Columns included when copying selected rows — the exact real workflow already
+ * happening by hand today (see the GACHOT/Artemest dispatch-email screenshot this was
+ * built from): someone manually re-typing a rug table into an email every time. Matches
+ * the old tool's own "Copy for NAV (Excel row)" precedent, generalized from one order to
  * whichever rows are selected, and widened to the fuller field set real dispatch emails
  * actually carry (GR/BR color, shape, serial no, std cubage) rather than just NAV's own
  * narrower payload shape. */
+function clipboardCells(o: OrderRow, stageById: Map<string, StageRow>): (string | number | null)[] {
+  const stage = o.stage_id ? stageById.get(o.stage_id) : undefined;
+  return [
+    o.otn_no, o.item_no, o.sales_order_no, o.customer_no, o.quality, o.design,
+    o.gr_color_name, o.br_color_name, o.shape, o.size, o.construction, o.serial_no,
+    o.std_cubage, o.raw_current_status, stage?.display_name ?? "",
+    o.current_status_pending_days,
+    displayDate(o.original_ex_factory_date), displayDate(o.sales_order_date), displayDate(o.revised_ex_factory_date),
+  ];
+}
+
 function buildClipboardRows(selected: OrderRow[], stageById: Map<string, StageRow>): string {
-  const headers = [
-    "OTN No_", "Item No_", "Sales Order No_", "Customer No_", "Quality", "Design",
-    "GR Color Name", "BR Color Name", "Shape", "Size", "Construction", "Serial No_",
-    "Std Cubage", "Current Status", "Stage", "Days in Stage", "Original Ex Factory",
-    "Sales Order Date", "Rev Ex-Factory",
-  ];
-  const lines = [headers.join("\t")];
-  for (const o of selected) {
-    const stage = o.stage_id ? stageById.get(o.stage_id) : undefined;
-    lines.push(
-      [
-        o.otn_no, o.item_no, o.sales_order_no, o.customer_no, o.quality, o.design,
-        o.gr_color_name, o.br_color_name, o.shape, o.size, o.construction, o.serial_no,
-        o.std_cubage, o.raw_current_status, stage?.display_name ?? "",
-        o.current_status_pending_days,
-        displayDate(o.original_ex_factory_date), displayDate(o.sales_order_date), displayDate(o.revised_ex_factory_date),
-      ]
-        .map((v) => (v === null || v === undefined ? "" : String(v)))
-        .join("\t"),
-    );
-  }
-  return lines.join("\n");
+  return buildClipboardText(RUG_TRACKING_HEADERS, selected.map((o) => clipboardCells(o, stageById)));
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function buildOrdersClipboardHtml(selected: OrderRow[], stageById: Map<string, StageRow>): string {
+  return buildClipboardHtml(RUG_TRACKING_HEADERS, selected.map((o) => clipboardCells(o, stageById)));
 }
 
-/** Same rows/columns as buildClipboardRows above, as a real HTML `<table>` instead of
- * tab-separated text — see copyToClipboard's doc for why both are needed. Inline
- * `border` attributes/styles (not a <style> block or CSS classes) deliberately: Outlook
- * and most email clients strip <style> blocks and class-based styling from pasted/sent
- * HTML, but keep inline styles, so this is the only reliable way for the table to
- * actually show its borders once pasted into a real email body rather than one used
- * only within the browser itself. */
-function buildClipboardHtml(selected: OrderRow[], stageById: Map<string, StageRow>): string {
-  const headers = [
-    "OTN No_", "Item No_", "Sales Order No_", "Customer No_", "Quality", "Design",
-    "GR Color Name", "BR Color Name", "Shape", "Size", "Construction", "Serial No_",
-    "Std Cubage", "Current Status", "Stage", "Days in Stage", "Original Ex Factory",
-    "Sales Order Date", "Rev Ex-Factory",
-  ];
-  const cellStyle = "border:1px solid #999;padding:4px 8px;font-family:Calibri,Arial,sans-serif;font-size:11pt;";
-  const headStyle = `${cellStyle}background:#f2f2f2;font-weight:bold;text-align:left;`;
-  const headerRow = `<tr>${headers.map((h) => `<th style="${headStyle}">${escapeHtml(h)}</th>`).join("")}</tr>`;
-  const bodyRows = selected
-    .map((o) => {
-      const stage = o.stage_id ? stageById.get(o.stage_id) : undefined;
-      const cells = [
-        o.otn_no, o.item_no, o.sales_order_no, o.customer_no, o.quality, o.design,
-        o.gr_color_name, o.br_color_name, o.shape, o.size, o.construction, o.serial_no,
-        o.std_cubage, o.raw_current_status, stage?.display_name ?? "",
-        o.current_status_pending_days,
-        displayDate(o.original_ex_factory_date), displayDate(o.sales_order_date), displayDate(o.revised_ex_factory_date),
-      ];
-      return `<tr>${cells
-        .map((v) => `<td style="${cellStyle}">${escapeHtml(v === null || v === undefined ? "" : String(v))}</td>`)
-        .join("")}</tr>`;
-    })
-    .join("");
-  return `<table style="border-collapse:collapse;">${headerRow}${bodyRows}</table>`;
+/** Same column shape as ExportOrdersButton.tsx's whole-list export — kept as a
+ * deliberate duplicate rather than a shared import, so the top-level "export
+ * everything" button and this selection-only export can evolve independently if they
+ * ever need to. */
+function exportCells(o: OrderRow, stageNameById: Map<string, string>) {
+  return {
+    "OTN No.": o.otn_no,
+    "Item No.": o.item_no,
+    "Sales Order No.": o.sales_order_no,
+    "Customer No.": o.customer_no,
+    "Merchant Name": o.merchant_name,
+    Stage: o.stage_id ? stageNameById.get(o.stage_id) ?? "" : "",
+    "Current Status (ERP)": o.raw_current_status,
+    "Days in Current Status": o.current_status_pending_days,
+    Quality: o.quality,
+    Design: o.design,
+    Size: o.size,
+    "Sales Order Date": o.sales_order_date,
+    "Promised Delivery Date": o.promised_delivery_date,
+    "Follow Up Person": o.follow_up_person,
+    "Salesperson Code": o.salesperson_code,
+  };
 }
 
-// Real Table component (Hero UI, via @jaipur-rugs/ui-kit), not a hand-rolled <table> —
-// its Table.ResizableContainer + sticky Table.Header is what actually freezes the
-// column headers correctly while the body scrolls (fixed 2026-09-05 after a manual
-// position:sticky-with-a-guessed-offset attempt turned out fragile), and gives every
-// column a real drag-to-resize handle.
-//
-// variant="secondary" — Hero UI's default ("primary") deliberately wraps the table in
-// its own gray padded card with a large border-radius (the actual white table renders
-// as an inset card inside that), by design. Stacked with our own rounded-xl border-2 on
-// ResizableContainer below, that produced three nested visual boundaries — direct
-// feedback, 2026-09-07: "there is one table behind also from the original table" (a
-// visible shadow/duplicate-card look, not a data issue). "secondary" has no root
-// background/padding/rounding of its own, leaving just the one border we already draw.
+/** Every column this table can show, in display order — the single source of truth
+ * both the header row and each body row render from (via the same filtered id list),
+ * so a hidden column can never desync header/cell counts. `sortable: true` covers both
+ * real DB-backed columns (SORTABLE_COLUMNS in lib/queries/orders.ts — a URL navigation
+ * re-fetches the sorted set) and the two computed ones, Stage Standard/On Time (a
+ * client-side re-sort of whatever page is already loaded) — see handleSortChange. */
+const ALL_COLUMNS: (ColumnDef & { defaultWidth: number; minWidth: number; sortable?: boolean })[] = [
+  { id: "otn", label: "OTN / Item", defaultWidth: 140, minWidth: 110, sortable: true },
+  { id: "merchant", label: "Merchant", defaultWidth: 160, minWidth: 110, sortable: true },
+  { id: "customerPo", label: "Customer PO", defaultWidth: 130, minWidth: 100, sortable: true },
+  { id: "salesPerson", label: "Sales Person", defaultWidth: 150, minWidth: 110, sortable: true },
+  { id: "quality", label: "Quality", defaultWidth: 110, minWidth: 80, sortable: true },
+  { id: "design", label: "Design", defaultWidth: 130, minWidth: 90, sortable: true },
+  { id: "size", label: "Size", defaultWidth: 100, minWidth: 70, sortable: true },
+  { id: "construction", label: "Construction", defaultWidth: 120, minWidth: 90, sortable: true },
+  // Stage isn't sortable — a real attempt at sorting it by the joined stages.display_order
+  // didn't actually work in practice (confirmed live 2026-09-05) and was removed rather
+  // than left silently broken.
+  { id: "stage", label: "Stage", defaultWidth: 110, minWidth: 90 },
+  { id: "pendingDays", label: "Days in Stage", defaultWidth: 120, minWidth: 90, sortable: true },
+  // Not sortable on its own — see totalDaysSinceSalesOrder's comment; sort by Sales
+  // Order Date for the same ordering.
+  { id: "totalDays", label: "Total Days", defaultWidth: 110, minWidth: 90 },
+  { id: "stageStandard", label: "Stage Standard (TAT)", defaultWidth: 170, minWidth: 130, sortable: true },
+  { id: "originalExFactory", label: "Original Ex Factory", defaultWidth: 130, minWidth: 100, sortable: true },
+  { id: "salesOrderDate", label: "Sales Order Date", defaultWidth: 120, minWidth: 100, sortable: true },
+  { id: "revisedExFactory", label: "Rev. Ex-Factory", defaultWidth: 130, minWidth: 100, sortable: true },
+  { id: "revisedExIndia", label: "Rev. Ex-India", defaultWidth: 120, minWidth: 100, sortable: true },
+  { id: "currentLocation", label: "Current Location", defaultWidth: 150, minWidth: 110, sortable: true },
+  // Not sortable — this column shows a computed value (see the cell below), not the
+  // raw orders.follow_up_person column, so a server-side sort by that column wouldn't
+  // match what's actually displayed. Same reasoning as Stage.
+  { id: "followUpPerson", label: "Follow Up Person", defaultWidth: 160, minWidth: 120 },
+  { id: "onTime", label: "On Time", defaultWidth: 100, minWidth: 80, sortable: true },
+];
+
 export function OrdersTable({
   rows,
   stages,
@@ -306,15 +234,18 @@ export function OrdersTable({
   followUpPersonEmails: Record<string, string>;
 }) {
   const stageById = useMemo(() => new Map(stages.map((s) => [s.id, s])), [stages]);
+  const stageNameById = useMemo(() => new Map(stages.map((s) => [s.id, s.display_name])), [stages]);
   const buildLink = useLinkBuilder();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const currentSort = searchParams.get("sortBy") ?? undefined;
   const currentDir = (searchParams.get("sortDir") as "asc" | "desc" | null) ?? "desc";
 
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set<Key>());
   const [computedSort, setComputedSort] = useState<ComputedSort>(null);
+  const [hiddenColumns, setHiddenColumns] = useLocalPreference<string[]>("atlas:orders:columns", []);
+  const hidden = useMemo(() => new Set(hiddenColumns), [hiddenColumns]);
+  const visibleColumns = useMemo(() => ALL_COLUMNS.filter((c) => !hidden.has(c.id)), [hidden]);
   // Which row's Follow Up Person email was just copied — flashes "Copied" on that one
   // cell for 1.5s, keyed by order id so it never de-syncs across the two lookups
   // sharing the same name (e.g. two orders both "SURENDRA DHAKAD").
@@ -334,44 +265,57 @@ export function OrdersTable({
     });
   }, [rows, computedSort, stageById]);
 
-  function toggleComputedSort(kind: ComputedSortKind) {
-    setComputedSort((prev) => {
-      if (!prev || prev.kind !== kind) return { kind, dir: "desc" };
-      if (prev.dir === "desc") return { kind, dir: "asc" };
-      return null;
-    });
+  // Unified sort state driving Hero UI's native sortable headers — real DB-backed
+  // columns reflect the URL's sortBy/sortDir; the two computed columns (Stage
+  // Standard/On Time) reflect `computedSort`; only one of the two mechanisms is ever
+  // active at a time, matching the original behavior.
+  const activeSortColumn = computedSort ? (computedSort.kind === "tat" ? "stageStandard" : "onTime") : currentSort;
+  const activeSortDir = computedSort ? computedSort.dir : currentDir;
+  function sortDirFor(columnId: string): "ascending" | "descending" | undefined {
+    if (activeSortColumn !== columnId) return undefined;
+    return activeSortDir === "desc" ? "descending" : "ascending";
   }
 
-  function toggleRow(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  /** An inactive column always starts from descending, matching every sortable header
+   * before this rewrite; clicking the SAME column again flips it. Hero UI/react-aria's
+   * own default toggle (ascending-first) is overridden here to preserve that. */
+  function handleSortChange(descriptor: { column: Key; direction: "ascending" | "descending" }) {
+    const columnId = String(descriptor.column);
+    const isSameColumn = activeSortColumn === columnId;
+    const dir: "asc" | "desc" = isSameColumn ? (descriptor.direction === "descending" ? "desc" : "asc") : "desc";
+
+    if (columnId === "stageStandard") {
+      setComputedSort({ kind: "tat", dir });
+      return;
+    }
+    if (columnId === "onTime") {
+      setComputedSort({ kind: "onTime", dir });
+      return;
+    }
+    setComputedSort(null);
+    router.push(buildLink({ sortBy: columnId, sortDir: dir, page: undefined }));
   }
 
-  const allSelected = rows.length > 0 && selectedIds.size === rows.length;
-  function toggleSelectAll() {
-    setSelectedIds(allSelected ? new Set() : new Set(rows.map((o) => o.id)));
+  const selectedCount = selectedKeys === "all" ? rows.length : selectedKeys.size;
+  function selectedRows(): OrderRow[] {
+    if (selectedKeys === "all") return rows;
+    return rows.filter((o) => (selectedKeys as Set<Key>).has(o.id));
   }
 
-  function exitSelectMode() {
-    setSelectMode(false);
-    setSelectedIds(new Set());
-    setCopyStatus(null);
+  async function handleCopySelected(): Promise<boolean> {
+    const selected = selectedRows();
+    if (!selected.length) return false;
+    return copyToClipboard(buildClipboardRows(selected, stageById), buildOrdersClipboardHtml(selected, stageById));
   }
 
-  async function copySelected() {
-    const selected = rows.filter((o) => selectedIds.has(o.id));
+  function handleExportSelected() {
+    const selected = selectedRows();
     if (!selected.length) return;
-    const ok = await copyToClipboard(buildClipboardRows(selected, stageById), buildClipboardHtml(selected, stageById));
-    setCopyStatus(
-      ok
-        ? `Copied ${selected.length} row${selected.length === 1 ? "" : "s"} — paste into Excel/email.`
-        : "Couldn't copy — try selecting fewer rows or a different browser.",
+    exportRowsToExcel(
+      selected.map((o) => exportCells(o, stageNameById)),
+      "Orders",
+      `atlas-orders-selected-${new Date().toISOString().slice(0, 10)}.xlsx`,
     );
-    setTimeout(() => setCopyStatus(null), 3000);
   }
 
   async function copyFollowUpPersonEmail(orderId: string, email: string) {
@@ -389,243 +333,189 @@ export function OrdersTable({
   return (
     <div className="flex h-full flex-col gap-2">
       <div className="flex shrink-0 items-center gap-3">
-        {selectMode ? (
-          <>
-            <span className="text-sm text-muted">{selectedIds.size} selected</span>
-            <button
-              type="button"
-              onClick={copySelected}
-              disabled={!selectedIds.size}
-              className="rounded-lg border-2 border-border px-3 py-1.5 text-sm hover:bg-surface-secondary disabled:opacity-40"
-            >
-              Copy selected
-            </button>
-            <button type="button" onClick={exitSelectMode} className="text-sm text-accent hover:underline">
-              Cancel
-            </button>
-            {copyStatus ? <span className="text-sm text-muted">{copyStatus}</span> : null}
-          </>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setSelectMode(true)}
-            className="rounded-lg border-2 border-border px-3 py-1.5 text-sm hover:bg-surface-secondary"
-          >
-            Select
-          </button>
-        )}
+        <ColumnVisibilityMenu columns={ALL_COLUMNS} hidden={hidden} onChange={(next) => setHiddenColumns([...next])} />
       </div>
 
-      <Table variant="secondary" className="h-full min-h-0 flex-1">
-        <Table.ResizableContainer className="h-full overflow-y-auto overflow-x-auto rounded-xl border-2 border-border">
-          <Table.Content aria-label="Orders">
-            <Table.Header className="sticky top-0 z-10 bg-surface-secondary text-xs uppercase text-muted">
-              {selectMode ? (
+      {/* `relative` so SelectionActionBar (an `absolute`-positioned floating bar) sits
+          over this table area specifically, not the whole viewport. */}
+      <div className="relative h-full min-h-0 flex-1">
+        {/* Real Table component (Hero UI, via @jaipur-rugs/ui-kit), not a hand-rolled
+            <table> — Table.ResizableContainer + sticky Table.Header freezes the column
+            headers correctly while the body scrolls, and gives every column a real
+            drag-to-resize handle.
+
+            variant="secondary" — Hero UI's default ("primary") deliberately wraps the
+            table in its own gray padded card with a large border-radius (the actual
+            white table renders as an inset card inside that), by design. Stacked with
+            our own rounded-xl border-2 on ResizableContainer below, that produced three
+            nested visual boundaries — direct feedback, 2026-09-07: "there is one table
+            behind also from the original table" (a visible shadow/duplicate-card look,
+            not a data issue). "secondary" has no root background/padding/rounding of
+            its own, leaving just the one border we already draw.
+
+            selectionMode="multiple" + selectionBehavior="toggle" is native Hero UI
+            table selection, 2026-09-10 (previously a hand-rolled selectMode boolean) —
+            always on, not an opt-in mode; sortDescriptor/onSortChange similarly
+            replace the old link/button-based sort headers with the table's own. */}
+        <Table variant="secondary" className="h-full min-h-0 flex-1">
+          <Table.ResizableContainer className="h-full overflow-y-auto overflow-x-auto rounded-xl border-2 border-border">
+            <Table.Content
+              aria-label="Orders"
+              selectionMode="multiple"
+              selectionBehavior="toggle"
+              selectedKeys={selectedKeys}
+              onSelectionChange={setSelectedKeys}
+              sortDescriptor={activeSortColumn ? { column: activeSortColumn, direction: activeSortDir === "desc" ? "descending" : "ascending" } : undefined}
+              onSortChange={handleSortChange}
+            >
+              <Table.Header className="sticky top-0 z-10 bg-surface-secondary text-xs uppercase text-muted">
                 <Table.Column id="select" defaultWidth={44} minWidth={44}>
-                  <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all" />
+                  <Checkbox slot="selection">
+                    <Checkbox.Content>
+                      <Checkbox.Control>
+                        <Checkbox.Indicator />
+                      </Checkbox.Control>
+                    </Checkbox.Content>
+                  </Checkbox>
                 </Table.Column>
-              ) : null}
-              <Table.Column isRowHeader id="otn" defaultWidth={140} minWidth={110}>
-                <SortableLabel column="otn" label="OTN / Item" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
-                <Table.ColumnResizer />
-              </Table.Column>
-              <Table.Column id="merchant" defaultWidth={160} minWidth={110}>
-                <SortableLabel column="merchant" label="Merchant" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
-                <Table.ColumnResizer />
-              </Table.Column>
-              <Table.Column id="customerPo" defaultWidth={130} minWidth={100}>
-                <SortableLabel column="customerPo" label="Customer PO" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
-                <Table.ColumnResizer />
-              </Table.Column>
-              <Table.Column id="salesPerson" defaultWidth={150} minWidth={110}>
-                <SortableLabel column="salesPerson" label="Sales Person" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
-                <Table.ColumnResizer />
-              </Table.Column>
-              <Table.Column id="quality" defaultWidth={110} minWidth={80}>
-                <SortableLabel column="quality" label="Quality" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
-                <Table.ColumnResizer />
-              </Table.Column>
-              <Table.Column id="design" defaultWidth={130} minWidth={90}>
-                <SortableLabel column="design" label="Design" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
-                <Table.ColumnResizer />
-              </Table.Column>
-              <Table.Column id="size" defaultWidth={100} minWidth={70}>
-                <SortableLabel column="size" label="Size" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
-                <Table.ColumnResizer />
-              </Table.Column>
-              <Table.Column id="construction" defaultWidth={120} minWidth={90}>
-                <SortableLabel column="construction" label="Construction" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
-                <Table.ColumnResizer />
-              </Table.Column>
-              {/* Stage is deliberately plain text, not sortable — a real attempt to sort
-                  by the joined stage's display_order didn't actually work in practice
-                  (confirmed live 2026-09-05), and rather than leave a sort control that
-                  silently does nothing, it's removed until that's fixed for real. */}
-              <Table.Column id="stage" defaultWidth={110} minWidth={90}>
-                Stage
-                <Table.ColumnResizer />
-              </Table.Column>
-              <Table.Column id="pendingDays" defaultWidth={120} minWidth={90}>
-                <SortableLabel column="pendingDays" label="Days in Stage" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
-                <Table.ColumnResizer />
-              </Table.Column>
-              {/* Not sortable on its own — see totalDaysSinceSalesOrder's comment; sort
-                  by Sales Order Date for the same ordering. */}
-              <Table.Column id="totalDays" defaultWidth={110} minWidth={90}>
-                Total Days
-                <Table.ColumnResizer />
-              </Table.Column>
-              <Table.Column id="stageStandard" defaultWidth={170} minWidth={130}>
-                <ComputedSortableLabel label="Stage Standard (TAT)" kind="tat" computedSort={computedSort} onToggle={toggleComputedSort} />
-                <Table.ColumnResizer />
-              </Table.Column>
-              <Table.Column id="originalExFactory" defaultWidth={130} minWidth={100}>
-                <SortableLabel column="originalExFactory" label="Original Ex Factory" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
-                <Table.ColumnResizer />
-              </Table.Column>
-              <Table.Column id="salesOrderDate" defaultWidth={120} minWidth={100}>
-                <SortableLabel column="salesOrderDate" label="Sales Order Date" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
-                <Table.ColumnResizer />
-              </Table.Column>
-              <Table.Column id="revisedExFactory" defaultWidth={130} minWidth={100}>
-                <SortableLabel column="revisedExFactory" label="Rev. Ex-Factory" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
-                <Table.ColumnResizer />
-              </Table.Column>
-              <Table.Column id="revisedExIndia" defaultWidth={120} minWidth={100}>
-                <SortableLabel column="revisedExIndia" label="Rev. Ex-India" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
-                <Table.ColumnResizer />
-              </Table.Column>
-              <Table.Column id="currentLocation" defaultWidth={150} minWidth={110}>
-                <SortableLabel column="currentLocation" label="Current Location" currentSort={currentSort} currentDir={currentDir} buildLink={buildLink} />
-                <Table.ColumnResizer />
-              </Table.Column>
-              {/* Not sortable — this column shows a computed value (see the cell below),
-                  not a raw DB column, so a server-side sort by orders.follow_up_person
-                  wouldn't match what's actually displayed. Same reasoning as Stage. */}
-              <Table.Column id="followUpPerson" defaultWidth={160} minWidth={120}>
-                Follow Up Person
-                <Table.ColumnResizer />
-              </Table.Column>
-              <Table.Column id="onTime" defaultWidth={100} minWidth={80}>
-                <ComputedSortableLabel label="On Time" kind="onTime" computedSort={computedSort} onToggle={toggleComputedSort} />
-              </Table.Column>
-            </Table.Header>
-            <Table.Body>
-              {sortedRows.map((order) => {
-                const stage = order.stage_id ? stageById.get(order.stage_id) : undefined;
-                const standard = stageStandard({
-                  rawCurrentStatus: order.raw_current_status,
-                  quality: order.quality,
-                  size: order.size,
-                  stdCubage: order.std_cubage,
-                  orderPriority: order.order_priority,
-                  onHold: order.on_hold,
-                  currentStatusPendingDays: order.current_status_pending_days,
-                });
-                const status = onTimeStatus(
-                  order.promised_delivery_date,
-                  order.revised_ex_factory_date,
-                  stage?.is_terminal ?? false,
-                  standard.standardDays,
-                );
-                return (
-                  <Table.Row key={order.id} id={order.id}>
-                    {selectMode ? (
-                      <Table.Cell>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(order.id)}
-                          onChange={() => toggleRow(order.id)}
-                          aria-label={`Select ${order.otn_no}`}
-                        />
-                      </Table.Cell>
-                    ) : null}
-                    <Table.Cell>
-                      <Link href={`/orders/${order.id}`} className="font-medium text-accent hover:underline">
-                        {order.otn_no}
-                      </Link>
-                      <div className="text-xs text-muted">{order.item_no}</div>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <div>{order.merchant_name ?? "—"}</div>
-                      <div className="text-xs text-muted">{order.customer_no ?? "—"}</div>
-                    </Table.Cell>
-                    <Table.Cell>{order.customer_po_no ?? "—"}</Table.Cell>
-                    <Table.Cell>{order.order_wise_merchant ?? "—"}</Table.Cell>
-                    <Table.Cell>{order.quality ?? "—"}</Table.Cell>
-                    <Table.Cell>{order.design ?? "—"}</Table.Cell>
-                    <Table.Cell>{order.size ?? "—"}</Table.Cell>
-                    <Table.Cell>{order.construction ?? "—"}</Table.Cell>
-                    <Table.Cell>
-                      <StageChip code={stage?.code ?? null} label={stage?.display_name ?? "Unresolved"} />
-                    </Table.Cell>
-                    <Table.Cell>{order.current_status_pending_days ?? "—"}</Table.Cell>
-                    <Table.Cell>{totalDaysSinceSalesOrder(order.sales_order_date) ?? "—"}</Table.Cell>
-                    <Table.Cell>
-                      {standard.status === "on_hold" || standard.status === "no_standard" ? (
+                {visibleColumns.map((col, i) => (
+                  <Table.Column
+                    key={col.id}
+                    id={col.id}
+                    isRowHeader={i === 0}
+                    allowsSorting={col.sortable}
+                    defaultWidth={col.defaultWidth}
+                    minWidth={col.minWidth}
+                  >
+                    {col.sortable ? <Table.SortableColumnHeader sortDirection={sortDirFor(col.id)}>{col.label}</Table.SortableColumnHeader> : col.label}
+                    {i < visibleColumns.length - 1 ? <Table.ColumnResizer /> : null}
+                  </Table.Column>
+                ))}
+              </Table.Header>
+              <Table.Body>
+                {sortedRows.map((order) => {
+                  const stage = order.stage_id ? stageById.get(order.stage_id) : undefined;
+                  const standard = stageStandard({
+                    rawCurrentStatus: order.raw_current_status,
+                    quality: order.quality,
+                    size: order.size,
+                    stdCubage: order.std_cubage,
+                    orderPriority: order.order_priority,
+                    onHold: order.on_hold,
+                    currentStatusPendingDays: order.current_status_pending_days,
+                  });
+                  const status = onTimeStatus(
+                    order.promised_delivery_date,
+                    order.revised_ex_factory_date,
+                    stage?.is_terminal ?? false,
+                    standard.standardDays,
+                  );
+
+                  const cellsById: Record<string, React.ReactNode> = {
+                    otn: (
+                      <>
+                        <Link href={`/orders/${order.id}`} className="font-medium text-accent hover:underline">
+                          {order.otn_no}
+                        </Link>
+                        <div className="text-xs text-muted">{order.item_no}</div>
+                      </>
+                    ),
+                    merchant: (
+                      <>
+                        <div>{order.merchant_name ?? "—"}</div>
+                        <div className="text-xs text-muted">{order.customer_no ?? "—"}</div>
+                      </>
+                    ),
+                    customerPo: order.customer_po_no ?? "—",
+                    salesPerson: order.order_wise_merchant ?? "—",
+                    quality: order.quality ?? "—",
+                    design: order.design ?? "—",
+                    size: order.size ?? "—",
+                    construction: order.construction ?? "—",
+                    stage: <StageChip code={stage?.code ?? null} label={stage?.display_name ?? "Unresolved"} />,
+                    pendingDays: order.current_status_pending_days ?? "—",
+                    totalDays: totalDaysSinceSalesOrder(order.sales_order_date) ?? "—",
+                    stageStandard:
+                      standard.status === "on_hold" || standard.status === "no_standard" ? (
                         <span className="text-muted">—</span>
                       ) : (
-                        <span className={standard.status === "breached" ? "font-medium text-danger" : "text-foreground"}>
-                          {standard.standardDays}d
-                        </span>
-                      )}
-                    </Table.Cell>
-                    <Table.Cell>{displayDate(order.original_ex_factory_date)}</Table.Cell>
-                    <Table.Cell>{displayDate(order.sales_order_date)}</Table.Cell>
-                    {/* revised_ex_factory_date, not promised_delivery_date — this is the
-                        actual delay/expectancy signal, and what onTimeStatus above uses
-                        primarily (see its own doc: promised_delivery_date is now real
-                        data since the NAV switch, 2026-09-07, but often years later than
-                        Rev Ex Factory — a different field, not a better version of this
-                        one). */}
-                    <Table.Cell>{displayDate(order.revised_ex_factory_date)}</Table.Cell>
-                    <Table.Cell>{displayDate(order.revised_ex_india_date)}</Table.Cell>
-                    <Table.Cell>{order.current_location ?? "—"}</Table.Cell>
-                    <Table.Cell>
-                      {(() => {
-                        // Computed from the real Zone x Priority x Quality-type routing
-                        // table (lib/followUpPerson.ts), NOT orders.follow_up_person —
-                        // explicit instruction, 2026-09-07: "dont take NAV data for
-                        // follow up person. refer to only [Ex India.xlsx]".
-                        const person = resolveFollowUpPerson({
-                          rawCurrentStatus: order.raw_current_status,
-                          quality: order.quality,
-                          customerServiceZone: order.customer_service_zone,
-                          orderPriority: order.order_priority,
-                          customerNo: order.customer_no,
-                        });
-                        if (!person) return <span className="text-muted">—</span>;
-                        const email = followUpPersonEmails[person];
-                        if (!email) {
-                          return (
-                            <span title="No email on file for this name" className="text-muted">
-                              {person}
-                            </span>
-                          );
-                        }
-                        const justCopied = copiedEmailOrderId === order.id;
+                        <span className={standard.status === "breached" ? "font-medium text-danger" : "text-foreground"}>{standard.standardDays}d</span>
+                      ),
+                    originalExFactory: displayDate(order.original_ex_factory_date),
+                    salesOrderDate: displayDate(order.sales_order_date),
+                    // revised_ex_factory_date, not promised_delivery_date — this is the
+                    // actual delay/expectancy signal, and what onTimeStatus above uses
+                    // primarily (promised_delivery_date is real data since the NAV
+                    // switch, 2026-09-07, but often years later than Rev Ex Factory —
+                    // a different field, not a better version of this one).
+                    revisedExFactory: displayDate(order.revised_ex_factory_date),
+                    revisedExIndia: displayDate(order.revised_ex_india_date),
+                    currentLocation: order.current_location ?? "—",
+                    followUpPerson: (() => {
+                      // Computed from the real Zone x Priority x Quality-type routing
+                      // table (lib/followUpPerson.ts), NOT orders.follow_up_person —
+                      // explicit instruction, 2026-09-07: "dont take NAV data for
+                      // follow up person. refer to only [Ex India.xlsx]".
+                      const person = resolveFollowUpPerson({
+                        rawCurrentStatus: order.raw_current_status,
+                        quality: order.quality,
+                        customerServiceZone: order.customer_service_zone,
+                        orderPriority: order.order_priority,
+                        customerNo: order.customer_no,
+                      });
+                      if (!person) return <span className="text-muted">—</span>;
+                      const email = followUpPersonEmails[person];
+                      if (!email) {
                         return (
-                          <button
-                            type="button"
-                            title={justCopied ? "Copied!" : `${email} — click to copy`}
-                            onClick={() => copyFollowUpPersonEmail(order.id, email)}
-                            className="text-left hover:underline"
-                          >
-                            {justCopied ? "Copied!" : person}
-                          </button>
+                          <span title="No email on file for this name" className="text-muted">
+                            {person}
+                          </span>
                         );
-                      })()}
-                    </Table.Cell>
-                    <Table.Cell>
-                      <OnTimeBadge status={status} />
-                    </Table.Cell>
-                  </Table.Row>
-                );
-              })}
-            </Table.Body>
-          </Table.Content>
-        </Table.ResizableContainer>
-      </Table>
+                      }
+                      const justCopied = copiedEmailOrderId === order.id;
+                      return (
+                        <button
+                          type="button"
+                          title={justCopied ? "Copied!" : `${email} — click to copy`}
+                          onClick={() => copyFollowUpPersonEmail(order.id, email)}
+                          className="text-left hover:underline"
+                        >
+                          {justCopied ? "Copied!" : person}
+                        </button>
+                      );
+                    })(),
+                    onTime: <OnTimeBadge status={status} />,
+                  };
+
+                  return (
+                    <Table.Row key={order.id} id={order.id}>
+                      <Table.Cell>
+                        <Checkbox slot="selection">
+                          <Checkbox.Content>
+                            <Checkbox.Control>
+                              <Checkbox.Indicator />
+                            </Checkbox.Control>
+                          </Checkbox.Content>
+                        </Checkbox>
+                      </Table.Cell>
+                      {visibleColumns.map((col) => (
+                        <Table.Cell key={col.id}>{cellsById[col.id]}</Table.Cell>
+                      ))}
+                    </Table.Row>
+                  );
+                })}
+              </Table.Body>
+            </Table.Content>
+          </Table.ResizableContainer>
+        </Table>
+
+        <SelectionActionBar
+          count={selectedCount}
+          onCopy={handleCopySelected}
+          onExport={handleExportSelected}
+          onClear={() => setSelectedKeys(new Set())}
+        />
+      </div>
     </div>
   );
 }

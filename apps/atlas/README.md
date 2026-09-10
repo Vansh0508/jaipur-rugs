@@ -49,6 +49,28 @@ per-stage totals instead. Populate `packages/charts` for real (and reconcile its
 version) when a trend chart is actually needed, rather than guessing at a config for a
 library this pass couldn't install or run against.
 
+## Deployment
+
+Unlike most apps in this monorepo, Atlas does **not** deploy to Vercel (see `AGENTS.md`
+Section 5's noted exception) — it runs as a real Node/Next.js process, live in two places
+that share the same Supabase database:
+
+- **Office server** (`192.168.0.18:3001`, PM2, plain HTTP, internal LAN only) — this is
+  also the only place `apps/atlas/scripts/orders-sync.mjs` can run, since it's the only
+  machine with a network route to the NAV database (`192.168.0.41:1433`), **and** the
+  only deployment RugLens's photo feature works through (the VPS has no route to the
+  J-Vault share). Unlike the VPS, this one deploys via a real `git pull` on the server
+  itself — see `deploy/atlas/office-deploy.md` for the exact steps and a real gotcha
+  (`pm2`/`node` not on `PATH` over a non-interactive SSH command).
+- **Public VPS** (`https://atlas.jaipurrugsai.cloud`, Hostinger, Docker + Traefik).
+
+**Deploying to the VPS**: use `deploy/atlas/deploy-atlas.bat` (repo root) — builds the
+image on your own machine and only ships the VPS a finished, ready-to-run image, so the
+VPS never has to compile anything itself (that used to spike its CPU for hours on a
+`docker compose build` run there). See `deploy/atlas/README.md` for the full how-to and
+one-time setup (Docker Desktop). This is the current, preferred way to deploy to the VPS
+— prefer it over pulling git and building directly on the VPS.
+
 ## Structure
 
 - Staff routes (`/login`, `/dashboard`, `/orders`, `/orders/[id]`, `/merchants`) use the
