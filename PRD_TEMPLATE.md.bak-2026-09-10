@@ -1,0 +1,212 @@
+# [Project Name] — Product Requirements Document (PRD)
+
+> **Document Status:** `Draft` | `In Review` | `Approved` | `Superseded`  
+> **Target Launch Date:** `YYYY-MM-DD`  
+> **Project Code / Monorepo App Name:** `[e.g., JR-OPS-042 / internal-portal]`  
+> **Owning Department:** `[e.g., Admin / Logistics / Production / Artisan Development / IT]`  
+> **Executive Sponsor:** `[Name, Title]`  
+> **Project Lead / Product Owner:** `[Name, Title]`  
+> **Operational / Technical Lead:** `[Name, Title]`  
+> **Project Classification:**  
+> - [ ] **Track A: Digital / Software** *(Next.js App Router, Monorepo, Supabase, Edge Functions)*  
+> - [ ] **Track B: Physical / Operational** *(Weaving center setup, supply chain workflow, logistics route, SOP)*  
+> - [ ] **Track C: Hybrid** *(Physical operational workflow paired with dedicated digital system)*  
+
+---
+
+## 1. Executive Summary & Strategic Vision
+
+### 1.1 The "Why" & Organizational Alignment
+*Explain why Jaipur Rugs is undertaking this initiative. How does this project support our core organizational values (connecting artisan craftsmanship with global connoisseurs, social empowerment, operational excellence, lean manufacturing, sustainability)?*
+
+> **Vision Statement:**  
+> *[Insert 2–3 sentences defining the ultimate future state once this project is complete.]*
+
+### 1.2 Core Project Thesis
+*[Complete this formula]*:  
+By solving **[specific operational friction / system gap]**, we will enable **[target stakeholders]** to **[core capability]**, resulting in **[tangible financial/time/resource recovery]** without sacrificing craftsmanship or operational integrity.
+
+### 1.3 Key Business Objectives (OKRs)
+| Objective | Key Result / Target Metric | Measurement Baseline | Target Date |
+|:---|:---|:---|:---|
+| **O1:** [e.g., Eliminate manual dispatch overlap] | [e.g., 0 double-booked trips per month] | Current: 14 double-bookings/mo | `YYYY-MM-DD` |
+| **O2:** [e.g., Reclaim artisan coordination hours] | [e.g., Save 120 manager hours/month] | Current: 160 hrs spent in manual calls | `YYYY-MM-DD` |
+| **O3:** [e.g., Reduce material dispatch latency] | [e.g., Turnaround time < 4 hours] | Current: 36 hours | `YYYY-MM-DD` |
+
+---
+
+## 2. Problem Statement & Root Cause Analysis
+
+### 2.1 The Current State ("As-Is")
+*Describe the current day-to-day reality. Walk through the existing manual steps, paperwork, disconnected spreadsheets, fragmented communication (WhatsApp, phone calls), or legacy bottlenecks.*
+
+- **Current Workflow:** `[Step 1 -> Step 2 -> Step 3...]`
+- **Friction Points:** `[Where does work stall, get dropped, or generate errors?]`
+- **Data Blindspots:** `[What can leadership or supervisors currently NOT see in real-time?]`
+
+### 2.2 Impacted Stakeholders
+| Stakeholder Group | Role in Jaipur Rugs Ecosystem | How Current Problem Affects Them |
+|:---|:---|:---|
+| **Artisans / Weavers** | Rural manufacturing backbone | [e.g., Delayed raw material drops cause idle loom time] |
+| **Field / Floor Managers** | Hub coordinators / supervisors | [e.g., Overburdened with manual logging and phone reconciliations] |
+| **Operations / Logistics** | Fleet, warehouse, inventory staff | [e.g., Unpredictable schedules, unverified mileage and fuel burn] |
+| **Corporate / Leadership** | Strategy, finance, executives | [e.g., Inability to forecast resource bottlenecks or verify true ROI] |
+| **External / Guests / Clients**| Buyers, showroom visitors, partners | [e.g., Fragmented experience or delayed response times] |
+
+### 2.3 Root Cause Analysis (5 Whys)
+1. **The Symptom:** `[e.g., Wool delivery to Bikaner hub was delayed by 3 days]`
+2. **Why?** `[e.g., Vehicle was unexpectedly diverted for an executive guest pick-up]`
+3. **Why?** `[e.g., The fleet coordinator had no centralized visibility into scheduled vs. on-demand trips]`
+4. **Why?** `[e.g., Requests are taken over phone calls and WhatsApp threads with no conflict-check engine]`
+5. **Root Cause:** `[e.g., Lack of a unified journey management system with strict concurrency constraints]`
+
+### 2.4 Cost of Inaction (COI)
+*What happens if we do nothing for the next 6 to 12 months?*
+- **Financial Leakage:** `[e.g., Est. ₹X Lakhs lost annually to wasted vehicle dead-runs or yarn spoilage]`
+- **Operational Degradation:** `[e.g., Loom idle time increasing by Y% as order volumes scale]`
+- **Brand / Human Impact:** `[e.g., Weaver frustration, coordinator burnout, guest travel delays]`
+
+---
+
+## 3. Resource Reclamation & Financial ROI Engine *(Strict Model)*
+
+*Every project at Jaipur Rugs must justify its existence by recovering, generating, or optimizing capital, human hours, and operational resources.*
+
+### 3.1 Direct Financial & Monetary Impact
+| Financial Category | Current Annual Cost | Projected Annual Post-Launch | Net Annual Savings / Value (INR/USD) | Rationale & Calculation Formula |
+|:---|:---|:---|:---|:---|
+| **Direct Operating Cost (OpEx)** | `₹ [Current]` | `₹ [Projected]` | **`₹ [Savings]`** | `[e.g., Fuel saved via trip batching = X km * ₹Y/km]` |
+| **Capital Expenditure (CapEx)** | `₹ [Current]` | `₹ [Projected]` | **`₹ [Savings]`** | `[e.g., Avoid buying 2 extra vehicles by optimizing existing fleet]` |
+| **Rework / Scrap / Loss Cost** | `₹ [Current]` | `₹ [Projected]` | **`₹ [Savings]`** | `[e.g., Damaged yarn/goods reduced by X%]` |
+| **Revenue Enablement** | `₹ [Current]` | `₹ [Projected]` | **`₹ [New Revenue]`** | `[e.g., Capacity unlocked to fulfill X more custom rugs per quarter]` |
+| **TOTAL ANNUAL NET VALUE** | — | — | **`₹ [Total Value]`** | **Estimated Payback Period: `[X] Months`** |
+
+### 3.2 Man-Hour & FTE Redistribution Matrix
+*Quantify human hours saved and specify where that recovered bandwidth will be reinvested into higher-value work.*
+
+| Department / Role | Manual Task Automated or Eliminated | Hours Saved / Week per Person | Total Headcount Impacted | Total Monthly Hours Reclaimed | Value Reinvestment (Where does this time go?) |
+|:---|:---|:---:|:---:|:---:|:---|
+| *e.g., Logistics Dispatcher* | *Phone confirmations & paper trip sheets* | *10 hrs* | *3 staff* | **120 hrs/mo** | *Vehicle preventative maintenance & vendor cost negotiations* |
+| *e.g., Branch Floor Manager* | *Re-keying inventory counts into Excel* | *8 hrs* | *5 staff* | **160 hrs/mo** | *Direct artisan training and loom quality checks* |
+| *e.g., Accounts Clerk* | *Manual driver voucher cross-checks* | *6 hrs* | *2 staff* | **48 hrs/mo** | *Timely payment disbursements to weavers* |
+| **TOTAL HUMAN HOURS** | — | — | — | **`[X] hrs/mo`** | **`[Equivalent to Y Full-Time Roles Reclaimed]`** |
+
+### 3.3 Process Velocity & Cycle Time Improvements
+| Process Step / Workflow | Baseline Turnaround (Current) | Target Turnaround (Post-Launch) | Velocity Multiplier (% Reduction) | Error / Rework Rate (Before vs. Target) |
+|:---|:---|:---|:---|:---|
+| *e.g., Trip Booking to Dispatch* | *4 hours (manual checks)* | *Real-time (< 2 mins)* | *98% reduction* | *12% errors -> < 0.1%* |
+| *e.g., Artisan Raw Material Indent*| *48 hours* | *6 hours* | *87% reduction* | *8% stockouts -> < 1%* |
+| *e.g., Driver Feedback Moderation* | *7 days (paper slips)* | *Same day (< 24 hrs)* | *85% reduction* | *20% missing slips -> 0%* |
+
+### 3.4 Physical & Environmental Resource Optimization
+*List tangible physical assets being conserved or optimized:*
+- **Material Conservation:** `[e.g., Yarn waste reduced by X kg/month; Paper forms eliminated (100% digital)]`
+- **Fleet / Fuel Utilization:** `[e.g., Kilometers travelled per passenger-trip reduced by X%; Idle fuel burn reduced by Y%]`
+- **Asset Lifespan:** `[e.g., On-time vehicle servicing increased from 60% to 98%, extending fleet lifespan by 2 years]`
+
+---
+
+## 4. Solution Architecture & Scope Boundaries
+
+### 4.1 In-Scope vs. Out-of-Scope (Explicit Guardrails)
+*Define strict boundaries to prevent scope creep.*
+
+| In-Scope (Delivered in this Project) | Explicitly Out-of-Scope (Deferred or Prohibited) |
+|:---|:---|
+| ✅ `[Feature/Capability 1: e.g., Automated conflict engine for cars & drivers]` | ❌ `[e.g., Native iOS/Android apps (Web-first Next.js app only)]` |
+| ✅ `[Feature/Capability 2: e.g., QR-code driver identity verification]` | ❌ `[e.g., External commercial rental vendor integration]` |
+| ✅ `[Feature/Capability 3: e.g., Role-based dashboard for department admins]` | ❌ `[e.g., Automated payroll deductions based on ratings]` |
+
+### 4.2 Core Deliverables & Key Capabilities
+1. **Capability 1:** `[Description of workflow / interface / physical station]`
+2. **Capability 2:** `[Description of workflow / interface / physical station]`
+3. **Capability 3:** `[Description of workflow / interface / physical station]`
+
+### 4.3 End-to-End User / Operational Journey
+*Step-by-step walkthrough of how users or operators interact with the solution:*
+1. **Trigger / Entry:** `[e.g., Department manager initiates request in the Hub launcher]`
+2. **Processing / Verification:** `[e.g., System performs concurrency conflict check; supervisor approves]`
+3. **Execution:** `[e.g., Driver receives automated dispatch notification via SMS/portal]`
+4. **Resolution & Feedback:** `[e.g., Trip completes, passenger submits instant star rating, hours logged automatically]`
+
+---
+
+## 5. Governance & Compliance Gateways
+
+*Depending on the project track, the following non-negotiable standards must be validated prior to development or rollout.*
+
+### 5.1 Track A & C Gateway: Digital Software Standards *(Governed by `AGENTS.md`)*
+*For any initiative involving web applications, APIs, or database changes in the `jaipur-rugs` monorepo:*
+
+- [ ] **One Singular Database:** Built entirely inside the shared Supabase project (`matnispbauvvlnbsuzxq`). No isolated per-app databases.
+- [ ] **Data Model & Schema First:** Plain-language entities defined, Mermaid ERD (`.mmd`) placed in `db/<module>/`, reviewed before SQL is generated.
+- [ ] **Strict Postgres Conventions:** UUID PKs (`id`), foreign keys (`<entity>_id`), `timestamptz created_at/updated_at`, Postgres `enum` for statuses (no arbitrary text).
+- [ ] **Security Boundaries & RLS:** Row Level Security (RLS) policies written alongside schema. Helper functions placed in `private` schema (never `public`).
+- [ ] **Zero Elevated Privileges in Apps:** No app or client code holds a Supabase `service-role key`. Frontend client is strictly read-only (`packages/supabase-client`).
+- [ ] **Edge Functions for Writes:** All database writes executed via Supabase Edge Functions under `supabase/functions/<module>-<action>` and invoked through `packages/db-management-client`.
+- [ ] **Unified Tech Stack:** Next.js (App Router), TypeScript, Hero UI, Bklit Charts, pnpm workspaces + Turborepo. No secondary UI kits or charting tools.
+- [ ] **Session & Access Control:** Auth cookies set to `.jaipurrugs.com` via `packages/auth`. Every app verifies role/department access independently on load.
+- [ ] **Migration Ledger:** Every migration tested, linters/advisors checked, and documented in `db/MIGRATIONS.md`.
+
+### 5.2 Track B & C Gateway: Operational & Physical Standards
+*For physical processes, manufacturing changes, artisan workflows, and logistics:*
+
+- [ ] **Standard Operating Procedure (SOP):** Formal step-by-step SOP written in Hindi & English, illustrated with visual diagrams for field staff.
+- [ ] **Cross-Department SLA Sign-off:** Handoff protocols between impacted departments (e.g., Weaving Hub -> Quality Check -> Jaipur Warehouse) formally approved.
+- [ ] **Artisan & Worker Safety/Welfare:** Verified that process modifications respect artisan working conditions, timely fair pay guarantees, and ergonomics.
+- [ ] **Training & Enablement Plan:** Scheduled hands-on training sessions for branch staff, weavers, or dispatchers before live cutover.
+- [ ] **Rollback / Contingency SOP:** Documented fallback procedure if operational equipment, power, or internet connectivity fails in rural centers.
+
+---
+
+## 6. Milestone-Driven Execution Roadmap
+
+*A disciplined, phased delivery plan focused on rapid time-to-value and risk mitigation.*
+
+```
+Phase 0: Architecture & Discovery  --->  Phase 1: MVP & Sandbox Pilot  --->  Phase 2: Operational Rollout & Full Scale
+   (Weeks 1–2)                              (Weeks 3–5)                               (Weeks 6+)
+```
+
+### 6.1 Phased Delivery Schedule
+| Phase | Milestone Description | Key Deliverables | Target Date | Owner | Status |
+|:---|:---|:---|:---:|:---:|:---:|
+| **Phase 0** | **Discovery & Schema/SOP Alignment** | Approved PRD, DB ERD, or Operational SOP | `YYYY-MM-DD` | `[Lead]` | `Pending` |
+| **Phase 1** | **MVP Construction / Pilot Setup** | Working build in staging / single branch pilot | `YYYY-MM-DD` | `[Lead]` | `Pending` |
+| **Phase 2** | **End-to-End Verification & Gateways** | Advisor checks clean, browser/field testing verified | `YYYY-MM-DD` | `[Lead]` | `Pending` |
+| **Phase 3** | **Production Rollout & Full Cutover** | Live deployment to production / all hubs active | `YYYY-MM-DD` | `[Lead]` | `Pending` |
+
+### 6.2 Key Dependencies & External Constraints
+- **Dependency 1:** `[e.g., Supabase migration 008 applied and types regenerated in packages/supabase-client]`
+- **Dependency 2:** `[e.g., QR code hardware scanners installed at the Jaipur main gate]`
+- **Dependency 3:** `[e.g., Department budget sign-off for vehicle maintenance tablets]`
+
+### 6.3 Risk Register & Mitigation Matrix
+| Identified Risk | Severity (High/Med/Low) | Likelihood (High/Med/Low) | Impact Description | Proactive Mitigation Strategy |
+|:---|:---:|:---:|:---|:---|
+| *e.g., Unstable cellular connectivity at remote weaving hubs* | **High** | **High** | *Field supervisors unable to submit real-time material indents* | *Implement offline-first client caching or SMS-fallback gateway* |
+| *e.g., Staff resistance to digital trip logging* | **Med** | **High** | *Incomplete ride data and bypassed booking procedures* | *Mandatory gate-pass integration: vehicle cannot leave campus without generated QR code* |
+| *e.g., Database write contention during peak shift change* | **Med** | **Low** | *Slow booking confirmations or failed updates* | *Postgres GiST exclusion constraints and atomic edge functions prevent deadlocks* |
+
+---
+
+## 7. Stakeholder Sign-Off & Approvals
+
+*By signing below, the stakeholders confirm that the problem statement is accurate, the projected resource reclamation is financially sound, and the governance gateways are binding.*
+
+| Role | Name | Title / Department | Signature / Date | Approval Status |
+|:---|:---|:---|:---:|:---:|
+| **Executive Sponsor** | `[Name]` | `[e.g., COO / Head of Supply Chain]` | `____________________` | `[ Pending ]` |
+| **Product / Project Owner** | `[Name]` | `[e.g., Lead Product Manager]` | `____________________` | `[ Pending ]` |
+| **Operations Lead** | `[Name]` | `[e.g., Head of Fleet Operations]` | `____________________` | `[ Pending ]` |
+| **Technical Architect** *(if Track A/C)*| `[Name]` | `[e.g., Monorepo / Supabase Lead]` | `____________________` | `[ Pending ]` |
+| **Finance / ROI Auditor** | `[Name]` | `[e.g., Finance Controller]` | `____________________` | `[ Pending ]` |
+
+---
+
+## Appendix: How to Use this Template at Jaipur Rugs
+
+1. **Duplicate this file**: Copy `PRD_TEMPLATE.md` to `PRD.md` inside your project directory (or monorepo app folder `apps/<project>/PRD.md`).
+2. **Fill in all bracketed placeholders `[...]`**: Ensure the Resource Reclamation section (Section 3) has real numbers agreed upon with operational department leads.
+3. **Execute the Gateways**: If building software, cross-reference every checklist item against [`AGENTS.md`](file:///c:/Users/vansh.g/Desktop/Jaipur%20Rugs/jaipur-rugs/AGENTS.md). If building an operational workflow, ensure SOPs and field training plans are attached.
+4. **Lock Scope**: Obtain approvals in Section 7 before writing code or making capital purchases.

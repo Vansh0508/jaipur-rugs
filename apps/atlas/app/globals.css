@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "@heroui/styles";
-@import "@jaipur-rugs/config/tailwind-theme.css";
+@import "../../../packages/config/tailwind-theme.css";
 
 /* Tailwind v4 auto-detects content within this app's own directory tree, but ui-kit's
    components live in a sibling workspace package outside that tree — this tells the v4
