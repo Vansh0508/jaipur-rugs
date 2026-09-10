@@ -16,6 +16,16 @@ const RUG_TRACKING_HEADERS = [
   "GR Color Name", "BR Color Name", "Shape", "Size", "Construction", "Serial No_",
   "Std Cubage", "Current Status", "Stage", "Days in Stage", "Original Ex Factory",
   "Sales Order Date", "Rev Ex-Factory",
+  // RugLens-specific extra columns, added at the end per direct feedback, 2026-09-10 —
+  // these deliberately duplicate Customer No_ (already above, matching Orders' format)
+  // and add the two filter conditions themselves, so a copied row visibly shows WHICH
+  // of the 5 stock codes it is and confirms it's actually PO/hold-blank, not just
+  // relying on "it passed the filter." "Hold Remarks" is really `on_hold`'s raw value —
+  // see lib/queries/rugLens.ts's header comment: there's no separate remarks field in
+  // the data model, so this will read blank/"0"/"No" for every row here by
+  // construction (the filter already excludes anything else) — that's expected, not a
+  // bug, not a sign the column is broken.
+  "Customer Code", "Hold Remarks", "Customer PO",
 ];
 
 function clipboardCells(o: RugLensRow, stageById: Map<string, StageRow>): (string | number | null)[] {
@@ -26,6 +36,7 @@ function clipboardCells(o: RugLensRow, stageById: Map<string, StageRow>): (strin
     o.std_cubage, o.raw_current_status, stage?.display_name ?? "",
     o.current_status_pending_days,
     displayDate(o.original_ex_factory_date), displayDate(o.sales_order_date), displayDate(o.revised_ex_factory_date),
+    o.customer_no, o.on_hold, o.customer_po_no,
   ];
 }
 
@@ -171,6 +182,22 @@ export function RugLensTable({ rows, stages }: { rows: RugLensRow[]; stages: Sta
               </Table.Column>
               <Table.Column id="itemNo" defaultWidth={130} minWidth={100}>
                 Item No.
+                <Table.ColumnResizer />
+              </Table.Column>
+              {/* Added per direct feedback, 2026-09-10 — see the clipboard headers'
+                  comment above for why these three specifically, and the "Hold
+                  Remarks" caveat (it's really the raw on_hold value; there's no
+                  separate remarks field). */}
+              <Table.Column id="customerCode" defaultWidth={120} minWidth={90}>
+                Customer Code
+                <Table.ColumnResizer />
+              </Table.Column>
+              <Table.Column id="holdRemarks" defaultWidth={120} minWidth={90}>
+                Hold Remarks
+                <Table.ColumnResizer />
+              </Table.Column>
+              <Table.Column id="customerPo" defaultWidth={120} minWidth={90}>
+                Customer PO
               </Table.Column>
             </Table.Header>
             <Table.Body>
@@ -196,6 +223,9 @@ export function RugLensTable({ rows, stages }: { rows: RugLensRow[]; stages: Sta
                   <Table.Cell>{row.size ?? "—"}</Table.Cell>
                   <Table.Cell>{row.current_location ?? "—"}</Table.Cell>
                   <Table.Cell>{row.item_no ?? "—"}</Table.Cell>
+                  <Table.Cell>{row.customer_no ?? "—"}</Table.Cell>
+                  <Table.Cell>{row.on_hold ?? "—"}</Table.Cell>
+                  <Table.Cell>{row.customer_po_no ?? "—"}</Table.Cell>
                 </Table.Row>
               ))}
             </Table.Body>
