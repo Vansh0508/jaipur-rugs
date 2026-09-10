@@ -52,6 +52,11 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | `20260905151821` | `department_access_grants_unique_index` | orders | *(no repo file — applied directly, not yet backfilled)* |
 | `20260905160648` | `delay_alerts` | orders | `db/orders/012_delay_alerts.sql` |
 | `20260907053134` | `nav_direct_fields` | orders | `db/orders/013_nav_direct_fields.sql` |
+| `20260907091911` | `follow_up_person_directory` | orders | `db/orders/014_follow_up_person_directory.sql` |
+| `20260907094425` | `follow_up_person_directory_routing_names` | orders | `db/orders/015_follow_up_person_directory_routing_names.sql` |
+| `20260907161313` | `shehbaaz_email` | orders | `db/orders/016_shehbaaz_email.sql` |
+| `20260910054158` | `seed_backops_department` | orders | *(applied via `execute_sql`/`apply_migration` before this row's repo file existed — see 017 below)* |
+| `20260910060119` | `backops_department_self_service` | orders | `db/orders/017_backops_department_self_service.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
@@ -499,3 +504,45 @@ until those four people have real employee accounts (via Hub signup) — escalat
 records correctly without it, it just can't notify yet. Merchant identity (who
 externally, if anyone, gets Clerk self-service login for 34836 in this pilot) is
 still **unconfirmed** — do not seed a `merchants` row with a guessed name/email.
+
+**Back Ops opened up beyond the pilot (2026-09-10, `017_backops_department_self_service.sql`)
+— supersedes the single-person pilot scope above for department membership specifically.**
+Requested directly: register "Back Ops" as a real department, and let Back Ops staff
+self-add their own codes instead of an admin manually seeding each of the remaining six
+people. Two changes, both live:
+
+1. `departments` gained `Back Ops` / `backops` (idempotent insert, safe to re-run).
+   `join-department`'s self-service allow-list gained `"backops"` alongside
+   `management`/`production` — a Back Ops employee can now pick it at sign-up like any
+   other self-service department. Unlike `management`/`production`, `backops` was
+   deliberately **not** added to `private.has_blanket_orders_access()` or
+   `private.can_view_order()`'s blanket department list — joining it only marks org
+   placement, it grants zero order visibility by itself. This keeps the pilot's
+   per-code, deny-by-default posture intact while still letting people identify their
+   department.
+2. **New Edge Function `customer-codes-add`** — the missing counterpart to
+   `salesperson-codes-add` (010). Diagnosed a real reported bug: pasting a customer code
+   (e.g. `24523`, `34836`) into whatever "add my code" UI exists today silently inserted
+   it into `employee_salesperson_codes` (the only self-service endpoint that existed),
+   which never matches `orders.salesperson_code` — so it looked broken, while
+   SALES-XXXX-style codes worked fine through the same path. The schema/RLS side needed
+   **no changes at all** — `orders_select`/`can_view_order` already OR in a
+   `merchant_customer_codes` match, and its unique index
+   (`merchant_customer_codes_employee_customer_idx` on `(employee_id, customer_no)`
+   where `employee_id is not null`) already existed, ready for exactly this upsert
+   pattern. The only gap was the missing endpoint; this closes it. Each Back Ops
+   employee now adds exactly the customer code(s) and/or salesperson code(s) they
+   personally need via these two functions — nobody is hard-coded a default bundle
+   (e.g. all four Back Ops codes) anywhere.
+
+**Not done in this pass, flagged for whoever owns the actual Atlas frontend** (its source
+lives at `G:\Automation\MonoRepo\jaipur-rugs\`, github.com/Vansh0508/jaipur-rugs,
+branch `atlas-workflow-and-deploy` — same repo as this worktree, just possibly a
+different checkout/session): the "my access" page still needs a **Customer code(s)**
+input wired to `customer-codes-add`, distinct from the existing **Salesperson code(s)**
+field wired to `salesperson-codes-add` — right now nothing in the frontend calls the new
+function yet. Also requested but out of reach from a database-only session: trimming the
+department dashboards (open requests, delay alerts, escalation counter, live queue, the
+order-punch/warehouse/QC/PSFT request-filing UI) back down to plain order-tracking only,
+for every department, with the rest explicitly deferred to a later phase — that's a
+frontend layout decision with no database component, so it isn't reflected here.

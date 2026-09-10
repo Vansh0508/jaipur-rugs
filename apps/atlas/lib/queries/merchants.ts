@@ -47,3 +47,15 @@ export async function listMySalespersonCodes(supabase: SupabaseClient): Promise<
   if (error) throw error;
   return (data ?? []).map((row) => row.salesperson_code as string);
 }
+
+/** The caller's own customer codes (self-service, db/orders/017 — the customer-code
+ * counterpart to listMySalespersonCodes above). RLS's merchant_customer_codes_select
+ * already restricts a non-admin to their own rows. Used by /my-access. */
+export async function listMyCustomerCodes(supabase: SupabaseClient): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("merchant_customer_codes")
+    .select("customer_no")
+    .order("customer_no", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row) => row.customer_no as string);
+}

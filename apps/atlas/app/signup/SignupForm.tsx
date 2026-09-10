@@ -6,6 +6,7 @@ import { Button, TextField, Select } from "@jaipur-rugs/ui-kit";
 import {
   employeeSignUp,
   addOwnSalespersonCodes,
+  addOwnCustomerCodes,
   joinOwnDepartment,
   type SelfServiceDepartmentCode,
 } from "@jaipur-rugs/db-management-client";
@@ -20,7 +21,7 @@ import { parseCodeList } from "@/lib/parseCodeList";
 // already-existing employee-signup function in a real form.
 //
 // Department picker added 2026-09-05 — self-service, no admin step needed for any of
-// these three: Sales reveals the sales-code field (unchanged, see
+// these: Sales reveals the sales-code field (unchanged, see
 // db/orders/010_salesperson_codes_self_service.sql — there's no reliable way to derive
 // a name<->code mapping from the ERP feed, so a person types in their own already-known
 // code); Management/Production instead call join-department, which grants blanket
@@ -30,12 +31,19 @@ import { parseCodeList } from "@/lib/parseCodeList";
 // Picking nothing at all still creates a working account — it just won't see any
 // orders in Atlas until a department or code is added, from here or later from
 // /my-access.
+//
+// "Back Ops" added 2026-09-10, same session as customer-codes-add — unlike
+// Management/Production, joining it grants NO order visibility by itself (see
+// join-department's comment), so it reveals BOTH the sales-code field and a
+// customer-code field: a Back Ops person may know either kind of code (or both), and
+// each is added via its own self-service function.
 type SignupDepartment = "" | SelfServiceDepartmentCode | "sales";
 
 const DEPARTMENT_OPTIONS = [
   { id: "management", label: "Management" },
   { id: "sales", label: "Sales" },
   { id: "production", label: "Production" },
+  { id: "backops", label: "Back Ops" },
 ];
 
 export function SignupForm() {
@@ -45,6 +53,7 @@ export function SignupForm() {
   const [password, setPassword] = useState("");
   const [department, setDepartment] = useState<SignupDepartment>("");
   const [salespersonCodesRaw, setSalespersonCodesRaw] = useState("");
+  const [customerCodesRaw, setCustomerCodesRaw] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -88,6 +97,31 @@ export function SignupForm() {
         } catch {
           // swallowed deliberately — see comment above.
         }
+      } else if (department === "backops") {
+        // Joining the department itself grants no order visibility (see
+        // join-department's comment) — it's just org placement. Either code field
+        // below is optional and independent; a person may have one, the other, or both.
+        try {
+          await joinOwnDepartment(supabase, department);
+        } catch {
+          // swallowed deliberately — see comment above.
+        }
+        const salesCodes = parseCodeList(salespersonCodesRaw);
+        if (salesCodes.length) {
+          try {
+            await addOwnSalespersonCodes(supabase, salesCodes);
+          } catch {
+            // swallowed deliberately — see comment above.
+          }
+        }
+        const customerCodes = parseCodeList(customerCodesRaw);
+        if (customerCodes.length) {
+          try {
+            await addOwnCustomerCodes(supabase, customerCodes);
+          } catch {
+            // swallowed deliberately — see comment above.
+          }
+        }
       }
 
       // proxy.ts re-verifies Atlas authorization on the very next request and bounces
@@ -123,6 +157,27 @@ export function SignupForm() {
           onChange={setSalespersonCodesRaw}
           fullWidth
         />
+      ) : null}
+      {department === "backops" ? (
+        <>
+          <TextField
+            label="Your sales code(s) (optional)"
+            placeholder="e.g. SALES-0039 — or paste a whole list"
+            value={salespersonCodesRaw}
+            onChange={setSalespersonCodesRaw}
+            fullWidth
+          />
+          <TextField
+            label="Your customer code(s) (optional)"
+            placeholder="e.g. 34836 — or paste a whole list"
+            value={customerCodesRaw}
+            onChange={setCustomerCodesRaw}
+            fullWidth
+          />
+          <p className="text-xs text-muted">
+            Add whichever you know — either, both, or neither (you can always add codes later from My access).
+          </p>
+        </>
       ) : null}
       {error ? <p className="text-sm text-danger">{error}</p> : null}
       <Button type="submit" isPending={submitting} fullWidth>

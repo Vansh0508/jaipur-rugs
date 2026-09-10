@@ -9,6 +9,7 @@ import { getBrowserSupabaseClient } from "@/lib/supabaseClient.browser";
 const DEPARTMENT_OPTIONS = [
   { id: "management", label: "Management" },
   { id: "production", label: "Production" },
+  { id: "backops", label: "Back Ops" },
 ] as const;
 
 // The /my-access counterpart to the signup form's department picker (see
@@ -18,6 +19,12 @@ const DEPARTMENT_OPTIONS = [
 // only offered the sales-code form. Same self-service posture as that form: no approval
 // step, always the caller's own account, always 'view' level (join-department's own
 // guardrail, not this component's).
+//
+// "Back Ops" (added 2026-09-10, same session as the customer-codes-add fix) behaves
+// differently from Management/Production: it grants NO order visibility on its own —
+// see join-department's comment. It's here so Back Ops staff have a real department to
+// pick at all; they still need the Add a sales code / Add a customer code forms below to
+// actually see anything.
 export function JoinDepartmentForm() {
   const router = useRouter();
   const [department, setDepartment] = useState<SelfServiceDepartmentCode | null>(null);
@@ -47,7 +54,8 @@ export function JoinDepartmentForm() {
     <form onSubmit={handleSubmit} className="flex flex-col gap-3 rounded-xl border-2 border-border p-5">
       <h2 className="text-sm font-semibold uppercase text-muted">Join a department</h2>
       <p className="text-xs text-muted">
-        Management and Production see every order — no sales code needed. (Sales, Shipping, NAV, and QC Review
+        Management and Production see every order — no sales code needed. Back Ops just marks your department; add
+        your sales code and/or customer code below to actually see anything. (Sales, Shipping, NAV, and QC Review
         aren&apos;t self-service yet; ask your admin for those.)
       </p>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">

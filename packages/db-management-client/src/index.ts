@@ -684,7 +684,34 @@ export async function addOwnSalespersonCodes(supabase: SupabaseClient, codes: st
   return data;
 }
 
-export type SelfServiceDepartmentCode = "management" | "production";
+interface AddOwnCustomerCodesResponse {
+  employeeId: string;
+  added: string[];
+}
+
+/**
+ * Invokes `customer-codes-add` — the customer-code counterpart to
+ * addOwnSalespersonCodes, added 2026-09-10 alongside registering "Back Ops" as a real
+ * department. Same posture: self-service, always the CALLER'S OWN account, no approval
+ * step, effective immediately. Use this (not addOwnSalespersonCodes) when the value the
+ * person typed is an ERP customer number (e.g. "24523", "34836") rather than a
+ * salesperson code (e.g. "SALES-0039") — see db/orders/017_backops_department_self_service.sql
+ * for why the two were previously easy to conflate (pasting a customer code into the
+ * salesperson-code form silently added it as a salesperson code, which then matched
+ * nothing).
+ */
+export async function addOwnCustomerCodes(supabase: SupabaseClient, codes: string[]) {
+  const { data, error } = await supabase.functions.invoke<AddOwnCustomerCodesResponse>(
+    "customer-codes-add",
+    { body: { codes } },
+  );
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export type SelfServiceDepartmentCode = "management" | "production" | "backops";
 
 interface JoinDepartmentResponse {
   employeeId: string;
@@ -693,12 +720,15 @@ interface JoinDepartmentResponse {
 
 /**
  * Invokes `join-department` — self-service, always the CALLER'S OWN account, always at
- * the lowest access level ('view'). Only "management" and "production" are accepted —
- * NOT "sales" (that department code means blanket view-all; an individual salesperson
- * must stay scoped to their own codes via addOwnSalespersonCodes instead) — matching the
- * explicit product decision, 2026-09-05: "Management, Production should [see] all
- * orders... and not [be] bind[ing] with any customer code." NAV/QC/Shipping aren't
- * self-service yet ("will come in later stage," same decision).
+ * the lowest access level ('view'). "management", "production", and (added 2026-09-10)
+ * "backops" are accepted — NOT "sales" (that department code means blanket view-all; an
+ * individual salesperson must stay scoped to their own codes via addOwnSalespersonCodes
+ * instead) — matching the explicit product decision, 2026-09-05: "Management, Production
+ * should [see] all orders... and not [be] bind[ing] with any customer code." Unlike
+ * management/production, joining "backops" grants NO order visibility by itself — it
+ * only marks org placement; a Back Ops employee still needs their own sales and/or
+ * customer code(s) via addOwnSalespersonCodes / addOwnCustomerCodes. NAV/QC/Shipping
+ * still aren't self-service ("will come in later stage," same decision).
  */
 export async function joinOwnDepartment(supabase: SupabaseClient, departmentCode: SelfServiceDepartmentCode) {
   const { data, error } = await supabase.functions.invoke<JoinDepartmentResponse>("join-department", {
