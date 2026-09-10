@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { env } from "@/lib/env";
 
 // The staff-side authorization primitive for Atlas — same dual-check pattern as
 // apps/hub's requireHubAccess (checked here AND independently in proxy.ts, AGENTS.md
@@ -14,11 +13,13 @@ import { env } from "@/lib/env";
 // vocabulary, not an external customer) with rows in merchant_customer_codes. That last
 // case used to be a wholly separate Clerk-based login (apps/atlas/app/merchant/*,
 // removed) — now it's just another employee, scoped by RLS to their own customer codes
-// like everyone else. Redirects to the Hub launcher on failure (AGENTS.md's "Do": never
-// render an empty/broken department screen) rather than this app's own /login, since
-// Hub is the one place every employee's session definitely already works — UNLESS
-// `allowUnauthorized` is set, for the one page (/my-access) whose whole job is letting
-// someone with no access yet grant themselves one, so it can't itself require access.
+// like everyone else. Redirects to /my-access on failure — that's the one page whose
+// whole job is letting someone with no access yet grant themselves one (a sales code or
+// a Management/Production department), so an unauthorized-but-active employee always
+// has somewhere useful to land — UNLESS `allowUnauthorized` is set, which is how
+// /my-access itself avoids requiring the very access it exists to grant. (Previously
+// redirected to the Hub launcher, which has never been deployed anywhere reachable —
+// see proxy.ts's matching fix, 2026-09-10, for the dead-end this caused.)
 
 // "management" added 2026-09-05 (self-service, db/orders/011) — directors/managers who
 // should see every order, same as production/shipping/sales, but deliberately its own
@@ -84,7 +85,7 @@ export async function requireAtlasStaffAccess(
 
   const isAuthorized = isAdmin || departmentCodes.length > 0 || hasSalespersonCodeGrants || hasCustomerCodeGrants;
   if (!isAuthorized && !options.allowUnauthorized) {
-    redirect(env.hubUrl ?? "/login");
+    redirect("/my-access?welcome=1");
   }
 
   return {

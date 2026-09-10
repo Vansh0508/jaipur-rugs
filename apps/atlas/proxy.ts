@@ -114,17 +114,19 @@ export default async function proxy(request: NextRequest): Promise<NextResponse>
     return response;
   }
   if (!isAuthorized) {
-    // Second bug found alongside the cookie one (2026-09-02): when hubUrl is unset, the
-    // redirect target IS /login itself — for an unauthorized visitor already headed to
-    // /login (e.g. right after signing up, before an admin grants any access), this used
-    // to redirect /login -> /login -> /login forever. Checked BEFORE building the
-    // redirect now: already on /login just renders it (the person sees the normal sign-in
-    // page — a real "contact your admin" message here is future polish, not required to
-    // stop the loop) instead of bouncing to itself.
-    if (isLoginPage) {
-      return response;
-    }
-    return NextResponse.redirect(env.hubUrl ?? new URL("/login", request.url));
+    // 2026-09-10: this used to bounce to `env.hubUrl ?? "/login"`. Hub has never been
+    // deployed anywhere reachable, so in production that's always "/login" — and for a
+    // visitor already headed to /login (the normal case right after signing up, before
+    // adding a sales code/department) it used to just render the login page again with
+    // no explanation, since a prior fix (2026-09-02) special-cased isLoginPage to avoid
+    // an infinite /login -> /login redirect. Net effect for a brand-new sales signup who
+    // skipped the code field: sign-in "succeeds" every time, Atlas silently dumps them
+    // back at the sign-in screen, and there was no page telling them why or how to fix
+    // it — indistinguishable from sign-in being broken. Real fix: /my-access is exactly
+    // the self-service page for this (exempted above), so send them there instead of
+    // anywhere that's a dead end. Safe from the old loop by construction — /my-access
+    // itself already returned above.
+    return NextResponse.redirect(new URL("/my-access?welcome=1", request.url));
   }
 
   if (isLoginPage) {
