@@ -12,14 +12,16 @@ import { useLocalPreference } from "@/lib/useLocalPreference";
 // and was rebuilt on Hero UI's real Dropdown.
 export interface RugLensFilterPanelProps {
   locationOptions: string[];
+  qualityOptions: string[];
   values: {
     location: string[];
+    quality: string[];
     itemType?: string;
   };
   hasAnyFilter: boolean;
 }
 
-export function RugLensFilterPanel({ locationOptions, values, hasAnyFilter }: RugLensFilterPanelProps) {
+export function RugLensFilterPanel({ locationOptions, qualityOptions, values, hasAnyFilter }: RugLensFilterPanelProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [filtersVisible, setFiltersVisible] = useLocalPreference("atlas:rugLens:filtersVisible", true);
@@ -56,6 +58,12 @@ export function RugLensFilterPanel({ locationOptions, values, hasAnyFilter }: Ru
             options={locationOptions.map((v) => ({ value: v, label: v }))}
             selected={values.location}
             onApply={(v) => apply({ location: v })}
+          />
+          <FacetDropdown
+            label="Quality"
+            options={qualityOptions.map((v) => ({ value: v, label: v }))}
+            selected={values.quality}
+            onApply={(v) => apply({ quality: v })}
           />
           {/* Sample = Serial No_ starts with "SS" — see lib/queries/rugLens.ts's
               applyRugLensFilters for the exact rule (and its null-handling caveat). */}

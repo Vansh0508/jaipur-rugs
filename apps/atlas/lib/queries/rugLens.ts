@@ -32,6 +32,8 @@ export interface RugLensFilters {
    * of the given ones. Free text sourced straight from the NAV sync (current_location),
    * not a controlled vocabulary — see listRugLensLocations for the real distinct list. */
   location?: string | string[];
+  /** Exact multi-select, same semantics as location above. */
+  quality?: string | string[];
   /** Confirmed directly, 2026-09-10: a Serial No_ starting with "SS" is a sample, not a
    * full rug — see applyRugLensFilters' itemType handling for the exact SQL (has to
    * handle NULL serials explicitly, or they'd silently vanish from BOTH options under
@@ -67,6 +69,9 @@ function applyRugLensFilters(query: any, filters: RugLensFilters) {
   const locations = toList(filters.location);
   if (locations.length) query = query.in("current_location", locations);
 
+  const qualities = toList(filters.quality);
+  if (qualities.length) query = query.in("quality", qualities);
+
   // "Sample" = Serial No_ starts with "SS" (case-insensitive). A NULL serial_no matches
   // NEITHER `ilike 'SS%'` NOR `not.ilike.SS%` under normal SQL null comparison rules
   // (both come back UNKNOWN, not true) — without the explicit `.is.null` branch on the
@@ -98,26 +103,36 @@ export async function listOpenStock(supabase: SupabaseClient, filters: RugLensFi
   return { rows: data ?? [], totalCount: count ?? 0 };
 }
 
-/** Distinct current_location values among rows that actually match the open-stock/
- * PO-blank/not-on-hold condition (not every location in the whole orders table) — so the
- * Location filter only ever offers options that would actually return something. Same
+/** Distinct values for one column among rows that actually match the open-stock/
+ * PO-blank/not-on-hold condition (not every value in the whole orders table) — so a
+ * filter dropdown only ever offers options that would actually return something. Same
  * paginated-dedupe-in-JS approach as listOrderFacets, for the same reason (PostgREST
- * caps a single request at 1000 rows; fine at today's scale). */
-export async function listRugLensLocations(supabase: SupabaseClient): Promise<string[]> {
+ * caps a single request at 1000 rows; fine at today's scale). Shared by
+ * listRugLensLocations/listRugLensQualities below so they can't drift apart. */
+async function listRugLensFacetValues(supabase: SupabaseClient, column: "current_location" | "quality"): Promise<string[]> {
   const values = new Set<string>();
   const PAGE_SIZE = 1000;
   let from = 0;
   while (true) {
-    const { data, error } = await applyRugLensFilters(supabase.from("orders").select("current_location"), {}).range(
+    const { data, error } = await applyRugLensFilters(supabase.from("orders").select(column), {}).range(
       from,
       from + PAGE_SIZE - 1,
     );
     if (error) throw error;
-    for (const row of (data ?? []) as { current_location: string | null }[]) {
-      if (row.current_location && row.current_location.trim().length) values.add(row.current_location.trim());
+    for (const row of (data ?? []) as Record<string, string | null>[]) {
+      const value = row[column];
+      if (value && value.trim().length) values.add(value.trim());
     }
     if (!data || data.length < PAGE_SIZE) break;
     from += PAGE_SIZE;
   }
   return [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
+export function listRugLensLocations(supabase: SupabaseClient): Promise<string[]> {
+  return listRugLensFacetValues(supabase, "current_location");
+}
+
+export function listRugLensQualities(supabase: SupabaseClient): Promise<string[]> {
+  return listRugLensFacetValues(supabase, "quality");
 }

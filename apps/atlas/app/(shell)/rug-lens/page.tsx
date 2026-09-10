@@ -1,6 +1,7 @@
 import {
   listOpenStock,
   listRugLensLocations,
+  listRugLensQualities,
   DEFAULT_PAGE_SIZE,
   type RugLensFilters,
   type RugLensItemType,
@@ -52,19 +53,21 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
 
   const filters: RugLensFilters = {
     location: toArray(params.location),
+    quality: toArray(params.quality),
     itemType,
     page,
     pageSize,
   };
 
-  const [stages, locationOptions, { rows, totalCount }] = await Promise.all([
+  const [stages, locationOptions, qualityOptions, { rows, totalCount }] = await Promise.all([
     listStages(supabase),
     listRugLensLocations(supabase),
+    listRugLensQualities(supabase),
     listOpenStock(supabase, filters),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const hasAnyFilter = toArray(params.location).length > 0 || Boolean(itemType);
+  const hasAnyFilter = toArray(params.location).length > 0 || toArray(params.quality).length > 0 || Boolean(itemType);
   const from = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, totalCount);
 
@@ -85,8 +88,9 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
     <div className="flex h-full flex-col gap-4 overflow-hidden">
       <RugLensFilterPanel
         locationOptions={locationOptions}
+        qualityOptions={qualityOptions}
         hasAnyFilter={hasAnyFilter}
-        values={{ location: toArray(params.location), itemType }}
+        values={{ location: toArray(params.location), quality: toArray(params.quality), itemType }}
       />
 
       <div className="flex shrink-0 items-center justify-between">
