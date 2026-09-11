@@ -17,11 +17,12 @@ interface FolderCache {
   files: Map<string, string>;
 }
 
-// Module-level cache (one per server process) — a live per-request scan of a network
-// share with potentially thousands of images would be far too slow to do on every
-// RugLens row/page load. 5 minutes balances "not stale for a whole workday" against
-// "not rescanning the share on every click."
-let cache: FolderCache | null = null;
+// Module-level cache, keyed by folder path (one server process can now cache more than
+// one root — see getPhotoFolderListing's fallback-folder support, added 2026-09-11). A
+// live per-request scan of a network share with potentially thousands of images would
+// be far too slow to do on every RugLens row/page load. 5 minutes balances "not stale
+// for a whole workday" against "not rescanning the share on every click."
+const cache = new Map<string, FolderCache>();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
 async function scanFolder(rootDir: string, recursive: boolean): Promise<Map<string, string>> {
@@ -40,13 +41,15 @@ async function scanFolder(rootDir: string, recursive: boolean): Promise<Map<stri
   return files;
 }
 
-/** Returns the cached folder listing, rescanning `rootDir` if the cache is stale or
- * doesn't exist yet. Throws if the folder can't be read (share unreachable, wrong
- * network, permissions) — callers decide how to fail (see the photo route's catch). */
+/** Returns the cached folder listing for `rootDir`, rescanning it if that folder's
+ * cache entry is stale or doesn't exist yet. Throws if the folder can't be read (share
+ * unreachable, wrong network, permissions) — callers decide how to fail (see the photo
+ * route's catch). */
 export async function getPhotoFolderListing(rootDir: string, recursive: boolean): Promise<Map<string, string>> {
-  if (cache && Date.now() - cache.builtAt < CACHE_TTL_MS) return cache.files;
+  const cached = cache.get(rootDir);
+  if (cached && Date.now() - cached.builtAt < CACHE_TTL_MS) return cached.files;
   const files = await scanFolder(rootDir, recursive);
-  cache = { builtAt: Date.now(), files };
+  cache.set(rootDir, { builtAt: Date.now(), files });
   return files;
 }
 
