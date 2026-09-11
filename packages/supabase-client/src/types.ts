@@ -1489,6 +1489,38 @@ export type Database = {
         Args: { p_journey_id: string; payload: Json }
         Returns: undefined
       }
+      // Hand-authored, same exception as the orders-module tables above — added by
+      // db/orders/018_perf_facets_and_stats_rpcs.sql, not yet reflected in a real
+      // regeneration. All three run SECURITY INVOKER (the default), so RLS on `orders`
+      // still applies exactly as it does to a plain `.from("orders").select()` call.
+      orders_list_facets: {
+        Args: never
+        Returns: {
+          customer_no: string[] | null
+          merchant_name: string[] | null
+          order_wise_merchant: string[] | null
+          follow_up_person: string[] | null
+          customer_po_no: string[] | null
+          quality: string[] | null
+          design: string[] | null
+          size: string[] | null
+          production_order_status: string[] | null
+          priority: string[] | null
+        }[]
+      }
+      orders_dashboard_stats: {
+        Args: never
+        Returns: {
+          total: number
+          distinct_sales_orders: number
+          delayed_count: number
+          counts_by_stage: Json
+        }[]
+      }
+      rug_lens_facets: {
+        Args: { include_held_or_assigned?: boolean }
+        Returns: { locations: string[] | null; qualities: string[] | null }[]
+      }
     }
     Enums: {
       access_level: "view" | "manage" | "admin"

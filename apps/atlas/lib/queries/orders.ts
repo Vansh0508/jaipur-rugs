@@ -321,105 +321,106 @@ export interface OrderFacets {
   priority: string[];
 }
 
-const FACET_COLUMNS = [
-  ["customer_no", "customerNo"],
-  ["merchant_name", "merchantName"],
-  ["order_wise_merchant", "orderWiseMerchant"],
-  ["follow_up_person", "followUpPerson"],
-  ["customer_po_no", "customerPoNo"],
-  ["quality", "quality"],
-  ["design", "design"],
-  ["size", "size"],
-  ["production_order_status", "productionOrderStatus"],
-  ["order_priority", "priority"],
-] as const;
+/** Sorts a facet's distinct values the same way this page always has (locale-aware,
+ * numeric strings ordered numerically) — the actual dedup now happens in Postgres (see
+ * below), this is just presentation. */
+function sortFacetValues(values: string[] | null | undefined): string[] {
+  return [...(values ?? [])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
 
 /** Distinct real values for every multi-select filter above, so the Orders page can
  * offer real options instead of a free-text guess — the same role the old tool's
- * `/api/facets` endpoint played. One paginated pass over every real customer order
- * (stock excluded), pulling only these 10 narrow columns, deduping in JS — same pattern
- * as listAllOrdersForStats, and for the same reason: PostgREST caps a single request at
- * 1000 rows, and there's no cheap SQL-side "distinct across many columns at once"
- * available without a bespoke RPC. Fine at today's scale (~10k real orders / a dozen
- * requests); revisit with a real SQL aggregate if that grows an order of magnitude. */
+ * `/api/facets` endpoint played. Computed by `orders_list_facets()` (see
+ * db/orders/018_perf_facets_and_stats_rpcs.sql) — a single round trip, Postgres does the
+ * dedup itself, rather than this function paging through every real customer order in
+ * JS a page at a time (~14 sequential round trips at today's ~13.6k-row scale; confirmed
+ * live via EXPLAIN ANALYZE this used to be the biggest single reason /orders felt slow).
+ * That SQL function is SECURITY INVOKER (the default), so the same `orders_select` RLS
+ * policy still scopes the rows this aggregates over — a salesperson/merchant-scoped
+ * caller still only ever sees facet values drawn from orders they could already see. */
+/** Shape of `orders_list_facets()`'s single row — `supabase` here is deliberately a
+ * plain, un-generic'd SupabaseClient (see this file's header comment), so `.rpc()`
+ * can't infer this from the Database type the way a `SupabaseClient<Database>` caller
+ * would; cast explicitly instead, same as every other query in this file does for its
+ * own return shape (e.g. `as DashboardStatsRow[]` before this refactor). */
+interface OrdersListFacetsRow {
+  customer_no: string[] | null;
+  merchant_name: string[] | null;
+  order_wise_merchant: string[] | null;
+  follow_up_person: string[] | null;
+  customer_po_no: string[] | null;
+  quality: string[] | null;
+  design: string[] | null;
+  size: string[] | null;
+  production_order_status: string[] | null;
+  priority: string[] | null;
+}
+
 export async function listOrderFacets(supabase: SupabaseClient): Promise<OrderFacets> {
-  const columns = FACET_COLUMNS.map(([col]) => col).join(", ");
-  const sets = Object.fromEntries(FACET_COLUMNS.map(([, key]) => [key, new Set<string>()])) as Record<
-    keyof OrderFacets,
-    Set<string>
-  >;
-
-  const PAGE_SIZE = 1000;
-  let from = 0;
-  while (true) {
-    const { data, error } = await supabase
-      .from("orders")
-      .select(columns)
-      .not("customer_no", "in", `(${STOCK_CUSTOMER_CODES.join(",")})`)
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) throw error;
-    for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
-      for (const [col, key] of FACET_COLUMNS) {
-        const value = row[col];
-        if (value !== null && value !== undefined && String(value).trim().length) {
-          sets[key].add(String(value).trim());
-        }
-      }
-    }
-    if (!data || data.length < PAGE_SIZE) break;
-    from += PAGE_SIZE;
-  }
-
-  const result = {} as OrderFacets;
-  for (const [, key] of FACET_COLUMNS) {
-    result[key as keyof OrderFacets] = [...sets[key]].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  }
-  return result;
+  const { data, error } = await supabase.rpc("orders_list_facets").single();
+  if (error) throw error;
+  const row = data as OrdersListFacetsRow | null;
+  return {
+    customerNo: sortFacetValues(row?.customer_no),
+    merchantName: sortFacetValues(row?.merchant_name),
+    orderWiseMerchant: sortFacetValues(row?.order_wise_merchant),
+    followUpPerson: sortFacetValues(row?.follow_up_person),
+    customerPoNo: sortFacetValues(row?.customer_po_no),
+    quality: sortFacetValues(row?.quality),
+    design: sortFacetValues(row?.design),
+    size: sortFacetValues(row?.size),
+    productionOrderStatus: sortFacetValues(row?.production_order_status),
+    priority: sortFacetValues(row?.priority),
+  };
 }
 
-export interface DashboardStatsRow {
-  id: string;
-  stage_id: string | null;
-  promised_delivery_date: string | null;
-  revised_ex_factory_date: string | null;
-  /** One Sales Order can (and very often does) span several rows here — one per rug/
-   * item line, since that's the level stage-tracking actually happens at. Needed so the
-   * dashboard can report "how many real orders" separately from "how many rug lines"
-   * instead of conflating the two under one "Orders in view" number — confirmed live
-   * 2026-09-03: 14,214 rows resolved to only 3,757 distinct Sales Order Nos. */
-  sales_order_no: string | null;
+export interface DashboardStats {
+  /** Rug lines in view — one row per item, the level stage-tracking actually happens
+   * at (see distinctSalesOrders' own doc for why that's not the same as "orders"). */
+  total: number;
+  /** One Sales Order can (and very often does) span several rug lines — confirmed live
+   * 2026-09-03: 14,214 rows then resolved to only 3,757 distinct Sales Order Nos, so a
+   * single "Orders in view" number was quietly answering two different questions
+   * depending on who read it. */
+  distinctSalesOrders: number;
+  delayedCount: number;
+  /** stage_id -> count, for the "by stage" tiles. */
+  countsByStage: Record<string, number>;
 }
 
-/** Every real customer order the caller can see (stock/inventory codes excluded, see
- * STOCK_CUSTOMER_CODES), but only the columns the dashboard's aggregate stats actually
- * need — and paginated via .range(), not a single limit(). Confirmed live 2026-09-02:
- * PostgREST caps any single request at 1000 rows no matter what limit() asks for, so
- * the dashboard's earlier listOrders({ limit: 2000 }) was silently truncated to the
- * 1000 most-recently-updated orders and showing that as the total against a real
- * 14,214-row table — wrong, not just incomplete. Ordered by `id` (stable primary key),
- * not `updated_at`, so a page boundary can't skip/duplicate a row that happens to get
- * touched by the ERP sync between page fetches.
+/** Dashboard's four stat tiles + per-stage breakdown, computed by
+ * `orders_dashboard_stats()` (see db/orders/018_perf_facets_and_stats_rpcs.sql) — one
+ * round trip, aggregated in Postgres — rather than this function pulling every real
+ * customer order's id/stage/dates into Node to filter/reduce/Set-dedupe by hand.
+ * Confirmed live via EXPLAIN ANALYZE: the old approach paged through ~13.6k rows in
+ * sequential 1000-row round trips (PostgREST's per-request cap) on every single
+ * Dashboard load — the single biggest reason that page felt slow. That SQL function is
+ * SECURITY INVOKER (the default), so `orders_select`'s RLS policy still scopes what it
+ * aggregates over, same as every other query in this app.
  *
- * Fine at today's scale (a dozen or so requests per dashboard load). If order volume
- * grows another order of magnitude, this should become a real server-side aggregate
- * (a SQL view/RPC doing count/group by) instead of pulling every row to count in JS. */
-export async function listAllOrdersForStats(supabase: SupabaseClient): Promise<DashboardStatsRow[]> {
-  const PAGE_SIZE = 1000;
-  const rows: DashboardStatsRow[] = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await supabase
-      .from("orders")
-      .select("id, stage_id, promised_delivery_date, revised_ex_factory_date, sales_order_no")
-      .not("customer_no", "in", `(${STOCK_CUSTOMER_CODES.join(",")})`)
-      .order("id", { ascending: true })
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) throw error;
-    rows.push(...((data ?? []) as DashboardStatsRow[]));
-    if (!data || data.length < PAGE_SIZE) break;
-    from += PAGE_SIZE;
-  }
-  return rows;
+ * delayed_count mirrors lib/tat.ts's onTimeStatus() for the specific case this page has
+ * always used it in (stageStandardDays always null here — see this page's own comment,
+ * unchanged by this refactor) — see that SQL function's comment for the exact mapping;
+ * if onTimeStatus() itself changes, that SQL must be updated to match. */
+/** Shape of `orders_dashboard_stats()`'s single row — see OrdersListFacetsRow's comment
+ * above for why this is cast explicitly rather than inferred. */
+interface OrdersDashboardStatsRow {
+  total: number;
+  distinct_sales_orders: number;
+  delayed_count: number;
+  counts_by_stage: Record<string, number> | null;
+}
+
+export async function getDashboardStats(supabase: SupabaseClient): Promise<DashboardStats> {
+  const { data, error } = await supabase.rpc("orders_dashboard_stats").single();
+  if (error) throw error;
+  const row = data as OrdersDashboardStatsRow | null;
+  return {
+    total: Number(row?.total ?? 0),
+    distinctSalesOrders: Number(row?.distinct_sales_orders ?? 0),
+    delayedCount: Number(row?.delayed_count ?? 0),
+    countsByStage: row?.counts_by_stage ?? {},
+  };
 }
 
 export async function getOrder(supabase: SupabaseClient, orderId: string): Promise<OrderRow | null> {

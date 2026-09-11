@@ -57,6 +57,7 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | `20260907161313` | `shehbaaz_email` | orders | `db/orders/016_shehbaaz_email.sql` |
 | `20260910054158` | `seed_backops_department` | orders | *(applied via `execute_sql`/`apply_migration` before this row's repo file existed — see 017 below)* |
 | `20260910060119` | `backops_department_self_service` | orders | `db/orders/017_backops_department_self_service.sql` |
+| (2026-09-11) | `orders_perf_facets_and_stats_rpcs` | orders | `db/orders/018_perf_facets_and_stats_rpcs.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
@@ -382,6 +383,50 @@ forward, per the user's explicit call — #3's design is superseded, not merged.
 here only so a future reader of the Supabase migration history isn't confused about what
 `drop_rd_webapp_schema_for_foundation_rebuild` or `create_team_members_foundation_schema`
 were, since neither corresponds to anything in this repo.
+
+**Dashboard/Orders/RugLens performance fix — written, NOT yet applied (2026-09-11,
+`018_perf_facets_and_stats_rpcs.sql`).** Ayaan reported the app feeling slow switching
+between Dashboard/Orders/RugLens and applying filters. Confirmed live via `execute_sql`/
+`EXPLAIN ANALYZE` (read-only, no writes) against the real data (46,234 rows, 13,633
+non-stock): `listOrderFacets`, `listAllOrdersForStats`
+(`apps/atlas/lib/queries/orders.ts`) and `listRugLensFacetValues`
+(`apps/atlas/lib/queries/rugLens.ts`) each paged through EVERY matching row in
+sequential 1000-row round trips (PostgREST's per-request cap) and deduped/aggregated in
+JS, on every single page load — ~14 round trips for Orders' facets, ~14 more for the
+Dashboard's stats, ~33 for RugLens' facets. `018` adds three plain SQL functions
+(`orders_list_facets`, `orders_dashboard_stats`, `rug_lens_facets`) that do that same
+work in Postgres in one round trip instead — all SECURITY INVOKER (the default), so the
+existing `orders_select` RLS policy still scopes them exactly as it does any other query.
+Measured live: ~150ms / ~100-1400ms / ~570ms respectively, replacing what were multi-
+second sequential round trips.
+
+**Applied 2026-09-11**, after first being blocked by this environment's own permission
+system on the first attempt (a live-production-database write needs Ayaan's explicit
+go-ahead — asked directly, confirmed, then applied) and Ayaan asking two direct follow-up
+questions first (answered inline in that session, not repeated here): whether a
+code-only "fetch the same pages in parallel instead of one-by-one" alternative could
+avoid a database change at all (yes, but slower and heavier than pushing the work into
+Postgres — he chose the SQL-function approach), and whether adding these functions could
+affect other apps sharing this same Supabase project (confirmed directly: no existing
+function had these names before this migration, all three only ever read `orders`, none
+can write anything, and the same RLS policy still gates them for every caller regardless
+of which app they normally use).
+
+Verified live immediately after applying: `get_advisors` (security + performance) shows
+no new findings beyond the pre-existing ones already on record; `orders_dashboard_stats()`
+returns `{total: 13633, distinct_sales_orders: 3786, delayed_count: 9444, counts_by_stage:
+{...7 stages...}}`; `orders_list_facets()` returns 165 distinct qualities / 7,488 designs /
+130 merchants; `rug_lens_facets(false)` returns 23 locations / 178 qualities — all sane
+numbers, all returned in one round trip.
+
+The three application-code query functions (`listOrderFacets`/`getDashboardStats`/
+`listRugLensFacets`) and the three pages that call them (`dashboard`, `orders`,
+`rug-lens`) were updated to call these RPCs by name — confirmed compiling clean via
+`pnpm --filter @jaipur-rugs/atlas type-check` and a full `pnpm --filter @jaipur-rugs/atlas
+build`, but **not yet deployed** to the office server or the VPS — that's a separate step,
+still pending Ayaan's go-ahead. `packages/supabase-client/src/types.ts`'s `Functions`
+block was hand-updated to add these three (same "hand-authored, not yet regenerated"
+exception already flagged at that file's own header for this module).
 
 ## Still pending
 
