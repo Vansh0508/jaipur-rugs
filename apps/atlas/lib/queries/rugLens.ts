@@ -189,69 +189,54 @@ export async function listOpenStock(supabase: SupabaseClient, filters: RugLensFi
 export interface RugLensFacets {
   locations: string[];
   qualities: string[];
+  sizes: string[];
 }
 
-/** Shape of `rug_lens_facets()`'s single row — `supabase` here is a plain, un-generic'd
- * SupabaseClient (see orders.ts's header comment), so cast explicitly rather than
- * relying on `.rpc()` to infer it from the Database type. */
-interface RugLensFacetsRow {
-  locations: string[] | null;
-  qualities: string[] | null;
-}
-
-/** Distinct Location/Quality values among rows that actually match the current
+/** Distinct Location/Quality/Size values among rows that actually match the current
  * open-stock condition (not every value in the whole orders table) — so a filter
  * dropdown only ever offers options that would actually return something. Takes
- * `includeHeldOrAssigned` (not the rest of `filters`, deliberately — the Location/
- * Quality dropdowns themselves stay independent of each other, same as before) so the
- * options on offer widen correctly when that's turned on, rather than staying locked
- * to the plain-available set.
+ * `includeHeldOrAssigned` (not the rest of `filters`, deliberately — the three
+ * dropdowns stay independent of each other and of whatever's currently selected in
+ * them) so the options on offer widen correctly when that's turned on.
  *
- * Computed by `rug_lens_facets()` (see db/orders/018_perf_facets_and_stats_rpcs.sql) —
- * one round trip, Postgres dedupes both columns in a single pass — rather than paging
- * through every matching row in JS a page at a time. Confirmed live via EXPLAIN
- * ANALYZE this used to be ~33 sequential round trips at today's scale (~32.6k
- * stock-code rows), the single biggest reason /rug-lens felt slow. That SQL function is
- * SECURITY INVOKER (the default), so the same RLS this app relies on everywhere else
- * still scopes what it aggregates over. */
+ * *** 2026-09-11 incident note, read before "optimizing" this again: this used to call
+ * a `rug_lens_facets()` Postgres RPC (see db/orders/018_perf_facets_and_stats_rpcs.sql
+ * — one round trip instead of this function's paginated JS loop, ~570ms vs. ~33
+ * sequential round trips at today's ~32.6k-row scale). That migration was written by a
+ * parallel session but NEVER APPLIED to the live project — confirmed directly,
+ * `select proname from pg_proc where proname = 'rug_lens_facets'` returned nothing.
+ * This function was changed to call it anyway (carried forward from that session's
+ * in-progress edit to this same file, without re-checking it was actually safe to
+ * deploy) and broke every real /rug-lens page load in production for a period
+ * (PGRST202 "Could not find the function ... in the schema cache") until reverted back
+ * to this paginated approach. Do NOT switch this back to calling that RPC until the
+ * migration has actually been applied to the live project (confirm the same way: query
+ * pg_proc directly) AND Ayaan has explicitly signed off on applying it — it needs his
+ * go-ahead, not just a written-and-tested .sql file sitting in the repo. ***
+ *
+ * One paginated pass, not three — locations/qualities/sizes all deduped together from
+ * the same page of rows, same approach orders.ts's listOrderFacets uses for its own
+ * (larger) set of facet columns. */
 export async function listRugLensFacets(supabase: SupabaseClient, includeHeldOrAssigned = false): Promise<RugLensFacets> {
-  const { data, error } = await supabase
-    .rpc("rug_lens_facets", { include_held_or_assigned: includeHeldOrAssigned })
-    .single();
-  if (error) throw error;
-  const row = data as RugLensFacetsRow | null;
-  const sort = (values: string[] | null | undefined) =>
-    [...(values ?? [])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  return { locations: sort(row?.locations), qualities: sort(row?.qualities) };
-}
-
-/** Distinct Size values among rows matching the current open-stock condition. Not
- * folded into rug_lens_facets() above — that migration (018_perf_facets_and_stats_
- * rpcs.sql) is written but NOT YET APPLIED to the live project (needs Ayaan's
- * explicit go-ahead; the session that wrote it had its own apply_migration call
- * blocked by this environment's permission system, same guardrail this one would hit
- * — see db/MIGRATIONS.md's entry on it). This is the same paginated-dedupe-in-JS
- * approach Location/Quality used before that RPC existed (listOrderFacets in
- * orders.ts still works this way today) — slower at scale (~33 round trips for
- * RugLens' ~32.6k stock-code rows, per that migration's own measurements) but needs
- * no schema change, so the Size filter works today. Worth folding into
- * rug_lens_facets() as a third returned column once that migration is actually live —
- * trivial one-line addition to its SQL body at that point. */
-export async function listRugLensSizes(supabase: SupabaseClient, includeHeldOrAssigned = false): Promise<string[]> {
-  const values = new Set<string>();
+  const locations = new Set<string>();
+  const qualities = new Set<string>();
+  const sizes = new Set<string>();
   const PAGE_SIZE = 1000;
   let from = 0;
   while (true) {
-    const { data, error } = await applyRugLensFilters(supabase.from("orders").select("size"), { includeHeldOrAssigned }).range(
-      from,
-      from + PAGE_SIZE - 1,
-    );
+    const { data, error } = await applyRugLensFilters(
+      supabase.from("orders").select("current_location, quality, size"),
+      { includeHeldOrAssigned },
+    ).range(from, from + PAGE_SIZE - 1);
     if (error) throw error;
-    for (const row of (data ?? []) as { size: string | null }[]) {
-      if (row.size && row.size.trim().length) values.add(row.size.trim());
+    for (const row of (data ?? []) as { current_location: string | null; quality: string | null; size: string | null }[]) {
+      if (row.current_location && row.current_location.trim().length) locations.add(row.current_location.trim());
+      if (row.quality && row.quality.trim().length) qualities.add(row.quality.trim());
+      if (row.size && row.size.trim().length) sizes.add(row.size.trim());
     }
     if (!data || data.length < PAGE_SIZE) break;
     from += PAGE_SIZE;
   }
-  return [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const sort = (values: Set<string>) => [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  return { locations: sort(locations), qualities: sort(qualities), sizes: sort(sizes) };
 }

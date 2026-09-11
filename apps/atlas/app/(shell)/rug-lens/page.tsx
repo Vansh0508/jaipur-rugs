@@ -1,7 +1,6 @@
 import {
   listOpenStock,
   listRugLensFacets,
-  listRugLensSizes,
   DEFAULT_PAGE_SIZE,
   type RugLensFilters,
   type RugLensItemType,
@@ -64,13 +63,12 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
     pageSize,
   };
 
-  const [stages, facets, sizeOptions, { rows, totalCount }] = await Promise.all([
+  const [stages, facets, { rows, totalCount }] = await Promise.all([
     listStages(supabase),
     listRugLensFacets(supabase, includeHeldOrAssigned),
-    listRugLensSizes(supabase, includeHeldOrAssigned),
     listOpenStock(supabase, filters),
   ]);
-  const { locations: locationOptions, qualities: qualityOptions } = facets;
+  const { locations: locationOptions, qualities: qualityOptions, sizes: sizeOptions } = facets;
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const hasAnyFilter =
