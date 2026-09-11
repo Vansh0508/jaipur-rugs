@@ -65,7 +65,7 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
 
   const [stages, facets, { rows, totalCount }] = await Promise.all([
     listStages(supabase),
-    listRugLensFacets(supabase, includeHeldOrAssigned),
+    listRugLensFacets(supabase, filters),
     listOpenStock(supabase, filters),
   ]);
   const { locations: locationOptions, qualities: qualityOptions, sizes: sizeOptions } = facets;

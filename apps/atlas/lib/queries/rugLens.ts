@@ -192,51 +192,69 @@ export interface RugLensFacets {
   sizes: string[];
 }
 
+/** Distinct values for one facet column, scoped by whatever `scoped` filters are
+ * passed in — a plain paginated dedupe (see the incident note above listRugLensFacets
+ * for why this isn't a single RPC round trip). Shared by all three facets in
+ * listRugLensFacets below so they can't drift apart in how they page/dedupe. */
+async function distinctFacetValues(
+  supabase: SupabaseClient,
+  column: "current_location" | "quality" | "size",
+  scoped: RugLensFilters,
+): Promise<string[]> {
+  const values = new Set<string>();
+  const PAGE_SIZE = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await applyRugLensFilters(supabase.from("orders").select(column), scoped).range(
+      from,
+      from + PAGE_SIZE - 1,
+    );
+    if (error) throw error;
+    for (const row of (data ?? []) as Record<string, string | null>[]) {
+      const value = row[column];
+      if (value && value.trim().length) values.add(value.trim());
+    }
+    if (!data || data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
 /** Distinct Location/Quality/Size values among rows that actually match the current
- * open-stock condition (not every value in the whole orders table) — so a filter
- * dropdown only ever offers options that would actually return something. Takes
- * `includeHeldOrAssigned` (not the rest of `filters`, deliberately — the three
- * dropdowns stay independent of each other and of whatever's currently selected in
- * them) so the options on offer widen correctly when that's turned on.
+ * open-stock condition — and, direct feedback 2026-09-12, CROSS-FILTERED against each
+ * other: picking a Location narrows what Quality/Size can even be picked from (and
+ * vice versa), standard faceted-search behavior. Each facet is computed with every
+ * OTHER filter applied (itemType/search/includeHeldOrAssigned always; the other two of
+ * location/quality/size) but deliberately NOT its own current selection — a facet
+ * should never filter out values the user already picked from itself, only react to
+ * what's picked elsewhere.
  *
- * *** 2026-09-11 incident note, read before "optimizing" this again: this used to call
- * a `rug_lens_facets()` Postgres RPC (see db/orders/018_perf_facets_and_stats_rpcs.sql
- * — one round trip instead of this function's paginated JS loop, ~570ms vs. ~33
- * sequential round trips at today's ~32.6k-row scale). That migration was written by a
+ * Three separate paginated passes now, not one combined pass (each facet needs its own
+ * differently-scoped query) — real added latency versus the single-pass version this
+ * replaced, worth being upfront about: this is exactly the kind of thing the pending
+ * rug_lens_facets() RPC (see the incident note above) would make cheap again (one
+ * round trip with conditional aggregation instead of up to three paginated loops), but
+ * that migration still isn't applied and still needs Ayaan's explicit go-ahead — see
+ * that note for the full story and why NOT to just switch to it unilaterally.
+ *
+ * *** 2026-09-11 incident note, read before reaching for an RPC here again: this used
+ * to call a `rug_lens_facets()` Postgres RPC (db/orders/018_perf_facets_and_stats_rpcs.sql
+ * — one round trip instead of paginated JS loops). That migration was written by a
  * parallel session but NEVER APPLIED to the live project — confirmed directly,
  * `select proname from pg_proc where proname = 'rug_lens_facets'` returned nothing.
  * This function was changed to call it anyway (carried forward from that session's
  * in-progress edit to this same file, without re-checking it was actually safe to
  * deploy) and broke every real /rug-lens page load in production for a period
- * (PGRST202 "Could not find the function ... in the schema cache") until reverted back
- * to this paginated approach. Do NOT switch this back to calling that RPC until the
- * migration has actually been applied to the live project (confirm the same way: query
- * pg_proc directly) AND Ayaan has explicitly signed off on applying it — it needs his
- * go-ahead, not just a written-and-tested .sql file sitting in the repo. ***
- *
- * One paginated pass, not three — locations/qualities/sizes all deduped together from
- * the same page of rows, same approach orders.ts's listOrderFacets uses for its own
- * (larger) set of facet columns. */
-export async function listRugLensFacets(supabase: SupabaseClient, includeHeldOrAssigned = false): Promise<RugLensFacets> {
-  const locations = new Set<string>();
-  const qualities = new Set<string>();
-  const sizes = new Set<string>();
-  const PAGE_SIZE = 1000;
-  let from = 0;
-  while (true) {
-    const { data, error } = await applyRugLensFilters(
-      supabase.from("orders").select("current_location, quality, size"),
-      { includeHeldOrAssigned },
-    ).range(from, from + PAGE_SIZE - 1);
-    if (error) throw error;
-    for (const row of (data ?? []) as { current_location: string | null; quality: string | null; size: string | null }[]) {
-      if (row.current_location && row.current_location.trim().length) locations.add(row.current_location.trim());
-      if (row.quality && row.quality.trim().length) qualities.add(row.quality.trim());
-      if (row.size && row.size.trim().length) sizes.add(row.size.trim());
-    }
-    if (!data || data.length < PAGE_SIZE) break;
-    from += PAGE_SIZE;
-  }
-  const sort = (values: Set<string>) => [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  return { locations: sort(locations), qualities: sort(qualities), sizes: sort(sizes) };
+ * (PGRST202 "Could not find the function ... in the schema cache") until reverted.
+ * Do NOT call that RPC (or write a new one) until it's confirmed live in pg_proc AND
+ * Ayaan has explicitly signed off on applying it. ***/
+export async function listRugLensFacets(supabase: SupabaseClient, filters: RugLensFilters): Promise<RugLensFacets> {
+  const { location, quality, size, ...sharedFilters } = filters;
+
+  const [locations, qualities, sizes] = await Promise.all([
+    distinctFacetValues(supabase, "current_location", { ...sharedFilters, quality, size }),
+    distinctFacetValues(supabase, "quality", { ...sharedFilters, location, size }),
+    distinctFacetValues(supabase, "size", { ...sharedFilters, location, quality }),
+  ]);
+  return { locations, qualities, sizes };
 }
