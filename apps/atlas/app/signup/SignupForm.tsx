@@ -21,7 +21,7 @@ import { parseCodeList } from "@/lib/parseCodeList";
 // already-existing employee-signup function in a real form.
 //
 // Department picker added 2026-09-05 — self-service, no admin step needed for any of
-// these: Sales reveals the sales-code field (unchanged, see
+// these: Sales reveals the sales-code field (see
 // db/orders/010_salesperson_codes_self_service.sql — there's no reliable way to derive
 // a name<->code mapping from the ERP feed, so a person types in their own already-known
 // code); Management/Production instead call join-department, which grants blanket
@@ -37,6 +37,14 @@ import { parseCodeList } from "@/lib/parseCodeList";
 // join-department's comment), so it reveals BOTH the sales-code field and a
 // customer-code field: a Back Ops person may know either kind of code (or both), and
 // each is added via its own self-service function.
+//
+// Sales also gained the customer-code field (2026-09-11, direct request) — a Sales
+// signup is often a territory head/B2B salesperson ("merchant" in this business's own
+// vocabulary, requireAtlasStaffAccess.ts's comment) who has customer codes as well as
+// or instead of a sales code. This does NOT make "sales" self-service-joinable as a
+// department (still deliberately blocked in join-department — that would grant
+// blanket view-all); it only lets a Sales signup add merchant_customer_codes rows the
+// same way Back Ops already can, via addOwnCustomerCodes.
 type SignupDepartment = "" | SelfServiceDepartmentCode | "sales";
 
 const DEPARTMENT_OPTIONS = [
@@ -87,6 +95,14 @@ export function SignupForm() {
         if (codes.length) {
           try {
             await addOwnSalespersonCodes(supabase, codes);
+          } catch {
+            // swallowed deliberately — see comment above.
+          }
+        }
+        const customerCodes = parseCodeList(customerCodesRaw);
+        if (customerCodes.length) {
+          try {
+            await addOwnCustomerCodes(supabase, customerCodes);
           } catch {
             // swallowed deliberately — see comment above.
           }
@@ -150,13 +166,25 @@ export function SignupForm() {
         fullWidth
       />
       {department === "sales" ? (
-        <TextField
-          label="Your sales code(s)"
-          placeholder="e.g. SALES-0039 — or paste a whole list"
-          value={salespersonCodesRaw}
-          onChange={setSalespersonCodesRaw}
-          fullWidth
-        />
+        <>
+          <TextField
+            label="Your sales code(s)"
+            placeholder="e.g. SALES-0039 — or paste a whole list"
+            value={salespersonCodesRaw}
+            onChange={setSalespersonCodesRaw}
+            fullWidth
+          />
+          <TextField
+            label="Your customer code(s) (optional)"
+            placeholder="e.g. 34836 — or paste a whole list"
+            value={customerCodesRaw}
+            onChange={setCustomerCodesRaw}
+            fullWidth
+          />
+          <p className="text-xs text-muted">
+            Add customer codes too if you&apos;re a territory head/B2B salesperson working specific accounts.
+          </p>
+        </>
       ) : null}
       {department === "backops" ? (
         <>
