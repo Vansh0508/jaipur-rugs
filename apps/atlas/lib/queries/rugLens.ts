@@ -21,6 +21,40 @@ import { STOCK_CUSTOMER_CODES, SWATCH_MAX_SQFT, toList } from "./orders";
 // implemented as "on_hold blank," the closest real field, using the exact same
 // yes/no truthy rule the Orders page's own On Hold filter already uses so the two
 // never quietly disagree about what "on hold" means.
+//
+// That "available" condition is the DEFAULT view, not an absolute — direct feedback,
+// 2026-09-11: sometimes someone deliberately wants to check what's on hold or already
+// has a Customer PO too, just not have that mixed into the everyday view by default.
+// See RugLensFilters.includeHeldOrAssigned below.
+
+// Final-location classification — direct feedback, 2026-09-11: "keep the final
+// location only such as stores, showroom, finished locations, warehouse. Not like
+// unfinished, consignee, repair, rejected, inspection, and more such locations."
+// current_location is free text straight from the NAV sync (see
+// db/orders/013_nav_direct_fields.sql) — no controlled vocabulary — so this is a
+// keyword classification, checked directly against the real live distinct values
+// (not guessed): an INCLUDE set (broad, catches most of the real "final" locations)
+// combined with an EXCLUDE set that overrides it. The exclude set is load-bearing, not
+// decorative — checked live: "godown" alone as an include keyword (to catch "Palana
+// Godown") also matched "Surana Unfinished Godown" and "Sadwa Godown (Recd frm
+// Repair)", both clearly NOT final locations, until the matching exclude keywords
+// ("unfinished", "repair") were added to override it. Include-keywords alone are not
+// reliable here; exclude always wins.
+const FINAL_LOCATION_INCLUDE_KEYWORDS = ["warehouse", "showroom", "store", "whse", "godown", "branch", "finished"];
+const FINAL_LOCATION_EXCLUDE_KEYWORDS = [
+  "unfinished", "consignee", "repair", "reject", "inspection", "return", "rework",
+  "production", "dyeing", "washing", "packing", "rafoo", "thukai", "finishing",
+];
+// Real location names, confirmed directly with Ayaan, 2026-09-11 — don't match any
+// include keyword above but are genuine final locations (branch/office addresses with
+// no distinguishing common word): "Jaipur Rugs Co. Ltd. (Empire Complex, Mumbai)"
+// (1,077 stock rows — by far the largest of the three), "Jaipur Rugs - Koregaon Park,
+// PUNE" (352), "JRCPL Raipur, CG" (303).
+const FINAL_LOCATION_EXACT_INCLUDES = [
+  "Jaipur Rugs Co. Ltd. (Empire Complex, Mumbai)",
+  "Jaipur Rugs - Koregaon Park, PUNE",
+  "JRCPL Raipur, CG",
+];
 
 export type RugLensRow = Tables<"orders">;
 
@@ -45,6 +79,13 @@ export interface RugLensFilters {
    * Remarks) — a row matches if ANY of them contains the term, case-insensitive. Same
    * broad-OR-across-fields approach as Orders' own `search` filter. */
   search?: string;
+  /** Opt-in escape hatch, direct feedback 2026-09-11: "give an option ... to check
+   * hold remarks or customer PO mentioned items also but not in default view." Default
+   * (false/unset) keeps the normal PO-blank/not-on-hold "available" condition; true
+   * drops both restrictions entirely, so a row that's on hold or already has a
+   * Customer PO shows up too — someone deliberately checking what's spoken for, not
+   * the everyday "what can I offer" view. */
+  includeHeldOrAssigned?: boolean;
   page?: number;
   pageSize?: number;
 }
@@ -65,12 +106,30 @@ export const DEFAULT_PAGE_SIZE = 50;
 function applyRugLensFilters(query: any, filters: RugLensFilters) {
   query = query
     .in("customer_no", STOCK_CUSTOMER_CODES)
-    // Two separate .or() calls compose as AND-of-two-OR-groups — PostgREST ANDs
-    // same-named query params together (repeated `or=` params), so this reads as
-    // "(PO is blank) AND (not on hold)," each side itself an OR across the different
-    // raw-value shapes that count as "blank"/"not set."
-    .or("customer_po_no.is.null,customer_po_no.eq.")
-    .or("on_hold.is.null,on_hold.in.(,0,No,no,NO)");
+    // Final-location baseline — see FINAL_LOCATION_* above. The include side is one
+    // .or() (composes as an AND-of-OR-group with everything else, same reasoning as
+    // the PO/hold .or() calls below); the exclude side is a plain AND per keyword
+    // (.not(), not another .or()) since every one of them must hold, not just any one.
+    .or(
+      [
+        ...FINAL_LOCATION_INCLUDE_KEYWORDS.map((kw) => `current_location.ilike.%${kw}%`),
+        ...FINAL_LOCATION_EXACT_INCLUDES.map((loc) => `current_location.eq."${loc}"`),
+      ].join(","),
+    );
+  for (const keyword of FINAL_LOCATION_EXCLUDE_KEYWORDS) {
+    query = query.not("current_location", "ilike", `%${keyword}%`);
+  }
+
+  // The "available" restriction — skipped entirely when includeHeldOrAssigned is set
+  // (see that field's doc comment). Two separate .or() calls compose as AND-of-two-OR-
+  // groups — PostgREST ANDs same-named query params together (repeated `or=` params),
+  // so this reads as "(PO is blank) AND (not on hold)," each side itself an OR across
+  // the different raw-value shapes that count as "blank"/"not set."
+  if (!filters.includeHeldOrAssigned) {
+    query = query
+      .or("customer_po_no.is.null,customer_po_no.eq.")
+      .or("on_hold.is.null,on_hold.in.(,0,No,no,NO)");
+  }
 
   const locations = toList(filters.location);
   if (locations.length) query = query.in("current_location", locations);
@@ -122,18 +181,26 @@ export async function listOpenStock(supabase: SupabaseClient, filters: RugLensFi
   return { rows: data ?? [], totalCount: count ?? 0 };
 }
 
-/** Distinct values for one column among rows that actually match the open-stock/
- * PO-blank/not-on-hold condition (not every value in the whole orders table) — so a
- * filter dropdown only ever offers options that would actually return something. Same
- * paginated-dedupe-in-JS approach as listOrderFacets, for the same reason (PostgREST
- * caps a single request at 1000 rows; fine at today's scale). Shared by
- * listRugLensLocations/listRugLensQualities below so they can't drift apart. */
-async function listRugLensFacetValues(supabase: SupabaseClient, column: "current_location" | "quality"): Promise<string[]> {
+/** Distinct values for one column among rows that actually match the current
+ * open-stock condition (not every value in the whole orders table) — so a filter
+ * dropdown only ever offers options that would actually return something. Takes
+ * `includeHeldOrAssigned` (not the rest of `filters`, deliberately — the Location/
+ * Quality dropdowns themselves stay independent of each other, same as before) so the
+ * options on offer widen correctly when that's turned on, rather than staying locked
+ * to the plain-available set. Same paginated-dedupe-in-JS approach as listOrderFacets,
+ * for the same reason (PostgREST caps a single request at 1000 rows; fine at today's
+ * scale). Shared by listRugLensLocations/listRugLensQualities below so they can't
+ * drift apart. */
+async function listRugLensFacetValues(
+  supabase: SupabaseClient,
+  column: "current_location" | "quality",
+  includeHeldOrAssigned = false,
+): Promise<string[]> {
   const values = new Set<string>();
   const PAGE_SIZE = 1000;
   let from = 0;
   while (true) {
-    const { data, error } = await applyRugLensFilters(supabase.from("orders").select(column), {}).range(
+    const { data, error } = await applyRugLensFilters(supabase.from("orders").select(column), { includeHeldOrAssigned }).range(
       from,
       from + PAGE_SIZE - 1,
     );
@@ -148,10 +215,10 @@ async function listRugLensFacetValues(supabase: SupabaseClient, column: "current
   return [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
 
-export function listRugLensLocations(supabase: SupabaseClient): Promise<string[]> {
-  return listRugLensFacetValues(supabase, "current_location");
+export function listRugLensLocations(supabase: SupabaseClient, includeHeldOrAssigned = false): Promise<string[]> {
+  return listRugLensFacetValues(supabase, "current_location", includeHeldOrAssigned);
 }
 
-export function listRugLensQualities(supabase: SupabaseClient): Promise<string[]> {
-  return listRugLensFacetValues(supabase, "quality");
+export function listRugLensQualities(supabase: SupabaseClient, includeHeldOrAssigned = false): Promise<string[]> {
+  return listRugLensFacetValues(supabase, "quality", includeHeldOrAssigned);
 }

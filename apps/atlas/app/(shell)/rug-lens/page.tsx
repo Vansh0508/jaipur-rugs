@@ -51,26 +51,32 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
 
   const itemType = toSingle(params.itemType) as RugLensItemType | undefined;
   const search = toSingle(params.q);
+  const includeHeldOrAssigned = toSingle(params.availability) === "all";
 
   const filters: RugLensFilters = {
     location: toArray(params.location),
     quality: toArray(params.quality),
     itemType,
     search,
+    includeHeldOrAssigned,
     page,
     pageSize,
   };
 
   const [stages, locationOptions, qualityOptions, { rows, totalCount }] = await Promise.all([
     listStages(supabase),
-    listRugLensLocations(supabase),
-    listRugLensQualities(supabase),
+    listRugLensLocations(supabase, includeHeldOrAssigned),
+    listRugLensQualities(supabase, includeHeldOrAssigned),
     listOpenStock(supabase, filters),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const hasAnyFilter =
-    toArray(params.location).length > 0 || toArray(params.quality).length > 0 || Boolean(itemType) || Boolean(search);
+    toArray(params.location).length > 0 ||
+    toArray(params.quality).length > 0 ||
+    Boolean(itemType) ||
+    Boolean(search) ||
+    includeHeldOrAssigned;
   const from = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, totalCount);
 
@@ -100,7 +106,8 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
         <div>
           <h1 className="text-2xl font-semibold text-foreground">RugLens</h1>
           <p className="text-sm text-muted">
-            Open stock &amp; samples — no Customer PO, not on hold. Showing {from}-{to} of {totalCount}
+            Open stock &amp; samples — final locations only (warehouse/showroom/store), no Customer PO, not on hold. Showing{" "}
+            {from}-{to} of {totalCount}
             {hasAnyFilter ? " (filtered)" : ""}
           </p>
         </div>

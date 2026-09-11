@@ -19,6 +19,7 @@ export interface RugLensFilterPanelProps {
     location: string[];
     quality: string[];
     itemType?: string;
+    availability?: string;
   };
   hasAnyFilter: boolean;
 }
@@ -116,6 +117,15 @@ export function RugLensFilterPanel({ locationOptions, qualityOptions, values, ha
               { value: "sample", label: "Sample" },
               { value: "rug", label: "Rug" },
             ]}
+          />
+          {/* Opt-in, off by default — direct feedback, 2026-09-11: "give an option ...
+              to check hold remarks or customer PO mentioned items also but not in
+              default view." See lib/queries/rugLens.ts's includeHeldOrAssigned. */}
+          <SingleSelect
+            label="Availability"
+            selected={current.availability}
+            onApply={(v) => apply({ availability: v })}
+            options={[{ value: "all", label: "Include held / with PO" }]}
           />
           {hasAnyFilter ? (
             <Link href="/rug-lens" className="self-center text-sm text-accent hover:underline">
