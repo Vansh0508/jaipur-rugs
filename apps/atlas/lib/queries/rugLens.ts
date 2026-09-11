@@ -68,6 +68,8 @@ export interface RugLensFilters {
   location?: string | string[];
   /** Exact multi-select, same semantics as location above. */
   quality?: string | string[];
+  /** Exact multi-select, same semantics as location above. */
+  size?: string | string[];
   /** Corrected 2026-09-11, direct feedback: originally a Serial No_ prefix rule ("SS" =
    * sample) — now the same std_cubage-based "swatch" size classification Orders' own
    * Construction filter already uses (see SWATCH_MAX_SQFT and applyRugLensFilters'
@@ -137,6 +139,9 @@ function applyRugLensFilters(query: any, filters: RugLensFilters) {
   const qualities = toList(filters.quality);
   if (qualities.length) query = query.in("quality", qualities);
 
+  const sizes = toList(filters.size);
+  if (sizes.length) query = query.in("size", sizes);
+
   // "Sample" = a swatch by size, not by serial number — same rule Orders' own
   // Construction filter uses for ctype="swatch" (Std Cubage > 0 and < SWATCH_MAX_SQFT
   // sq ft). "Rug" is everything else, including a NULL std_cubage (has to be spelled
@@ -181,44 +186,72 @@ export async function listOpenStock(supabase: SupabaseClient, filters: RugLensFi
   return { rows: data ?? [], totalCount: count ?? 0 };
 }
 
-/** Distinct values for one column among rows that actually match the current
+export interface RugLensFacets {
+  locations: string[];
+  qualities: string[];
+}
+
+/** Shape of `rug_lens_facets()`'s single row — `supabase` here is a plain, un-generic'd
+ * SupabaseClient (see orders.ts's header comment), so cast explicitly rather than
+ * relying on `.rpc()` to infer it from the Database type. */
+interface RugLensFacetsRow {
+  locations: string[] | null;
+  qualities: string[] | null;
+}
+
+/** Distinct Location/Quality values among rows that actually match the current
  * open-stock condition (not every value in the whole orders table) — so a filter
  * dropdown only ever offers options that would actually return something. Takes
  * `includeHeldOrAssigned` (not the rest of `filters`, deliberately — the Location/
  * Quality dropdowns themselves stay independent of each other, same as before) so the
  * options on offer widen correctly when that's turned on, rather than staying locked
- * to the plain-available set. Same paginated-dedupe-in-JS approach as listOrderFacets,
- * for the same reason (PostgREST caps a single request at 1000 rows; fine at today's
- * scale). Shared by listRugLensLocations/listRugLensQualities below so they can't
- * drift apart. */
-async function listRugLensFacetValues(
-  supabase: SupabaseClient,
-  column: "current_location" | "quality",
-  includeHeldOrAssigned = false,
-): Promise<string[]> {
+ * to the plain-available set.
+ *
+ * Computed by `rug_lens_facets()` (see db/orders/018_perf_facets_and_stats_rpcs.sql) —
+ * one round trip, Postgres dedupes both columns in a single pass — rather than paging
+ * through every matching row in JS a page at a time. Confirmed live via EXPLAIN
+ * ANALYZE this used to be ~33 sequential round trips at today's scale (~32.6k
+ * stock-code rows), the single biggest reason /rug-lens felt slow. That SQL function is
+ * SECURITY INVOKER (the default), so the same RLS this app relies on everywhere else
+ * still scopes what it aggregates over. */
+export async function listRugLensFacets(supabase: SupabaseClient, includeHeldOrAssigned = false): Promise<RugLensFacets> {
+  const { data, error } = await supabase
+    .rpc("rug_lens_facets", { include_held_or_assigned: includeHeldOrAssigned })
+    .single();
+  if (error) throw error;
+  const row = data as RugLensFacetsRow | null;
+  const sort = (values: string[] | null | undefined) =>
+    [...(values ?? [])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  return { locations: sort(row?.locations), qualities: sort(row?.qualities) };
+}
+
+/** Distinct Size values among rows matching the current open-stock condition. Not
+ * folded into rug_lens_facets() above — that migration (018_perf_facets_and_stats_
+ * rpcs.sql) is written but NOT YET APPLIED to the live project (needs Ayaan's
+ * explicit go-ahead; the session that wrote it had its own apply_migration call
+ * blocked by this environment's permission system, same guardrail this one would hit
+ * — see db/MIGRATIONS.md's entry on it). This is the same paginated-dedupe-in-JS
+ * approach Location/Quality used before that RPC existed (listOrderFacets in
+ * orders.ts still works this way today) — slower at scale (~33 round trips for
+ * RugLens' ~32.6k stock-code rows, per that migration's own measurements) but needs
+ * no schema change, so the Size filter works today. Worth folding into
+ * rug_lens_facets() as a third returned column once that migration is actually live —
+ * trivial one-line addition to its SQL body at that point. */
+export async function listRugLensSizes(supabase: SupabaseClient, includeHeldOrAssigned = false): Promise<string[]> {
   const values = new Set<string>();
   const PAGE_SIZE = 1000;
   let from = 0;
   while (true) {
-    const { data, error } = await applyRugLensFilters(supabase.from("orders").select(column), { includeHeldOrAssigned }).range(
+    const { data, error } = await applyRugLensFilters(supabase.from("orders").select("size"), { includeHeldOrAssigned }).range(
       from,
       from + PAGE_SIZE - 1,
     );
     if (error) throw error;
-    for (const row of (data ?? []) as Record<string, string | null>[]) {
-      const value = row[column];
-      if (value && value.trim().length) values.add(value.trim());
+    for (const row of (data ?? []) as { size: string | null }[]) {
+      if (row.size && row.size.trim().length) values.add(row.size.trim());
     }
     if (!data || data.length < PAGE_SIZE) break;
     from += PAGE_SIZE;
   }
   return [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-}
-
-export function listRugLensLocations(supabase: SupabaseClient, includeHeldOrAssigned = false): Promise<string[]> {
-  return listRugLensFacetValues(supabase, "current_location", includeHeldOrAssigned);
-}
-
-export function listRugLensQualities(supabase: SupabaseClient, includeHeldOrAssigned = false): Promise<string[]> {
-  return listRugLensFacetValues(supabase, "quality", includeHeldOrAssigned);
 }

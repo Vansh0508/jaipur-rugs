@@ -1,7 +1,7 @@
 import {
   listOpenStock,
-  listRugLensLocations,
-  listRugLensQualities,
+  listRugLensFacets,
+  listRugLensSizes,
   DEFAULT_PAGE_SIZE,
   type RugLensFilters,
   type RugLensItemType,
@@ -56,6 +56,7 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
   const filters: RugLensFilters = {
     location: toArray(params.location),
     quality: toArray(params.quality),
+    size: toArray(params.size),
     itemType,
     search,
     includeHeldOrAssigned,
@@ -63,17 +64,19 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
     pageSize,
   };
 
-  const [stages, locationOptions, qualityOptions, { rows, totalCount }] = await Promise.all([
+  const [stages, facets, sizeOptions, { rows, totalCount }] = await Promise.all([
     listStages(supabase),
-    listRugLensLocations(supabase, includeHeldOrAssigned),
-    listRugLensQualities(supabase, includeHeldOrAssigned),
+    listRugLensFacets(supabase, includeHeldOrAssigned),
+    listRugLensSizes(supabase, includeHeldOrAssigned),
     listOpenStock(supabase, filters),
   ]);
+  const { locations: locationOptions, qualities: qualityOptions } = facets;
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const hasAnyFilter =
     toArray(params.location).length > 0 ||
     toArray(params.quality).length > 0 ||
+    toArray(params.size).length > 0 ||
     Boolean(itemType) ||
     Boolean(search) ||
     includeHeldOrAssigned;
@@ -98,8 +101,22 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
       <RugLensFilterPanel
         locationOptions={locationOptions}
         qualityOptions={qualityOptions}
+        sizeOptions={sizeOptions}
         hasAnyFilter={hasAnyFilter}
-        values={{ q: search ?? "", location: toArray(params.location), quality: toArray(params.quality), itemType }}
+        values={{
+          q: search ?? "",
+          location: toArray(params.location),
+          quality: toArray(params.quality),
+          size: toArray(params.size),
+          itemType,
+          // Was dropped from this object in an earlier edit (page.tsx's facets
+          // refactor) — restored: without it, the Availability toggle's visual state
+          // never reflected an already-applied ?availability=all on page load/refresh,
+          // even though the actual filtering (includeHeldOrAssigned above) still
+          // worked correctly. Purely a display bug, not a data-correctness one, but a
+          // confusing one — fixed while touching this file for the Size filter.
+          availability: toSingle(params.availability),
+        }}
       />
 
       <div className="flex shrink-0 items-center justify-between">

@@ -14,17 +14,19 @@ import { useLocalPreference } from "@/lib/useLocalPreference";
 export interface RugLensFilterPanelProps {
   locationOptions: string[];
   qualityOptions: string[];
+  sizeOptions: string[];
   values: {
     q: string;
     location: string[];
     quality: string[];
+    size: string[];
     itemType?: string;
     availability?: string;
   };
   hasAnyFilter: boolean;
 }
 
-export function RugLensFilterPanel({ locationOptions, qualityOptions, values, hasAnyFilter }: RugLensFilterPanelProps) {
+export function RugLensFilterPanel({ locationOptions, qualityOptions, sizeOptions, values, hasAnyFilter }: RugLensFilterPanelProps) {
   const router = useRouter();
   const [filtersVisible, setFiltersVisible] = useLocalPreference("atlas:rugLens:filtersVisible", true);
   const [searchInput, setSearchInput] = useState(values.q);
@@ -105,6 +107,12 @@ export function RugLensFilterPanel({ locationOptions, qualityOptions, values, ha
             options={qualityOptions.map((v) => ({ value: v, label: v }))}
             selected={current.quality}
             onApply={(v) => apply({ quality: v })}
+          />
+          <FacetDropdown
+            label="Size"
+            options={sizeOptions.map((v) => ({ value: v, label: v }))}
+            selected={current.size}
+            onApply={(v) => apply({ size: v })}
           />
           {/* Sample = a swatch by size (Std Cubage), same rule Orders' own
               Construction filter uses — see lib/queries/rugLens.ts's
