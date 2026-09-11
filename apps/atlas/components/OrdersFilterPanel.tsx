@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { FacetDropdown, SingleSelect } from "@/components/FilterPrimitives";
@@ -46,23 +46,71 @@ export interface OrdersFilterPanelProps {
   hasAnyFilter: boolean;
 }
 
+/** Every param this panel does NOT model itself (sortBy/sortDir from OrdersTable's own
+ * sort links, page from pagination) — everything else in `values`' keys, listed here so
+ * apply() can tell "a filter this panel controls" apart from "something else entirely,
+ * just passing through." */
+const OWN_KEYS = new Set([
+  "q", "stageId", "customerNo", "merchantName", "orderWiseMerchant", "followUpPerson",
+  "customerPoNo", "quality", "design", "size", "productionOrderStatus", "priority",
+  "aging", "onHold", "quickShip", "delayStatus", "ctype", "dueFrom", "dueTo",
+]);
+
+/** Every URL param this panel does NOT itself model (sortBy, sortDir, pageSize, ...),
+ * as a plain multi-value record — passed through untouched by apply() below. */
+function otherParamsFrom(searchParams: URLSearchParams): Record<string, string[]> {
+  const record: Record<string, string[]> = {};
+  for (const [key, value] of searchParams.entries()) {
+    if (OWN_KEYS.has(key) || key === "page") continue;
+    (record[key] ??= []).push(value);
+  }
+  return record;
+}
+
 export function OrdersFilterPanel({ stages, facets, values, hasAnyFilter }: OrdersFilterPanelProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [filtersVisible, setFiltersVisible] = useLocalPreference("atlas:orders:filtersVisible", true);
   const [searchInput, setSearchInput] = useState(values.q);
 
-  /** Pushes `/orders?...` with the given fields changed, everything else carried
-   * forward from the current URL (sort, page size, every other filter) — except `page`
-   * itself, which always resets to 1 since the result set just changed. Same
-   * merge-current-params-minus-overrides shape as OrdersTable.tsx's own useLinkBuilder. */
-  function apply(overrides: Record<string, string | string[] | undefined>) {
+  // Tracks the full intended filter state locally rather than reconstructing "every
+  // other current filter" from useSearchParams() inside apply(). Needed because this
+  // page runs a real Supabase query server-side on every filter change, so a
+  // router.push() navigation takes real time to land — useSearchParams() only reflects
+  // the new URL once that round trip actually completes. The old version read
+  // searchParams.entries() fresh on every apply() call; firing a second filter change
+  // before the first one's navigation had landed read a stale snapshot missing that
+  // first change, and silently dropped it from the merged URL. Confirmed live on
+  // RugLens, 2026-09-11 (same apply() pattern as this file) — applying one filter right
+  // after another deselected the first.
+  //
+  // `current` only tracks the fields THIS panel controls (mirrors `values`' shape) —
+  // updated synchronously on every apply(), so the next apply() (even one fired before
+  // the previous navigation resolves) always merges against the true latest intent, not
+  // a lagging snapshot. Re-synced from `values` (the server's authoritative state)
+  // whenever it changes. `otherParams` below separately carries anything this panel
+  // doesn't model (sortBy/sortDir/pageSize) through untouched.
+  const [current, setCurrent] = useState(values);
+  useEffect(() => {
+    setCurrent(values);
+  }, [values]);
+
+  const [otherParams, setOtherParams] = useState(() => otherParamsFrom(searchParams));
+  useEffect(() => {
+    setOtherParams(otherParamsFrom(searchParams));
+    // Keyed on the stable string form, not the ReadonlyURLSearchParams object identity
+    // (which can change reference across renders with no actual content change).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.toString()]);
+
+  function apply(overrides: Partial<typeof values>) {
+    const next = { ...current, ...overrides };
+    setCurrent(next);
     const p = new URLSearchParams();
-    for (const [key, value] of searchParams.entries()) {
-      if (key in overrides || key === "page") continue;
-      p.append(key, value);
+    for (const [key, list] of Object.entries(otherParams)) {
+      for (const v of list) p.append(key, v);
     }
-    for (const [key, value] of Object.entries(overrides)) {
+    for (const [key, value] of Object.entries(next)) {
       if (value === undefined) continue;
       for (const v of Array.isArray(value) ? value : [value]) {
         if (v) p.append(key, v);
@@ -72,7 +120,7 @@ export function OrdersFilterPanel({ stages, facets, values, hasAnyFilter }: Orde
   }
 
   function applySearch() {
-    if (searchInput === values.q) return;
+    if (searchInput === current.q) return;
     apply({ q: searchInput || undefined });
   }
 
@@ -104,23 +152,23 @@ export function OrdersFilterPanel({ stages, facets, values, hasAnyFilter }: Orde
           <FacetDropdown
             label="Stage"
             options={stages.map((s) => ({ value: s.id, label: s.display_name }))}
-            selected={values.stageId}
+            selected={current.stageId}
             onApply={(v) => apply({ stageId: v })}
           />
-          <FacetDropdown label="Customer No." options={facets.customerNo.map((v) => ({ value: v, label: v }))} selected={values.customerNo} onApply={(v) => apply({ customerNo: v })} />
-          <FacetDropdown label="Merchant" options={facets.merchantName.map((v) => ({ value: v, label: v }))} selected={values.merchantName} onApply={(v) => apply({ merchantName: v })} />
-          <FacetDropdown label="Order-wise Merchant" options={facets.orderWiseMerchant.map((v) => ({ value: v, label: v }))} selected={values.orderWiseMerchant} onApply={(v) => apply({ orderWiseMerchant: v })} />
-          <FacetDropdown label="Follow-up Person" options={facets.followUpPerson.map((v) => ({ value: v, label: v }))} selected={values.followUpPerson} onApply={(v) => apply({ followUpPerson: v })} />
-          <FacetDropdown label="Customer PO No." options={facets.customerPoNo.map((v) => ({ value: v, label: v }))} selected={values.customerPoNo} onApply={(v) => apply({ customerPoNo: v })} />
-          <FacetDropdown label="Quality" options={facets.quality.map((v) => ({ value: v, label: v }))} selected={values.quality} onApply={(v) => apply({ quality: v })} />
-          <FacetDropdown label="Design" options={facets.design.map((v) => ({ value: v, label: v }))} selected={values.design} onApply={(v) => apply({ design: v })} />
-          <FacetDropdown label="Size" options={facets.size.map((v) => ({ value: v, label: v }))} selected={values.size} onApply={(v) => apply({ size: v })} />
-          <FacetDropdown label="Prod. Status" options={facets.productionOrderStatus.map((v) => ({ value: v, label: v }))} selected={values.productionOrderStatus} onApply={(v) => apply({ productionOrderStatus: v })} />
-          <FacetDropdown label="Priority" options={facets.priority.map((v) => ({ value: v, label: v }))} selected={values.priority} onApply={(v) => apply({ priority: v })} />
+          <FacetDropdown label="Customer No." options={facets.customerNo.map((v) => ({ value: v, label: v }))} selected={current.customerNo} onApply={(v) => apply({ customerNo: v })} />
+          <FacetDropdown label="Merchant" options={facets.merchantName.map((v) => ({ value: v, label: v }))} selected={current.merchantName} onApply={(v) => apply({ merchantName: v })} />
+          <FacetDropdown label="Order-wise Merchant" options={facets.orderWiseMerchant.map((v) => ({ value: v, label: v }))} selected={current.orderWiseMerchant} onApply={(v) => apply({ orderWiseMerchant: v })} />
+          <FacetDropdown label="Follow-up Person" options={facets.followUpPerson.map((v) => ({ value: v, label: v }))} selected={current.followUpPerson} onApply={(v) => apply({ followUpPerson: v })} />
+          <FacetDropdown label="Customer PO No." options={facets.customerPoNo.map((v) => ({ value: v, label: v }))} selected={current.customerPoNo} onApply={(v) => apply({ customerPoNo: v })} />
+          <FacetDropdown label="Quality" options={facets.quality.map((v) => ({ value: v, label: v }))} selected={current.quality} onApply={(v) => apply({ quality: v })} />
+          <FacetDropdown label="Design" options={facets.design.map((v) => ({ value: v, label: v }))} selected={current.design} onApply={(v) => apply({ design: v })} />
+          <FacetDropdown label="Size" options={facets.size.map((v) => ({ value: v, label: v }))} selected={current.size} onApply={(v) => apply({ size: v })} />
+          <FacetDropdown label="Prod. Status" options={facets.productionOrderStatus.map((v) => ({ value: v, label: v }))} selected={current.productionOrderStatus} onApply={(v) => apply({ productionOrderStatus: v })} />
+          <FacetDropdown label="Priority" options={facets.priority.map((v) => ({ value: v, label: v }))} selected={current.priority} onApply={(v) => apply({ priority: v })} />
 
           <SingleSelect
             label="Aging"
-            selected={values.aging}
+            selected={current.aging}
             onApply={(v) => apply({ aging: v })}
             options={[
               { value: "0-7", label: "0-7 days" },
@@ -129,11 +177,11 @@ export function OrdersFilterPanel({ stages, facets, values, hasAnyFilter }: Orde
               { value: "30+", label: "30+ days" },
             ]}
           />
-          <SingleSelect label="On Hold" selected={values.onHold} onApply={(v) => apply({ onHold: v })} options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]} />
-          <SingleSelect label="Quick Ship" selected={values.quickShip} onApply={(v) => apply({ quickShip: v })} options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]} />
+          <SingleSelect label="On Hold" selected={current.onHold} onApply={(v) => apply({ onHold: v })} options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]} />
+          <SingleSelect label="Quick Ship" selected={current.quickShip} onApply={(v) => apply({ quickShip: v })} options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]} />
           <SingleSelect
             label="Delay Status"
-            selected={values.delayStatus}
+            selected={current.delayStatus}
             onApply={(v) => apply({ delayStatus: v })}
             options={[
               { value: "late", label: "⚠ Late" },
@@ -143,7 +191,7 @@ export function OrdersFilterPanel({ stages, facets, values, hasAnyFilter }: Orde
           />
           <SingleSelect
             label="Construction"
-            selected={values.ctype}
+            selected={current.ctype}
             onApply={(v) => apply({ ctype: v })}
             options={[
               { value: "knotted", label: "Knotted" },
@@ -158,7 +206,7 @@ export function OrdersFilterPanel({ stages, facets, values, hasAnyFilter }: Orde
             <span className="font-medium uppercase text-muted whitespace-nowrap">Rev. Ex-Factory from</span>
             <input
               type="date"
-              defaultValue={values.dueFrom ?? ""}
+              defaultValue={current.dueFrom ?? ""}
               onChange={(e) => apply({ dueFrom: e.target.value || undefined })}
               className="rounded-lg border-2 border-border bg-transparent px-2 py-1.5 text-sm outline-none focus:border-accent"
             />
@@ -167,7 +215,7 @@ export function OrdersFilterPanel({ stages, facets, values, hasAnyFilter }: Orde
             <span className="font-medium uppercase text-muted whitespace-nowrap">Rev. Ex-Factory to</span>
             <input
               type="date"
-              defaultValue={values.dueTo ?? ""}
+              defaultValue={current.dueTo ?? ""}
               onChange={(e) => apply({ dueTo: e.target.value || undefined })}
               className="rounded-lg border-2 border-border bg-transparent px-2 py-1.5 text-sm outline-none focus:border-accent"
             />
