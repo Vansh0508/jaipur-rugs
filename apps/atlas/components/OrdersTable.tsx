@@ -8,7 +8,7 @@ import { Table, Checkbox } from "@jaipur-rugs/ui-kit";
 import { StageChip, OnTimeBadge } from "./StageChip";
 import { ColumnVisibilityMenu, type ColumnDef } from "./ColumnVisibilityMenu";
 import { SelectionActionBar } from "./SelectionActionBar";
-import { onTimeStatus } from "@/lib/tat";
+import { onTimeStatus, daysLateFromOriginalExFactory } from "@/lib/tat";
 import { stageStandard } from "@/lib/stageTat";
 import { resolveFollowUpPerson } from "@/lib/followUpPerson";
 import { displayDate } from "@/lib/displayDate";
@@ -185,31 +185,42 @@ function exportCells(o: OrderRow, stageNameById: Map<string, string>) {
   };
 }
 
-/** Every column this table can show, in display order — the single source of truth
- * both the header row and each body row render from (via the same filtered id list),
- * so a hidden column can never desync header/cell counts. `sortable: true` covers both
- * real DB-backed columns (SORTABLE_COLUMNS in lib/queries/orders.ts — a URL navigation
- * re-fetches the sorted set) and the two computed ones, Stage Standard/On Time (a
- * client-side re-sort of whatever page is already loaded) — see handleSortChange. */
+/** Every column this table can show — the single source of truth both the header row
+ * and each body row render from (via the same filtered id list), so a hidden column can
+ * never desync header/cell counts. `sortable: true` covers both real DB-backed columns
+ * (SORTABLE_COLUMNS in lib/queries/orders.ts — a URL navigation re-fetches the sorted
+ * set) and the two computed ones, Stage Standard/On Time (a client-side re-sort of
+ * whatever page is already loaded) — see handleSortChange.
+ *
+ * Order rewritten 2026-09-11 per direct request: the columns used every day (OTN, Sales
+ * Code, Sales Person, Customer PO, Stage + its on-time signals) go first so they're on
+ * screen without scrolling right, with the rest following in the exact sequence given —
+ * Quality/Design/Size/Construction, the date fields, Current Location, then Follow Up
+ * Person. Column ids are all unchanged from before this reorder (only new ones —
+ * salesCode, origExFactoryDelay — were added), so anyone's saved column visibility
+ * (useLocalPreference below, "atlas:orders:columns") still applies correctly; only the
+ * on-screen left-to-right order moved. Total Days and Merchant weren't named as "main"
+ * columns in that request, so they moved to the end rather than being dropped. */
 const ALL_COLUMNS: (ColumnDef & { defaultWidth: number; minWidth: number; sortable?: boolean })[] = [
   { id: "otn", label: "OTN / Item", defaultWidth: 140, minWidth: 110, sortable: true },
-  { id: "merchant", label: "Merchant", defaultWidth: 160, minWidth: 110, sortable: true },
-  { id: "customerPo", label: "Customer PO", defaultWidth: 130, minWidth: 100, sortable: true },
+  { id: "salesCode", label: "Sales Code", defaultWidth: 110, minWidth: 90, sortable: true },
   { id: "salesPerson", label: "Sales Person", defaultWidth: 150, minWidth: 110, sortable: true },
+  { id: "customerPo", label: "Customer PO", defaultWidth: 130, minWidth: 100, sortable: true },
+  // Stage isn't sortable — a real attempt at sorting it by the joined stages.display_order
+  // didn't actually work in practice (confirmed live 2026-09-05) and was removed rather
+  // than left silently broken.
+  { id: "stage", label: "Stage", defaultWidth: 150, minWidth: 110 },
+  { id: "stageStandard", label: "Stage Standard (TAT)", defaultWidth: 170, minWidth: 130, sortable: true },
+  { id: "pendingDays", label: "Days in Stage", defaultWidth: 120, minWidth: 90, sortable: true },
+  { id: "onTime", label: "On Time", defaultWidth: 100, minWidth: 80, sortable: true },
   { id: "quality", label: "Quality", defaultWidth: 110, minWidth: 80, sortable: true },
   { id: "design", label: "Design", defaultWidth: 130, minWidth: 90, sortable: true },
   { id: "size", label: "Size", defaultWidth: 100, minWidth: 70, sortable: true },
   { id: "construction", label: "Construction", defaultWidth: 120, minWidth: 90, sortable: true },
-  // Stage isn't sortable — a real attempt at sorting it by the joined stages.display_order
-  // didn't actually work in practice (confirmed live 2026-09-05) and was removed rather
-  // than left silently broken.
-  { id: "stage", label: "Stage", defaultWidth: 110, minWidth: 90 },
-  { id: "pendingDays", label: "Days in Stage", defaultWidth: 120, minWidth: 90, sortable: true },
-  // Not sortable on its own — see totalDaysSinceSalesOrder's comment; sort by Sales
-  // Order Date for the same ordering.
-  { id: "totalDays", label: "Total Days", defaultWidth: 110, minWidth: 90 },
-  { id: "stageStandard", label: "Stage Standard (TAT)", defaultWidth: 170, minWidth: 130, sortable: true },
   { id: "originalExFactory", label: "Original Ex Factory", defaultWidth: 130, minWidth: 100, sortable: true },
+  // Not sortable — computed client-side from original_ex_factory_date, which already is
+  // sortable in its own right (sort by Original Ex Factory for the same ordering).
+  { id: "origExFactoryDelay", label: "Delay (Orig. Ex-Factory)", defaultWidth: 150, minWidth: 120 },
   { id: "salesOrderDate", label: "Sales Order Date", defaultWidth: 120, minWidth: 100, sortable: true },
   { id: "revisedExFactory", label: "Rev. Ex-Factory", defaultWidth: 130, minWidth: 100, sortable: true },
   { id: "revisedExIndia", label: "Rev. Ex-India", defaultWidth: 120, minWidth: 100, sortable: true },
@@ -218,7 +229,10 @@ const ALL_COLUMNS: (ColumnDef & { defaultWidth: number; minWidth: number; sortab
   // raw orders.follow_up_person column, so a server-side sort by that column wouldn't
   // match what's actually displayed. Same reasoning as Stage.
   { id: "followUpPerson", label: "Follow Up Person", defaultWidth: 160, minWidth: 120 },
-  { id: "onTime", label: "On Time", defaultWidth: 100, minWidth: 80, sortable: true },
+  // Not sortable on its own — see totalDaysSinceSalesOrder's comment; sort by Sales
+  // Order Date for the same ordering.
+  { id: "totalDays", label: "Total Days", defaultWidth: 110, minWidth: 90 },
+  { id: "merchant", label: "Merchant", defaultWidth: 160, minWidth: 110, sortable: true },
 ];
 
 export function OrdersTable({
@@ -427,14 +441,30 @@ export function OrdersTable({
                       </>
                     ),
                     customerPo: order.customer_po_no ?? "—",
+                    salesCode: order.salesperson_code ?? "—",
                     salesPerson: order.order_wise_merchant ?? "—",
                     quality: order.quality ?? "—",
                     design: order.design ?? "—",
                     size: order.size ?? "—",
                     construction: order.construction ?? "—",
-                    stage: <StageChip code={stage?.code ?? null} label={stage?.display_name ?? "Unresolved"} />,
+                    stage: (
+                      <>
+                        <StageChip code={stage?.code ?? null} label={stage?.display_name ?? "Unresolved"} />
+                        {/* The actual granular ERP status ("At Stores", "At Branch", "At
+                            Design - R&D", ...) — direct request, 2026-09-11: the coarse
+                            stage bucket alone ("Pre-Loom") wasn't enough, this needs to
+                            show exactly where the order really is. */}
+                        <div className="text-xs text-muted">{order.raw_current_status ?? "—"}</div>
+                      </>
+                    ),
                     pendingDays: order.current_status_pending_days ?? "—",
                     totalDays: totalDaysSinceSalesOrder(order.sales_order_date) ?? "—",
+                    origExFactoryDelay: (() => {
+                      const delay = daysLateFromOriginalExFactory(order.original_ex_factory_date, stage?.is_terminal ?? false);
+                      if (delay === null) return <span className="text-muted">—</span>;
+                      if (delay <= 0) return <span className="text-muted">On time</span>;
+                      return <span className="font-medium text-danger">{delay}d late</span>;
+                    })(),
                     stageStandard:
                       standard.status === "on_hold" || standard.status === "no_standard" ? (
                         <span className="text-muted">—</span>

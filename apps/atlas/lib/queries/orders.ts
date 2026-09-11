@@ -127,11 +127,15 @@ export const SWATCH_MAX_SQFT = 4;
  * stages.display_order didn't actually work in practice (confirmed live 2026-09-05) and
  * was removed rather than left silently broken — worth revisiting for real later.
  * Stage Standard (TAT) and On-Time also aren't here — both are computed, not stored
- * anywhere to sort by — see OrdersTable.tsx's client-side computedSort instead. */
+ * anywhere to sort by — see OrdersTable.tsx's client-side computedSort instead. Same
+ * reason Delay (Orig. Ex-Factory) and Total Days aren't here either — both computed
+ * client-side from original_ex_factory_date/sales_order_date, which already are
+ * sortable in their own right (originalExFactory/salesOrderDate below). */
 export const SORTABLE_COLUMNS = {
   otn: "otn_no",
   merchant: "merchant_name",
   customerPo: "customer_po_no",
+  salesCode: "salesperson_code",
   salesPerson: "order_wise_merchant",
   design: "design",
   quality: "quality",

@@ -11,6 +11,11 @@ export interface StageEvent {
 export interface StageDuration {
   stageId: string;
   enteredAt: string;
+  /** ISO timestamp this stage was left (= the next event's enteredAt), or null for the
+   * current stage — it hasn't been left yet. Added 2026-09-11 per direct request: the
+   * Stage History table used to show only "Entered," not when an order moved on from
+   * that stage. */
+  exitedAt: string | null;
   /** null only if enteredAt is somehow in the future relative to the next event — shouldn't happen, guarded rather than left to produce a negative number. */
   durationMs: number;
   isCurrent: boolean;
@@ -27,6 +32,7 @@ export function computeStageDurations(events: StageEvent[]): StageDuration[] {
     return {
       stageId: event.stageId,
       enteredAt: event.enteredAt,
+      exitedAt: next ? next.enteredAt : null,
       durationMs: Math.max(0, endMs - startMs),
       isCurrent: !next,
     };
@@ -67,6 +73,32 @@ export function formatDuration(ms: number): string {
  * it as Late not delayed" (a real request from a later message, not this same call) —
  * kept as its own third state rather than folded into "delayed", since it's a
  * projection, not a fact yet. */
+/** Days today is past ORIGINAL Ex Factory — deliberately the original date, not
+ * Revised, per direct request 2026-09-11: production revises Rev Ex Factory on their
+ * own schedule, so it "moves" and stops answering "how late did this end up being
+ * against what was first promised" — original_ex_factory_date never changes, so this is
+ * the one number that keeps that question honest. Positive = late, zero-or-negative =
+ * not due yet (not "late" in either sense, so callers should treat <= 0 as on-time
+ * rather than a countdown).
+ *
+ * null once an order reaches a terminal stage (delivered/rejected) — same reasoning as
+ * onTimeStatus's own terminal short-circuit just above: "today minus a fixed date" keeps
+ * growing forever after the order is actually done, so it stops being a meaningful
+ * number the moment there's no live order left to be late on. Also null for a missing or
+ * placeholder (pre-1900 / SQL Server DateTime.MinValue) date — see displayDate.ts. */
+export function daysLateFromOriginalExFactory(
+  originalExFactoryDate: string | null,
+  isTerminalStage: boolean,
+): number | null {
+  if (isTerminalStage) return null;
+  if (!originalExFactoryDate || Number(originalExFactoryDate.slice(0, 4)) < 1900) return null;
+  const startMs = new Date(`${originalExFactoryDate}T00:00:00Z`).getTime();
+  if (Number.isNaN(startMs)) return null;
+  const now = new Date();
+  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return Math.round((todayUtc - startMs) / (24 * 60 * 60 * 1000));
+}
+
 export function onTimeStatus(
   promisedDeliveryDate: string | null,
   revisedExFactoryDate: string | null,
