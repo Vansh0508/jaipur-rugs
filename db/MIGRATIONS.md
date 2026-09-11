@@ -59,6 +59,7 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | `20260910060119` | `backops_department_self_service` | orders | `db/orders/017_backops_department_self_service.sql` |
 | (2026-09-11) | `orders_perf_facets_and_stats_rpcs` | orders | `db/orders/018_perf_facets_and_stats_rpcs.sql` |
 | (2026-09-11) | `customer_codes_add_conflict_fix` | orders | `db/orders/019_customer_codes_add_conflict_fix.sql` |
+| (2026-09-11) | `rug_lens_facets_cross_filter` | orders | `db/orders/020_rug_lens_facets_cross_filter.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
@@ -424,10 +425,61 @@ The three application-code query functions (`listOrderFacets`/`getDashboardStats
 `listRugLensFacets`) and the three pages that call them (`dashboard`, `orders`,
 `rug-lens`) were updated to call these RPCs by name — confirmed compiling clean via
 `pnpm --filter @jaipur-rugs/atlas type-check` and a full `pnpm --filter @jaipur-rugs/atlas
-build`, but **not yet deployed** to the office server or the VPS — that's a separate step,
-still pending Ayaan's go-ahead. `packages/supabase-client/src/types.ts`'s `Functions`
-block was hand-updated to add these three (same "hand-authored, not yet regenerated"
-exception already flagged at that file's own header for this module).
+build`. `packages/supabase-client/src/types.ts`'s `Functions` block was hand-updated to
+add these three (same "hand-authored, not yet regenerated" exception already flagged at
+that file's own header for this module).
+
+**Update, same day: deployed to the office server.** Ayaan asked for the office server
+(`192.168.0.18`) specifically, not the VPS. Committed + pushed to
+`atlas-workflow-and-deploy` (only `listOrderFacets`/`getDashboardStats`, the Dashboard
+page, `types.ts`, this ledger, and `018` itself — deliberately NOT `lib/queries/rugLens.ts`
+or the RugLens pages, since those had independently moved on under a parallel session,
+see below), then on the server: `git pull` (clean fast-forward), `pnpm run build`
+(succeeded), `pm2 restart atlas`. Verified after restart: `pm2 logs atlas` showed no new
+errors (the log file's last-modified timestamp was 4 hours stale, i.e. nothing new had
+been written to it since well before this restart), and a plain `curl` against `/`,
+`/orders`, `/dashboard`, `/rug-lens` all returned `307` (the documented healthy
+login-redirect response). VPS (`atlas.jaipurrugsai.cloud`) deliberately left untouched.
+
+**RugLens facets, part 2 (2026-09-11, `020_rug_lens_facets_cross_filter.sql`) — the
+RugLens speed-up completed.** While wiring `018`'s `rug_lens_facets(boolean)` into
+`lib/queries/rugLens.ts`, this session discovered that a parallel session had, hours
+earlier, already tried almost the same thing, independently, on the same file: shipped
+code calling that exact RPC before `018` had actually been applied, which broke every
+real `/rug-lens` page load in production (`PGRST202`) until reverted the same day — see
+that revert's own incident note (still readable in `lib/queries/rugLens.ts`'s git
+history) and the fact `018`'s row above was initially marked "written, NOT yet applied"
+for exactly this reason. That revert also added a real feature on top while fixing the
+outage: RugLens' Location/Quality/Size filters now cross-narrow each other (picking one
+shrinks what the other two can even offer), which the original single-argument
+`rug_lens_facets(boolean)` never supported — reintroducing it as-is would have silently
+regressed that feature, so this session deliberately left `rugLens.ts` on the safe,
+reverted, non-RPC implementation and did NOT touch it in the `018` commit.
+
+The revert's incident note set two explicit preconditions for trying an RPC here again:
+confirmed live in `pg_proc`, and Ayaan's explicit sign-off. Both are true now — `018` was
+verified live earlier the same day, and Ayaan directly asked, in this same session, to
+speed RugLens up too. `020` therefore drops the old, by-then-unused
+`rug_lens_facets(boolean)` and replaces it with a 6-argument version
+(`p_location`/`p_quality`/`p_size`/`p_item_type`/`p_search`/`p_include_held_or_assigned`)
+that matches `applyRugLensFilters`/`listRugLensFacets`'s cross-filtering exactly: a `base`
+CTE applies every condition shared by all three facets once, and each output array
+(locations/qualities/sizes) is scoped by the OTHER two array filters only, never its own
+— mirroring the app code so the two can't drift apart. SECURITY INVOKER (the default,
+same as `018`'s three functions), so RLS is unaffected.
+
+Verified live, twice, before touching the app code: a dry-run of the query body against
+real data (23 locations / 177 qualities / 1,434 sizes with no filters — within normal
+data-drift of `018`'s original same-day count of 178 qualities, not a logic error), and a
+real cross-filter test (narrowing by one actual Quality value correctly shrank Locations
+23→15 and Sizes 1,434→44, while the Qualities list itself stayed the full 177-value set —
+confirming a facet never hides its own current selection's siblings, only reacts to the
+other two). `get_advisors` clean (only the pre-existing, unrelated
+`auth_leaked_password_protection` WARN). `listRugLensFacets` was then rewritten to call
+this RPC in one round trip instead of three parallel paginated passes;
+`packages/supabase-client/src/types.ts`'s `Functions` entry for `rug_lens_facets` was
+updated to the new signature. Confirmed compiling clean via type-check and a full
+production build before committing.
 
 ## Still pending
 

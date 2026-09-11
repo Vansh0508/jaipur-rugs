@@ -1517,9 +1517,19 @@ export type Database = {
           counts_by_stage: Json
         }[]
       }
+      // Replaced by db/orders/020_rug_lens_facets_cross_filter.sql — cross-filter aware
+      // (location/quality/size narrow each other), superseding the single-boolean-arg
+      // version this same migration file originally documented here.
       rug_lens_facets: {
-        Args: { include_held_or_assigned?: boolean }
-        Returns: { locations: string[] | null; qualities: string[] | null }[]
+        Args: {
+          p_location?: string[]
+          p_quality?: string[]
+          p_size?: string[]
+          p_item_type?: string | null
+          p_search?: string | null
+          p_include_held_or_assigned?: boolean
+        }
+        Returns: { locations: string[] | null; qualities: string[] | null; sizes: string[] | null }[]
       }
     }
     Enums: {

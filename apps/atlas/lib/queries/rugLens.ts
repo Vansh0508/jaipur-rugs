@@ -192,32 +192,13 @@ export interface RugLensFacets {
   sizes: string[];
 }
 
-/** Distinct values for one facet column, scoped by whatever `scoped` filters are
- * passed in — a plain paginated dedupe (see the incident note above listRugLensFacets
- * for why this isn't a single RPC round trip). Shared by all three facets in
- * listRugLensFacets below so they can't drift apart in how they page/dedupe. */
-async function distinctFacetValues(
-  supabase: SupabaseClient,
-  column: "current_location" | "quality" | "size",
-  scoped: RugLensFilters,
-): Promise<string[]> {
-  const values = new Set<string>();
-  const PAGE_SIZE = 1000;
-  let from = 0;
-  while (true) {
-    const { data, error } = await applyRugLensFilters(supabase.from("orders").select(column), scoped).range(
-      from,
-      from + PAGE_SIZE - 1,
-    );
-    if (error) throw error;
-    for (const row of (data ?? []) as Record<string, string | null>[]) {
-      const value = row[column];
-      if (value && value.trim().length) values.add(value.trim());
-    }
-    if (!data || data.length < PAGE_SIZE) break;
-    from += PAGE_SIZE;
-  }
-  return [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+/** Shape of `rug_lens_facets()`'s single row — `supabase` here is a plain, un-generic'd
+ * SupabaseClient (see orders.ts's header comment), so cast explicitly rather than
+ * relying on `.rpc()` to infer it from the Database type. */
+interface RugLensFacetsRow {
+  locations: string[] | null;
+  qualities: string[] | null;
+  sizes: string[] | null;
 }
 
 /** Distinct Location/Quality/Size values among rows that actually match the current
@@ -229,32 +210,36 @@ async function distinctFacetValues(
  * should never filter out values the user already picked from itself, only react to
  * what's picked elsewhere.
  *
- * Three separate paginated passes now, not one combined pass (each facet needs its own
- * differently-scoped query) — real added latency versus the single-pass version this
- * replaced, worth being upfront about: this is exactly the kind of thing the pending
- * rug_lens_facets() RPC (see the incident note above) would make cheap again (one
- * round trip with conditional aggregation instead of up to three paginated loops), but
- * that migration still isn't applied and still needs Ayaan's explicit go-ahead — see
- * that note for the full story and why NOT to just switch to it unilaterally.
+ * Computed by `rug_lens_facets()` (db/orders/020_rug_lens_facets_cross_filter.sql) —
+ * one round trip, Postgres computes all three cross-filtered arrays off one shared
+ * scan of `orders` — rather than three separate parallel paginated passes in JS.
+ * SECURITY INVOKER (the default), so the existing RLS still scopes what it aggregates
+ * over, same as every other query in this app. Verified live against real data before
+ * being wired in here: narrowing by one real Quality value correctly shrank the
+ * Location/Size options while leaving the Quality list itself unnarrowed (a facet never
+ * hides its own current selection's siblings).
  *
- * *** 2026-09-11 incident note, read before reaching for an RPC here again: this used
- * to call a `rug_lens_facets()` Postgres RPC (db/orders/018_perf_facets_and_stats_rpcs.sql
- * — one round trip instead of paginated JS loops). That migration was written by a
- * parallel session but NEVER APPLIED to the live project — confirmed directly,
- * `select proname from pg_proc where proname = 'rug_lens_facets'` returned nothing.
- * This function was changed to call it anyway (carried forward from that session's
- * in-progress edit to this same file, without re-checking it was actually safe to
- * deploy) and broke every real /rug-lens page load in production for a period
- * (PGRST202 "Could not find the function ... in the schema cache") until reverted.
- * Do NOT call that RPC (or write a new one) until it's confirmed live in pg_proc AND
- * Ayaan has explicitly signed off on applying it. ***/
+ * *** 2026-09-11 incident note, resolved 2026-09-11 — kept for history, not a live
+ * warning anymore: this function used to call a `rug_lens_facets()` Postgres RPC before
+ * that migration had actually been applied to the live project, and broke every real
+ * /rug-lens page load in production (PGRST202) until reverted to a plain paginated
+ * query. The two conditions that revert's note required before trying an RPC again —
+ * confirmed live in pg_proc, and Ayaan's explicit sign-off — are both satisfied as of
+ * this rewrite (018 and 020 are applied and verified; Ayaan asked directly for this). ***/
 export async function listRugLensFacets(supabase: SupabaseClient, filters: RugLensFilters): Promise<RugLensFacets> {
-  const { location, quality, size, ...sharedFilters } = filters;
-
-  const [locations, qualities, sizes] = await Promise.all([
-    distinctFacetValues(supabase, "current_location", { ...sharedFilters, quality, size }),
-    distinctFacetValues(supabase, "quality", { ...sharedFilters, location, size }),
-    distinctFacetValues(supabase, "size", { ...sharedFilters, location, quality }),
-  ]);
-  return { locations, qualities, sizes };
+  const { data, error } = await supabase
+    .rpc("rug_lens_facets", {
+      p_location: toList(filters.location),
+      p_quality: toList(filters.quality),
+      p_size: toList(filters.size),
+      p_item_type: filters.itemType ?? null,
+      p_search: filters.search ?? null,
+      p_include_held_or_assigned: filters.includeHeldOrAssigned ?? false,
+    })
+    .single();
+  if (error) throw error;
+  const row = data as RugLensFacetsRow | null;
+  const sort = (values: string[] | null | undefined) =>
+    [...(values ?? [])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  return { locations: sort(row?.locations), qualities: sort(row?.qualities), sizes: sort(row?.sizes) };
 }
