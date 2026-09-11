@@ -1,0 +1,28 @@
+-- Orders module, file 19. Fix "Add a customer code" (customer-codes-add /
+-- addOwnCustomerCodes) failing for every caller with:
+--   "there is no unique or exclusion constraint matching the ON CONFLICT specification"
+--
+-- Root cause: 006_merchant_auth_consolidation.sql created
+-- merchant_customer_codes_employee_customer_idx as a PARTIAL unique index --
+-- `on merchant_customer_codes(employee_id, customer_no) WHERE employee_id IS NOT NULL`
+-- (needed at the time because employee_id was being backfilled and could be null for
+-- rows that hadn't matched an employee yet). customer-codes-add's upsert calls
+-- `.upsert(rows, { onConflict: "employee_id,customer_no" })`, which Supabase-js turns
+-- into a plain `ON CONFLICT (employee_id, customer_no)` clause with no WHERE predicate
+-- -- Postgres's conflict-target inference only matches a FULL unique index/constraint
+-- against a plain column-list ON CONFLICT clause, never a partial one, even though every
+-- row this function ever inserts already has employee_id set (it's resolved from the
+-- caller's own session, never null). Confirmed live 2026-09-11 (Back Ops user reported
+-- the exact Postgres error verbatim while adding customer code 34836).
+--
+-- salesperson-codes-add never had this bug because employee_salesperson_codes_employee_
+-- code_idx (010_salesperson_codes_self_service.sql) was created as a full index from the
+-- start -- that table never had merchant_customer_codes' null-during-backfill history.
+--
+-- Fix: replace the partial index with a full one on the same two columns. Safe with
+-- existing data -- Postgres never treats two NULLs as equal for uniqueness, so rows
+-- with employee_id still null (if any) can't newly collide with each other or with
+-- non-null rows; every non-null row was already unique under the partial index, so
+-- nothing already there can violate the full one either.
+drop index if exists merchant_customer_codes_employee_customer_idx;
+create unique index merchant_customer_codes_employee_customer_idx on merchant_customer_codes(employee_id, customer_no);

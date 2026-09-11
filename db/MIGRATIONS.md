@@ -58,6 +58,7 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | `20260910054158` | `seed_backops_department` | orders | *(applied via `execute_sql`/`apply_migration` before this row's repo file existed — see 017 below)* |
 | `20260910060119` | `backops_department_self_service` | orders | `db/orders/017_backops_department_self_service.sql` |
 | (2026-09-11) | `orders_perf_facets_and_stats_rpcs` | orders | `db/orders/018_perf_facets_and_stats_rpcs.sql` |
+| (2026-09-11) | `customer_codes_add_conflict_fix` | orders | `db/orders/019_customer_codes_add_conflict_fix.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
