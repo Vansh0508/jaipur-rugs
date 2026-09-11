@@ -15,6 +15,7 @@ export interface RugLensFilterPanelProps {
   locationOptions: string[];
   qualityOptions: string[];
   values: {
+    q: string;
     location: string[];
     quality: string[];
     itemType?: string;
@@ -25,6 +26,7 @@ export interface RugLensFilterPanelProps {
 export function RugLensFilterPanel({ locationOptions, qualityOptions, values, hasAnyFilter }: RugLensFilterPanelProps) {
   const router = useRouter();
   const [filtersVisible, setFiltersVisible] = useLocalPreference("atlas:rugLens:filtersVisible", true);
+  const [searchInput, setSearchInput] = useState(values.q);
 
   // Tracks the full intended filter state locally rather than reconstructing "every
   // other current filter" from useSearchParams() inside apply(). Needed because this
@@ -62,6 +64,11 @@ export function RugLensFilterPanel({ locationOptions, qualityOptions, values, ha
     router.push(`/rug-lens?${p.toString()}`);
   }
 
+  function applySearch() {
+    if (searchInput === current.q) return;
+    apply({ q: searchInput || undefined });
+  }
+
   return (
     <div className="flex shrink-0 flex-col gap-2">
       <button
@@ -74,6 +81,18 @@ export function RugLensFilterPanel({ locationOptions, qualityOptions, values, ha
 
       {filtersVisible ? (
         <div className="flex flex-wrap items-end gap-2 rounded-lg border-2 border-border p-3">
+          <label className="flex flex-col gap-1 text-xs">
+            <span className="font-medium uppercase text-muted">Search</span>
+            <input
+              type="search"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onBlur={applySearch}
+              onKeyDown={(e) => e.key === "Enter" && applySearch()}
+              placeholder="Design, serial no, location…"
+              className="w-48 rounded-lg border-2 border-border bg-transparent px-2 py-1.5 text-sm outline-none focus:border-accent"
+            />
+          </label>
           <FacetDropdown
             label="Location"
             options={locationOptions.map((v) => ({ value: v, label: v }))}
@@ -86,7 +105,8 @@ export function RugLensFilterPanel({ locationOptions, qualityOptions, values, ha
             selected={current.quality}
             onApply={(v) => apply({ quality: v })}
           />
-          {/* Sample = Serial No_ starts with "SS" — see lib/queries/rugLens.ts's
+          {/* Sample = a swatch by size (Std Cubage), same rule Orders' own
+              Construction filter uses — see lib/queries/rugLens.ts's
               applyRugLensFilters for the exact rule (and its null-handling caveat). */}
           <SingleSelect
             label="Type"

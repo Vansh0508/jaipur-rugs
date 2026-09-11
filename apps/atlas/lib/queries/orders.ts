@@ -115,7 +115,11 @@ export interface OrderListResult {
   totalCount: number;
 }
 
-const SWATCH_MAX_SQFT = 4;
+// Exported — lib/queries/rugLens.ts reuses this exact threshold for its own
+// Sample/Rug classification (std_cubage-based, not the serial-number-prefix rule it
+// used at first), so the two "what counts as a swatch" definitions in this app can't
+// quietly drift apart.
+export const SWATCH_MAX_SQFT = 4;
 
 /** Every column the Orders table lets someone sort by — a fixed whitelist mapping a
  * plain user-facing key to the real DB column, so a request can never sort by an

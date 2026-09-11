@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Tables } from "@jaipur-rugs/supabase-client";
-import { STOCK_CUSTOMER_CODES, toList } from "./orders";
+import { STOCK_CUSTOMER_CODES, SWATCH_MAX_SQFT, toList } from "./orders";
 
 // RugLens — "what open-stock samples/rugs do we actually have, and where, and what do
 // they look like." Built 2026-09-10 from a direct Ayaan voice note: Atlas's `orders`
@@ -34,11 +34,17 @@ export interface RugLensFilters {
   location?: string | string[];
   /** Exact multi-select, same semantics as location above. */
   quality?: string | string[];
-  /** Confirmed directly, 2026-09-10: a Serial No_ starting with "SS" is a sample, not a
-   * full rug — see applyRugLensFilters' itemType handling for the exact SQL (has to
-   * handle NULL serials explicitly, or they'd silently vanish from BOTH options under
-   * SQL's normal null-is-neither-true-nor-false comparison rules). */
+  /** Corrected 2026-09-11, direct feedback: originally a Serial No_ prefix rule ("SS" =
+   * sample) — now the same std_cubage-based "swatch" size classification Orders' own
+   * Construction filter already uses (see SWATCH_MAX_SQFT and applyRugLensFilters'
+   * itemType handling below), so RugLens and Orders can't disagree about what counts
+   * as a sample. */
   itemType?: RugLensItemType;
+  /** Free-text search across every column RugLens actually shows (Design, GR/BR Color,
+   * Quality, Size, Location, Item No., Serial No., Customer Code, Customer PO, Hold
+   * Remarks) — a row matches if ANY of them contains the term, case-insensitive. Same
+   * broad-OR-across-fields approach as Orders' own `search` filter. */
+  search?: string;
   page?: number;
   pageSize?: number;
 }
@@ -72,13 +78,26 @@ function applyRugLensFilters(query: any, filters: RugLensFilters) {
   const qualities = toList(filters.quality);
   if (qualities.length) query = query.in("quality", qualities);
 
-  // "Sample" = Serial No_ starts with "SS" (case-insensitive). A NULL serial_no matches
-  // NEITHER `ilike 'SS%'` NOR `not.ilike.SS%` under normal SQL null comparison rules
-  // (both come back UNKNOWN, not true) — without the explicit `.is.null` branch on the
-  // "rug" side, a row with no serial number would silently disappear from both filter
-  // options instead of counting as "not a sample."
-  if (filters.itemType === "sample") query = query.ilike("serial_no", "SS%");
-  if (filters.itemType === "rug") query = query.or("serial_no.is.null,serial_no.not.ilike.SS%");
+  // "Sample" = a swatch by size, not by serial number — same rule Orders' own
+  // Construction filter uses for ctype="swatch" (Std Cubage > 0 and < SWATCH_MAX_SQFT
+  // sq ft). "Rug" is everything else, including a NULL std_cubage (has to be spelled
+  // out explicitly: NULL matches neither "< 4" nor "not < 4" under SQL's normal
+  // null-is-neither-true-nor-false comparison rules, so without this branch a row with
+  // no Std Cubage would silently vanish from both filter options).
+  if (filters.itemType === "sample") query = query.gt("std_cubage", 0).lt("std_cubage", SWATCH_MAX_SQFT);
+  if (filters.itemType === "rug") query = query.or(`std_cubage.lte.0,std_cubage.gte.${SWATCH_MAX_SQFT},std_cubage.is.null`);
+
+  if (filters.search) {
+    const term = `%${filters.search}%`;
+    query = query.or(
+      [
+        "design", "gr_color_name", "br_color_name", "quality", "size", "current_location",
+        "item_no", "serial_no", "customer_no", "customer_po_no", "on_hold",
+      ]
+        .map((field) => `${field}.ilike.${term}`)
+        .join(","),
+    );
+  }
 
   return query;
 }

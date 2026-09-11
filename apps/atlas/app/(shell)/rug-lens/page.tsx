@@ -50,11 +50,13 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
   const page = Math.max(1, Number(toSingle(params.page)) || 1);
 
   const itemType = toSingle(params.itemType) as RugLensItemType | undefined;
+  const search = toSingle(params.q);
 
   const filters: RugLensFilters = {
     location: toArray(params.location),
     quality: toArray(params.quality),
     itemType,
+    search,
     page,
     pageSize,
   };
@@ -67,7 +69,8 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
   ]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const hasAnyFilter = toArray(params.location).length > 0 || toArray(params.quality).length > 0 || Boolean(itemType);
+  const hasAnyFilter =
+    toArray(params.location).length > 0 || toArray(params.quality).length > 0 || Boolean(itemType) || Boolean(search);
   const from = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, totalCount);
 
@@ -90,7 +93,7 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
         locationOptions={locationOptions}
         qualityOptions={qualityOptions}
         hasAnyFilter={hasAnyFilter}
-        values={{ location: toArray(params.location), quality: toArray(params.quality), itemType }}
+        values={{ q: search ?? "", location: toArray(params.location), quality: toArray(params.quality), itemType }}
       />
 
       <div className="flex shrink-0 items-center justify-between">
