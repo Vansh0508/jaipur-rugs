@@ -767,6 +767,61 @@ export async function requestOrdersColumn(supabase: SupabaseClient, navFieldName
   return data;
 }
 
+export interface ResolveColumnRequestInput {
+  requestId: string;
+  decision: "approved" | "declined";
+  notes?: string;
+}
+
+interface ResolveColumnRequestResponse {
+  requestId: string;
+  status: "approved" | "declined";
+}
+
+/**
+ * Invokes `orders-resolve-column-request` — admin-only (orders.read.all). Records the
+ * decision immediately; 'approved' is NOT the same as the field actually existing yet —
+ * see that function's own comment for why making it real still needs a real migration +
+ * orders-sync.mjs update, not something this call does on its own.
+ */
+export async function resolveColumnRequest(supabase: SupabaseClient, input: ResolveColumnRequestInput) {
+  const { data, error } = await supabase.functions.invoke<ResolveColumnRequestResponse>(
+    "orders-resolve-column-request",
+    { body: input },
+  );
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface OrdersViewPreferencesInput {
+  hiddenColumns?: string[];
+  columnOrder?: string[];
+  hiddenFilters?: string[];
+  rowHeight?: "compact" | "normal" | "comfortable";
+}
+
+/**
+ * Invokes `orders-save-view-preferences` — self-service, always the CALLER'S OWN
+ * account, takes effect immediately (no approval step, this is UI preference not order
+ * data). Only the fields present in `input` are changed; omitted ones keep whatever's
+ * already stored. Direct request, 2026-09-14: "lock the user's view acc to their user
+ * id... from any system" — replaces the localStorage-only version
+ * (useLocalPreference) with one that actually follows the account across devices — see
+ * db/orders/023_user_view_preferences_and_request_approval.sql.
+ */
+export async function saveOrdersViewPreferences(supabase: SupabaseClient, input: OrdersViewPreferencesInput) {
+  const { data, error } = await supabase.functions.invoke<{ employeeId: string }>(
+    "orders-save-view-preferences",
+    { body: input },
+  );
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Orders workflow layer (db/orders/004) — the structured replacement for the
 // order@/mzpreview@ email relay. Prototyped and load-tested in a local preview tool

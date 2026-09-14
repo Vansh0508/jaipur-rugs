@@ -21,7 +21,6 @@ import {
   Funnel,
   Layers3Diagonal,
   LayoutColumns3,
-  Plus,
   SlidersVertical,
 } from "@gravity-ui/icons";
 import { StageChip, OnTimeBadge } from "./StageChip";
@@ -33,11 +32,26 @@ import { resolveFollowUpPerson } from "@/lib/followUpPerson";
 import { displayDate } from "@/lib/displayDate";
 import { copyToClipboard, buildClipboardText, buildClipboardHtml } from "@/lib/clipboardCopy";
 import { exportRowsToExcel } from "@/lib/exportToExcel";
-import { useLocalPreference } from "@/lib/useLocalPreference";
-import { requestOrdersColumn } from "@jaipur-rugs/db-management-client";
+import { saveOrdersViewPreferences } from "@jaipur-rugs/db-management-client";
 import { getBrowserSupabaseClient } from "@/lib/supabaseClient.browser";
-import { REQUESTABLE_NAV_FIELDS } from "@/lib/requestableNavFields";
-import { PAGE_SIZE_OPTIONS, DEFAULT_PAGE_SIZE, type OrderRow, type StageRow, type OrderFacets } from "@/lib/queries/orders";
+import {
+  PAGE_SIZE_OPTIONS,
+  DEFAULT_PAGE_SIZE,
+  type OrderRow,
+  type StageRow,
+  type OrderFacets,
+  type ViewPreferencesRow,
+} from "@/lib/queries/orders";
+
+/** Narrows a jsonb column's loosely-typed value (Json = string | number | boolean |
+ * null | object | Json[]) down to a real string[] — used for the three jsonb view-
+ * preference columns (hidden_columns/column_order/hidden_filters), which this app only
+ * ever writes as plain string arrays, but Postgres/Supabase's generated types can't know
+ * that. Anything malformed (a stale/foreign shape) just comes back empty rather than
+ * throwing. */
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
 
 function totalDaysSinceSalesOrder(salesOrderDate: string | null): number | null {
   if (!salesOrderDate || Number(salesOrderDate.slice(0, 4)) < 1900) return null;
@@ -167,8 +181,9 @@ export interface ColumnDef {
  * of these fields, each user should be able to add whichever ones match how THEY read
  * this table. All new ones default to hidden (see DEFAULT_HIDDEN_COLUMN_IDS) so a
  * first-time view still looks like the curated set above; the Columns submenu is what
- * lets someone add them back in and reorder anything, saved per-browser via
- * useLocalPreference below. */
+ * lets someone add them back in, reorder anything (drag, or the up/down buttons), and
+ * resize row height — synced to the account itself (not just the browser) since
+ * 2026-09-14, see the view-preferences state and its save effect below. */
 const ALL_COLUMNS: ColumnDef[] = [
   { id: "otn", label: "OTN / Item", sortable: true },
   { id: "salesOrderNo", label: "Sales Order No.", sortable: true },
@@ -328,6 +343,13 @@ export interface OrdersTableProps {
   };
   hasAnyFilter?: boolean;
   followUpPersonEmails: Record<string, string>;
+  /** This account's saved Orders view (shown columns, order, hidden filters, row
+   * height) — null means never saved yet (falls back to this app's own defaults).
+   * Fetched server-side (getMyOrdersViewPreferences) so the very first paint already
+   * reflects it, no flash of the default view first. See
+   * db/orders/023_user_view_preferences_and_request_approval.sql — this follows the
+   * account across devices, unlike the old localStorage-only version. */
+  initialViewPreferences?: ViewPreferencesRow | null;
   totalCount?: number;
   page?: number;
   pageSize?: number;
@@ -354,6 +376,7 @@ export function OrdersTable({
   },
   hasAnyFilter = false,
   followUpPersonEmails,
+  initialViewPreferences = null,
   totalCount = 0,
   page = 1,
   pageSize = DEFAULT_PAGE_SIZE,
@@ -369,11 +392,28 @@ export function OrdersTable({
 
   const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set<Key>());
   const [computedSort, setComputedSort] = useState<ComputedSort>(null);
-  const [hiddenColumns, setHiddenColumns] = useLocalPreference<string[]>("atlas:orders:columns", DEFAULT_HIDDEN_COLUMN_IDS);
-  // Left-to-right order the user has dragged columns into via the Columns submenu's
-  // up/down buttons — empty means "no customization yet, use ALL_COLUMNS' own order".
-  const [columnOrder, setColumnOrder] = useLocalPreference<string[]>("atlas:orders:columnOrder", []);
-  const [hiddenFilters, setHiddenFilters] = useLocalPreference<string[]>("atlas:orders:hiddenFilters", []);
+
+  // View preferences (shown columns, order, hidden filters, row height) — seeded from
+  // the account's saved row (initialViewPreferences, fetched server-side) rather than
+  // localStorage, so it follows the login across devices per direct request, 2026-09-14:
+  // "lock the user's view acc to their user id so from any system the user logs in he
+  // will view his own personalized view only." A change here is persisted back through
+  // saveOrdersViewPreferences by the debounced effect below — see
+  // db/orders/023_user_view_preferences_and_request_approval.sql.
+  const [hiddenColumns, setHiddenColumns] = useState<string[]>(
+    () => (initialViewPreferences ? asStringArray(initialViewPreferences.hidden_columns) : DEFAULT_HIDDEN_COLUMN_IDS),
+  );
+  // Left-to-right order the user has dragged/moved columns into via the Columns
+  // submenu — empty means "no customization yet, use ALL_COLUMNS' own order".
+  const [columnOrder, setColumnOrder] = useState<string[]>(
+    () => (initialViewPreferences ? asStringArray(initialViewPreferences.column_order) : []),
+  );
+  const [hiddenFilters, setHiddenFilters] = useState<string[]>(
+    () => (initialViewPreferences ? asStringArray(initialViewPreferences.hidden_filters) : []),
+  );
+  const [rowHeight, setRowHeight] = useState<"compact" | "normal" | "comfortable">(
+    () => (initialViewPreferences?.row_height as "compact" | "normal" | "comfortable" | undefined) ?? "normal",
+  );
   const hidden = useMemo(() => new Set(hiddenColumns), [hiddenColumns]);
   const hiddenFiltersSet = useMemo(() => new Set(hiddenFilters), [hiddenFilters]);
   const orderedAllColumns = useMemo(() => orderColumns(ALL_COLUMNS, columnOrder), [columnOrder]);
@@ -393,39 +433,58 @@ export function OrdersTable({
     next[target] = a;
     setColumnOrder(next.map((c) => c.id));
   }
+  // Drag-and-drop reordering, added 2026-09-14 alongside the up/down buttons above
+  // (kept, not replaced — a working keyboard/no-drag fallback, and the touch/mobile
+  // case drag doesn't cover well). Deliberately plain HTML5 drag events on the row
+  // itself, not a library — this is a short, single-list reorder, not a case complex
+  // enough to justify a new dependency.
+  const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
+  function handleColumnDrop(targetId: string) {
+    if (!draggedColumnId || draggedColumnId === targetId) {
+      setDraggedColumnId(null);
+      return;
+    }
+    const ids = orderedAllColumns.map((c) => c.id);
+    const fromIndex = ids.indexOf(draggedColumnId);
+    const toIndex = ids.indexOf(targetId);
+    setDraggedColumnId(null);
+    if (fromIndex === -1 || toIndex === -1) return;
+    const next = [...orderedAllColumns];
+    const [moved] = next.splice(fromIndex, 1);
+    if (!moved) return;
+    next.splice(toIndex, 0, moved);
+    setColumnOrder(next.map((c) => c.id));
+  }
+
+  // Persists view-preference changes to the account (debounced — a drag or a run of
+  // checkbox clicks shouldn't fire a network call per keystroke) — skips the very first
+  // run so loading the page doesn't immediately re-save the exact values it just loaded.
+  const hasHydratedViewPreferences = useRef(false);
+  useEffect(() => {
+    if (!hasHydratedViewPreferences.current) {
+      hasHydratedViewPreferences.current = true;
+      return;
+    }
+    const timeout = setTimeout(() => {
+      const supabase = getBrowserSupabaseClient();
+      saveOrdersViewPreferences(supabase, { hiddenColumns, columnOrder, hiddenFilters, rowHeight }).catch(() => {
+        // Swallowed — a background sync of UI preference, not order data; a failed save
+        // just means the next load falls back to whatever was last saved successfully,
+        // not a broken table right now.
+      });
+    }, 600);
+    return () => clearTimeout(timeout);
+  }, [hiddenColumns, columnOrder, hiddenFilters, rowHeight]);
 
   const [copiedEmailOrderId, setCopiedEmailOrderId] = useState<string | null>(null);
   const [copiedOtnId, setCopiedOtnId] = useState<string | null>(null);
 
-  const [rowHeight, setRowHeight] = useLocalPreference<"compact" | "normal" | "comfortable">("atlas:orders:rowHeight", "normal");
-
   // Search input & extended dropdown state
   const [searchInput, setSearchInput] = useState(values.q);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [activeSubmenu, setActiveSubmenu] = useState<"columns" | "filters" | "rowHeight" | "request" | null>(null);
+  const [activeSubmenu, setActiveSubmenu] = useState<"columns" | "filters" | "rowHeight" | null>(null);
   const menuContainerRef = useRef<HTMLDivElement>(null);
-
-  // "Request a Column" state — lives inside the settings dropdown as a fourth submenu
-  // (see the Columns/Filters/Row Height submenus below) rather than its own separate
-  // button, matching that dropdown's established look.
   const [columnSearch, setColumnSearch] = useState("");
-  const [requestSearch, setRequestSearch] = useState("");
-  const [requestedFields, setRequestedFields] = useState<Set<string>>(new Set());
-  const [pendingRequestField, setPendingRequestField] = useState<string | null>(null);
-
-  async function handleRequestColumn(navFieldName: string) {
-    setPendingRequestField(navFieldName);
-    try {
-      const supabase = getBrowserSupabaseClient();
-      await requestOrdersColumn(supabase, navFieldName);
-      setRequestedFields((prev) => new Set(prev).add(navFieldName));
-    } catch {
-      // Swallowed — the button just stays clickable so the person can retry, matching
-      // this app's other lightweight self-service forms' no-fuss error handling.
-    } finally {
-      setPendingRequestField(null);
-    }
-  }
 
   useEffect(() => {
     setSearchInput(values.q);
@@ -983,8 +1042,27 @@ export function OrdersTable({
                               return (
                                 <div
                                   key={col.id}
-                                  className="flex w-full items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                                  draggable={!isFiltering}
+                                  onDragStart={() => setDraggedColumnId(col.id)}
+                                  onDragOver={(e) => {
+                                    if (!isFiltering) e.preventDefault();
+                                  }}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    handleColumnDrop(col.id);
+                                  }}
+                                  onDragEnd={() => setDraggedColumnId(null)}
+                                  className={`flex w-full items-center gap-1 rounded-xl px-1.5 py-1.5 text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors ${
+                                    draggedColumnId === col.id ? "opacity-40" : ""
+                                  }`}
                                 >
+                                  <span
+                                    className={`shrink-0 px-0.5 text-muted ${isFiltering ? "opacity-30" : "cursor-grab active:cursor-grabbing"}`}
+                                    title={isFiltering ? undefined : "Drag to reorder"}
+                                    aria-hidden="true"
+                                  >
+                                    ⠿
+                                  </span>
                                   <button
                                     type="button"
                                     onClick={() => toggleColumn(col.id)}
@@ -1179,90 +1257,12 @@ export function OrdersTable({
                     )}
                   </div>
 
-                  {/* Request a Column Item with Hover Submenu — added 2026-09-14. Browse the
-                      full ~180-field NAV catalog that ISN'T in Atlas's `orders` table yet
-                      (lib/requestableNavFields.ts, verified live against the real NAV-002
-                      view — see db/orders/021_nav_full_field_expansion.sql's header) and ask
-                      for one. Direct decision: rather than add all of them up front (a
-                      bigger migration + a heavier orders-sync.mjs pull for fields most
-                      people never look at), a request lands in orders_column_requests for
-                      Ayaan to review on /my-access; only fields someone actually wants get
-                      added, one at a time — see db/orders/022_column_requests.sql. */}
-                  <div
-                    className="relative"
-                    onMouseEnter={() => setActiveSubmenu("request")}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setActiveSubmenu((curr) => (curr === "request" ? null : "request"))}
-                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-medium transition-colors cursor-pointer ${
-                        activeSubmenu === "request"
-                          ? "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
-                          : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
-                        <Plus width={14} height={14} className="text-muted" />
-                        <span>Request a Column</span>
-                      </span>
-                      <ChevronRight width={13} height={13} className="text-muted" />
-                    </button>
-
-                    {activeSubmenu === "request" && (
-                      <div
-                        onMouseEnter={() => setActiveSubmenu("request")}
-                        className="absolute right-full top-0 mr-1.5 w-80 rounded-2xl border border-border bg-surface p-2.5 shadow-2xl z-50 animate-in fade-in zoom-in-95"
-                      >
-                        <div className="pb-1.5 mb-1.5 border-b border-border/70 px-1">
-                          <span className="font-semibold text-xs text-foreground">Request a Column</span>
-                          <p className="mt-0.5 text-[10px] text-muted">
-                            Not in the Columns list yet? These are real fields NAV can carry that Atlas
-                            doesn&apos;t track today — request one and it goes to Ayaan to review.
-                          </p>
-                        </div>
-                        <input
-                          type="text"
-                          value={requestSearch}
-                          onChange={(e) => setRequestSearch(e.target.value)}
-                          placeholder="Search NAV fields…"
-                          className="mb-1.5 w-full rounded-lg border border-border bg-surface px-2 py-1 text-xs text-foreground placeholder:text-muted outline-none focus:border-accent"
-                        />
-                        <ScrollShadow
-                          hideScrollBar
-                          className="max-h-72 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                        >
-                          <div className="flex flex-col gap-0.5 pr-0.5">
-                            {REQUESTABLE_NAV_FIELDS.filter((f) =>
-                              f.toLowerCase().includes(requestSearch.trim().toLowerCase()),
-                            ).map((field) => {
-                              const isRequested = requestedFields.has(field);
-                              const isPending = pendingRequestField === field;
-                              return (
-                                <div
-                                  key={field}
-                                  className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-                                >
-                                  <span className="flex-1 truncate text-foreground">{field}</span>
-                                  {isRequested ? (
-                                    <span className="text-[11px] font-medium text-success">Requested ✓</span>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      disabled={isPending}
-                                      onClick={() => handleRequestColumn(field)}
-                                      className="shrink-0 rounded-lg border border-border px-2 py-0.5 text-[11px] text-accent hover:bg-accent/10 disabled:opacity-50 cursor-pointer"
-                                    >
-                                      {isPending ? "Requesting…" : "Request"}
-                                    </button>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </ScrollShadow>
-                      </div>
-                    )}
-                  </div>
+                  {/* "Request a Column" moved to /my-access, 2026-09-14 (direct
+                      request) — see RequestColumnForm.tsx there. This dropdown is
+                      about the columns that already exist; requesting one that
+                      doesn't is a different, less immediate action (an admin has to
+                      act on it later), so it's deliberately not a fourth item here
+                      anymore. */}
                 </div>
               </div>
             )}

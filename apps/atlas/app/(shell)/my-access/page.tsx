@@ -1,10 +1,12 @@
 import { getServerSupabaseClient } from "@/lib/supabaseClient.server";
 import { listMySalespersonCodes, listMyCustomerCodes } from "@/lib/queries/merchants";
-import { listPendingColumnRequests } from "@/lib/queries/orders";
+import { listPendingColumnRequests, listApprovedColumnRequests } from "@/lib/queries/orders";
 import { requireAtlasStaffAccess } from "@/lib/auth/requireAtlasStaffAccess";
 import { AddSalespersonCodesForm } from "@/components/AddSalespersonCodesForm";
 import { AddCustomerCodesForm } from "@/components/AddCustomerCodesForm";
 import { JoinDepartmentForm } from "@/components/JoinDepartmentForm";
+import { RequestColumnForm } from "@/components/RequestColumnForm";
+import { ColumnRequestAdminList } from "@/components/ColumnRequestAdminList";
 
 // Self-service home for the things an admin can't do for you: telling Atlas which ERP
 // sales code(s) or customer code(s) are actually yours (no name<->code mapping exists to
@@ -23,7 +25,9 @@ export default async function MyAccessPage({ searchParams }: { searchParams: Pro
     listMySalespersonCodes(supabase),
     listMyCustomerCodes(supabase),
   ]);
-  const pendingColumnRequests = access.isAdmin ? await listPendingColumnRequests(supabase) : [];
+  const [pendingColumnRequests, approvedColumnRequests] = access.isAdmin
+    ? await Promise.all([listPendingColumnRequests(supabase), listApprovedColumnRequests(supabase)])
+    : [[], []];
 
   return (
     <div className="flex flex-col gap-8">
@@ -84,36 +88,46 @@ export default async function MyAccessPage({ searchParams }: { searchParams: Pro
         )}
       </div>
 
+      <RequestColumnForm />
+
       {access.isAdmin ? (
         // Admin-only (orders.read.all — same permission ShellLayout's sidebar already
-        // gates on) — the review side of OrdersTable.tsx's "Request a Column" submenu
-        // (inside its settings dropdown). Deliberately read-only for now (no in-app
-        // approve/decline button): resolving a
-        // request means actually adding that field to the database, which is a real
-        // migration + an orders-sync.mjs update, not a click — see
-        // db/orders/022_column_requests.sql's header for why v1 keeps that manual.
-        <div>
-          <h2 className="mb-3 text-sm font-semibold uppercase text-muted">Pending column requests</h2>
-          {pendingColumnRequests.length ? (
-            <ul className="flex flex-col gap-2">
-              {pendingColumnRequests.map((req) => (
-                <li
-                  key={req.id}
-                  className="flex items-center justify-between gap-4 rounded-lg border-2 border-border px-3 py-2 text-sm"
-                >
-                  <div>
-                    <span className="font-medium text-foreground">{req.nav_field_name}</span>
-                    <span className="ml-2 text-xs text-muted">
-                      requested by {req.requester_name ?? "unknown"} · {new Date(req.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted">No pending requests.</p>
-          )}
-        </div>
+        // gates on). Real Approve/Decline buttons as of 2026-09-14 (ColumnRequestAdminList)
+        // — approving records the decision immediately but does NOT make the field live
+        // on its own; actually adding it is still a real migration + an
+        // orders-sync.mjs update + a deploy, not something a click can safely automate
+        // for a live, every-30-minute ERP sync — see db/orders/022_column_requests.sql's
+        // header for the full reasoning.
+        <>
+          <div>
+            <h2 className="mb-3 text-sm font-semibold uppercase text-muted">Pending column requests</h2>
+            <ColumnRequestAdminList requests={pendingColumnRequests} />
+          </div>
+
+          {approvedColumnRequests.length ? (
+            <div>
+              <h2 className="mb-3 text-sm font-semibold uppercase text-muted">Approved, not yet built</h2>
+              <p className="mb-3 text-sm text-muted">
+                Decided on — still needs the actual schema/sync-script work before it shows up as a column.
+              </p>
+              <ul className="flex flex-col gap-2">
+                {approvedColumnRequests.map((req) => (
+                  <li
+                    key={req.id}
+                    className="flex items-center justify-between gap-4 rounded-lg border-2 border-border px-3 py-2 text-sm"
+                  >
+                    <div>
+                      <span className="font-medium text-foreground">{req.nav_field_name}</span>
+                      <span className="ml-2 text-xs text-muted">
+                        requested by {req.requester_name ?? "unknown"} · {new Date(req.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </>
       ) : null}
     </div>
   );

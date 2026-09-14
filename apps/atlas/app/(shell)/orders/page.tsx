@@ -3,6 +3,7 @@ import {
   listOrderFacets,
   listStages,
   listFollowUpPersonEmails,
+  getMyOrdersViewPreferences,
   DEFAULT_PAGE_SIZE,
   type OrderFilters,
   type AgingBucket,
@@ -42,10 +43,11 @@ function toArray(value: string | string[] | undefined): string[] {
 export default async function OrdersPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
   const supabase = await getServerSupabaseClient();
-  const [stages, facets, followUpPersonEmails] = await Promise.all([
+  const [stages, facets, followUpPersonEmails, viewPreferences] = await Promise.all([
     listStages(supabase),
     listOrderFacets(supabase),
     listFollowUpPersonEmails(supabase),
+    getMyOrdersViewPreferences(supabase),
   ]);
   const terminalStageIds = stages.filter((s) => s.is_terminal).map((s) => s.id);
 
@@ -137,6 +139,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
           }}
           hasAnyFilter={hasAnyFilter}
           followUpPersonEmails={followUpPersonEmails}
+          initialViewPreferences={viewPreferences}
           totalCount={totalCount}
           page={page}
           pageSize={pageSize}

@@ -7,6 +7,15 @@
 // stale — the migration it was waiting on landed long ago; this regeneration finally
 // replaces it). Regenerate after every schema migration (AGENTS.md Section 3.1, step 6)
 // — do not hand-edit.
+//
+// EXCEPTION, tracked explicitly rather than silently violating the rule above:
+// `user_orders_view_preferences` (Row/Insert/Update/Relationships below) and
+// `column_request_status`'s 'approved' value are hand-authored, because
+// 023_user_view_preferences_and_request_approval.sql hasn't been applied to the live
+// project yet as of this commit (the Supabase MCP connection dropped mid-session — see
+// db/MIGRATIONS.md's entry on this) — there's no live schema to generate from yet.
+// Re-run generate_typescript_types and replace this whole file once that migration
+// actually lands; don't hand-edit this section further in the meantime.
 export type Json =
   | string
   | number
@@ -1819,6 +1828,41 @@ export type Database = {
           },
         ]
       }
+      user_orders_view_preferences: {
+        Row: {
+          column_order: Json
+          employee_id: string
+          hidden_columns: Json
+          hidden_filters: Json
+          row_height: string
+          updated_at: string
+        }
+        Insert: {
+          column_order?: Json
+          employee_id: string
+          hidden_columns?: Json
+          hidden_filters?: Json
+          row_height?: string
+          updated_at?: string
+        }
+        Update: {
+          column_order?: Json
+          employee_id?: string
+          hidden_columns?: Json
+          hidden_filters?: Json
+          row_height?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_orders_view_preferences_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: true
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       permissions: {
         Row: {
           app_id: string | null
@@ -2615,7 +2659,7 @@ export type Database = {
       access_level: "view" | "manage" | "admin"
       app_access_level: "none" | "view" | "manage"
       check_status: "pending" | "approved" | "rejected"
-      column_request_status: "pending" | "added" | "declined"
+      column_request_status: "pending" | "approved" | "added" | "declined"
       courier: "dhl" | "fedex"
       document_kind:
         | "planning_mail"
@@ -2809,7 +2853,7 @@ export const Constants = {
       access_level: ["view", "manage", "admin"],
       app_access_level: ["none", "view", "manage"],
       check_status: ["pending", "approved", "rejected"],
-      column_request_status: ["pending", "added", "declined"],
+      column_request_status: ["pending", "approved", "added", "declined"],
       courier: ["dhl", "fedex"],
       document_kind: [
         "planning_mail",

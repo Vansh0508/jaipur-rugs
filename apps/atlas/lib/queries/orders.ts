@@ -12,6 +12,7 @@ export type StageRow = Tables<"stages">;
 export type StageEventRow = Tables<"order_stage_events">;
 export type ShippingDetailRow = Tables<"shipping_details">;
 export type ColumnRequestRow = Tables<"orders_column_requests">;
+export type ViewPreferencesRow = Tables<"user_orders_view_preferences">;
 
 /** These 5 customer codes are internal warehouse stock/inventory, not real customer
  * orders — the same 5 the pre-Atlas tool (ai.jaipurrugs.com/track-jr-order/) already
@@ -501,24 +502,57 @@ export interface ColumnRequestWithRequester extends ColumnRequestRow {
   requester_name: string | null;
 }
 
-/** Pending "add this NAV column" requests (see db/orders/022_column_requests.sql and
- * OrdersTable.tsx's "Request a Column" submenu) — admin-only
- * view (orders_column_requests_select's RLS already scopes a non-admin caller to only
- * their own requests, so this would just come back empty/partial for them; the /my-access
- * page only renders this section when access.isAdmin is true, matching that). Joined to
- * employees for a display name — same nested-select pattern requireAtlasStaffAccess.ts
- * already uses for department_access_grants -> departments. */
-export async function listPendingColumnRequests(supabase: SupabaseClient): Promise<ColumnRequestWithRequester[]> {
+/** Shared by listPendingColumnRequests/listApprovedColumnRequests below — one query
+ * shape, filtered by status, so the two lists can't quietly drift out of sync with each
+ * other. Admin-only in practice (orders_column_requests_select's RLS already scopes a
+ * non-admin caller to only their own requests, so this would just come back empty/
+ * partial for them; the /my-access page only renders these sections when
+ * access.isAdmin is true, matching that). Joined to employees for a display name — same
+ * nested-select pattern requireAtlasStaffAccess.ts already uses for
+ * department_access_grants -> departments. */
+async function listColumnRequestsByStatus(
+  supabase: SupabaseClient,
+  status: "pending" | "approved" | "declined" | "added",
+): Promise<ColumnRequestWithRequester[]> {
   const { data, error } = await supabase
     .from("orders_column_requests")
     .select("*, employees(full_name)")
-    .eq("status", "pending")
+    .eq("status", status)
     .order("created_at", { ascending: true });
   if (error) throw error;
   return (data ?? []).map((row) => {
     const { employees, ...rest } = row as ColumnRequestRow & { employees: { full_name: string } | null };
     return { ...rest, requester_name: employees?.full_name ?? null };
   });
+}
+
+/** Requests still awaiting an admin decision (see db/orders/023's "approved" status) —
+ * see OrdersTable.tsx's "Request a Column" submenu for where a request comes from and
+ * /my-access's admin section for where it's approved/declined. */
+export async function listPendingColumnRequests(supabase: SupabaseClient): Promise<ColumnRequestWithRequester[]> {
+  return listColumnRequestsByStatus(supabase, "pending");
+}
+
+/** Requests an admin has approved but that aren't actually live yet — approving is a
+ * real decision, recorded immediately; making the field real still needs a schema
+ * migration + an orders-sync.mjs update + a deploy (see 022's header), so this is the
+ * queue of "yes, build this next," distinct from both "pending" (undecided) and "added"
+ * (already done, no longer worth listing here). */
+export async function listApprovedColumnRequests(supabase: SupabaseClient): Promise<ColumnRequestWithRequester[]> {
+  return listColumnRequestsByStatus(supabase, "approved");
+}
+
+/** The caller's own Orders table view preferences (shown columns, their order, hidden
+ * filters, row height) — see db/orders/023_user_view_preferences_and_request_approval.sql
+ * and orders-save-view-preferences. RLS already scopes this to the caller's own row, so
+ * no employeeId parameter is needed; null means the account has never saved a
+ * preference yet (a brand-new user, or one who's only ever used the old
+ * localStorage-only version) — callers should fall back to this app's own defaults in
+ * that case, not treat it as an error. */
+export async function getMyOrdersViewPreferences(supabase: SupabaseClient): Promise<ViewPreferencesRow | null> {
+  const { data, error } = await supabase.from("user_orders_view_preferences").select("*").maybeSingle();
+  if (error) throw error;
+  return data;
 }
 
 export async function listFollowUpPersonEmails(supabase: SupabaseClient): Promise<Record<string, string>> {
