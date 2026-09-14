@@ -10,8 +10,10 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@gravity-ui/icons": "^2.22.0",
     "@heroui/react": "^3.2.4",
     "@heroui/styles": "^3.2.4",
+    "@internationalized/date": "^3.12.4",
     "@jaipur-rugs/auth": "workspace:*",
     "@jaipur-rugs/db-management-client": "workspace:*",
     "@jaipur-rugs/supabase-client": "workspace:*",

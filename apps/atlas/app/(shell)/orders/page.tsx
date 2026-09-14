@@ -12,8 +12,6 @@ import {
 } from "@/lib/queries/orders";
 import { getServerSupabaseClient } from "@/lib/supabaseClient.server";
 import { OrdersTable } from "@/components/OrdersTable";
-import { OrdersFilterPanel } from "@/components/OrdersFilterPanel";
-import { OrdersPagination } from "@/components/OrdersPagination";
 import { ExportOrdersButton } from "@/components/ExportOrdersButton";
 import { StageChip } from "@/components/StageChip";
 
@@ -97,67 +95,54 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
     // own overflow-y-auto as a fallback for every other page, but this page manages its
     // own scrolling internally (only the table body scrolls; title bar and pagination
     // stay put) via Table.ScrollContainer below, not this outer div.
-    <div className="flex h-full flex-col gap-4 overflow-hidden">
-      <OrdersFilterPanel
-        stages={stages}
-        facets={facets}
-        hasAnyFilter={hasAnyFilter}
-        values={{
-          q: (params.q as string | undefined) ?? "",
-          stageId: toArray(params.stageId),
-          customerNo: toArray(params.customerNo),
-          merchantName: toArray(params.merchantName),
-          orderWiseMerchant: toArray(params.orderWiseMerchant),
-          followUpPerson: toArray(params.followUpPerson),
-          customerPoNo: toArray(params.customerPoNo),
-          quality: toArray(params.quality),
-          design: toArray(params.design),
-          size: toArray(params.size),
-          productionOrderStatus: toArray(params.productionOrderStatus),
-          priority: toArray(params.priority),
-          aging: toSingle(params.aging),
-          onHold: toSingle(params.onHold),
-          quickShip: toSingle(params.quickShip),
-          delayStatus: toSingle(params.delayStatus),
-          ctype: toSingle(params.ctype),
-          dueFrom: toSingle(params.dueFrom),
-          dueTo: toSingle(params.dueTo),
-        }}
-      />
-
-      {/* Plain, non-scrolling content — no sticky/offset tricks needed here at all.
-          Direct feedback, 2026-09-05: a manual sticky-offset hack on this block plus a
-          second one on the table's header "messed the table" (they can't self-stack —
-          each computes its own stuck position with no idea the other exists). Real fix:
-          this bar and the pagination footer below just sit in normal flow, fixed in
-          place, because ONLY the table's own Table.ScrollContainer scrolls — see
-          OrdersTable, which now uses this app's real Table component (Hero UI, via
-          @jaipur-rugs/ui-kit) instead of a hand-rolled <table>. */}
+    <div className="flex h-full flex-col gap-3.5 overflow-hidden">
       <div className="flex shrink-0 items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Orders</h1>
-          <p className="text-sm text-muted">
-            Showing {from}-{to} of {totalCount}
-            {hasAnyFilter ? " (filtered)" : ""}
-          </p>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Orders</h1>
+          {toArray(params.stageId).length === 1 ? (
+            (() => {
+              const stage = stages.find((s) => s.id === toArray(params.stageId)[0]);
+              return stage ? <StageChip code={stage.code} label={`Filtered: ${stage.display_name}`} /> : null;
+            })()
+          ) : null}
         </div>
         <ExportOrdersButton rows={orders} stages={stages} />
       </div>
 
-      {toArray(params.stageId).length === 1 ? (
-        <div className="shrink-0">
-          {(() => {
-            const stage = stages.find((s) => s.id === toArray(params.stageId)[0]);
-            return stage ? <StageChip code={stage.code} label={`Filtered: ${stage.display_name}`} /> : null;
-          })()}
-        </div>
-      ) : null}
-
       <div className="min-h-0 flex-1">
-        <OrdersTable rows={orders} stages={stages} followUpPersonEmails={followUpPersonEmails} />
+        <OrdersTable
+          rows={orders}
+          stages={stages}
+          facets={facets}
+          values={{
+            q: (params.q as string | undefined) ?? "",
+            stageId: toArray(params.stageId),
+            customerNo: toArray(params.customerNo),
+            merchantName: toArray(params.merchantName),
+            orderWiseMerchant: toArray(params.orderWiseMerchant),
+            followUpPerson: toArray(params.followUpPerson),
+            customerPoNo: toArray(params.customerPoNo),
+            quality: toArray(params.quality),
+            design: toArray(params.design),
+            size: toArray(params.size),
+            productionOrderStatus: toArray(params.productionOrderStatus),
+            priority: toArray(params.priority),
+            aging: toSingle(params.aging),
+            onHold: toSingle(params.onHold),
+            quickShip: toSingle(params.quickShip),
+            delayStatus: toSingle(params.delayStatus),
+            ctype: toSingle(params.ctype),
+            dueFrom: toSingle(params.dueFrom),
+            dueTo: toSingle(params.dueTo),
+          }}
+          hasAnyFilter={hasAnyFilter}
+          followUpPersonEmails={followUpPersonEmails}
+          totalCount={totalCount}
+          page={page}
+          pageSize={pageSize}
+          totalPages={totalPages}
+        />
       </div>
-
-      <OrdersPagination page={page} totalPages={totalPages} pageSize={pageSize} />
     </div>
   );
 }

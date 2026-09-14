@@ -3,22 +3,10 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { FacetDropdown, SingleSelect } from "@/components/FilterPrimitives";
+import { FacetDropdown, SingleSelect, HeroDateRangePicker, HeroSearchBar } from "@/components/FilterPrimitives";
 import { useLocalPreference } from "@/lib/useLocalPreference";
 import type { StageRow, OrderFacets } from "@/lib/queries/orders";
 
-// Used to portal itself into the sidebar (direct feedback, 2026-09-05: "keep the
-// filters in the same side bar below My access") — reversed 2026-09-10: filters now
-// render directly above the Orders table as a bar of dropdowns instead, and every
-// multi-value facet moved from a plain checkbox list onto Hero UI's real Dropdown (see
-// FilterPrimitives.tsx's FacetDropdown). Each control applies itself the moment it's
-// set (a dropdown closing, a `<select>` changing, Enter/blur on the search box) rather
-// than needing one shared "Apply filters" submit button — same end result (a fresh
-// `/orders?...` navigation carrying every filter), just field-by-field now.
-//
-// pageSize/PAGE_SIZE_OPTIONS moved out of this panel entirely, 2026-09-10 — the
-// row-count control now lives next to pagination in OrdersTable.tsx, not buried in the
-// filter form.
 export interface OrdersFilterPanelProps {
   stages: StageRow[];
   facets: OrderFacets;
@@ -52,10 +40,6 @@ export function OrdersFilterPanel({ stages, facets, values, hasAnyFilter }: Orde
   const [filtersVisible, setFiltersVisible] = useLocalPreference("atlas:orders:filtersVisible", true);
   const [searchInput, setSearchInput] = useState(values.q);
 
-  /** Pushes `/orders?...` with the given fields changed, everything else carried
-   * forward from the current URL (sort, page size, every other filter) — except `page`
-   * itself, which always resets to 1 since the result set just changed. Same
-   * merge-current-params-minus-overrides shape as OrdersTable.tsx's own useLinkBuilder. */
   function apply(overrides: Record<string, string | string[] | undefined>) {
     const p = new URLSearchParams();
     for (const [key, value] of searchParams.entries()) {
@@ -76,31 +60,86 @@ export function OrdersFilterPanel({ stages, facets, values, hasAnyFilter }: Orde
     apply({ q: searchInput || undefined });
   }
 
+  const activeFilterCount =
+    (values.stageId?.length || 0) +
+    (values.customerNo?.length || 0) +
+    (values.merchantName?.length || 0) +
+    (values.orderWiseMerchant?.length || 0) +
+    (values.followUpPerson?.length || 0) +
+    (values.customerPoNo?.length || 0) +
+    (values.quality?.length || 0) +
+    (values.design?.length || 0) +
+    (values.size?.length || 0) +
+    (values.productionOrderStatus?.length || 0) +
+    (values.priority?.length || 0) +
+    (values.aging ? 1 : 0) +
+    (values.onHold ? 1 : 0) +
+    (values.quickShip ? 1 : 0) +
+    (values.delayStatus ? 1 : 0) +
+    (values.ctype ? 1 : 0) +
+    (values.dueFrom || values.dueTo ? 1 : 0);
+
   return (
-    <div className="flex shrink-0 flex-col gap-2">
-      <button
-        type="button"
-        onClick={() => setFiltersVisible((v) => !v)}
-        className="self-start text-xs text-muted hover:text-foreground hover:underline"
-      >
-        {filtersVisible ? "Hide filters" : "Show filters"}
-      </button>
+    <div className="flex shrink-0 flex-col gap-2.5">
+      {/* Top toolbar directly above the table */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-neutral-900 bg-neutral-900 text-white dark:border-white dark:bg-white dark:text-neutral-900 px-3.5 py-1 text-xs font-semibold shadow-xs">
+            <span>Orders View</span>
+          </div>
+        </div>
 
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Hero UI Search Bar */}
+          <HeroSearchBar
+            value={searchInput}
+            onChange={setSearchInput}
+            onSubmit={applySearch}
+            onClear={() => {
+              setSearchInput("");
+              apply({ q: undefined });
+            }}
+          />
+
+          {/* Hero UI Date Range Picker for Rev. Ex-Factory */}
+          <HeroDateRangePicker
+            startValue={values.dueFrom}
+            endValue={values.dueTo}
+            onChange={(start, end) => apply({ dueFrom: start, dueTo: end })}
+          />
+
+          {/* Filters Toggle Pill */}
+          <button
+            type="button"
+            onClick={() => setFiltersVisible((v) => !v)}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+              filtersVisible
+                ? "border-neutral-900 bg-neutral-900 text-white dark:border-white dark:bg-white dark:text-neutral-900 shadow-xs"
+                : "border-border bg-surface text-muted hover:border-border-hover hover:text-foreground"
+            }`}
+          >
+            <span>Filters</span>
+            {activeFilterCount > 0 ? (
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-white/25 dark:bg-black/25 px-1 text-[10px] font-bold">
+                {activeFilterCount}
+              </span>
+            ) : null}
+          </button>
+
+          {hasAnyFilter ? (
+            <Link
+              href="/orders"
+              className="text-xs font-medium text-accent hover:underline px-1.5 py-1"
+            >
+              Clear all
+            </Link>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Checkbox-style Pills in Dropdown Row */}
       {filtersVisible ? (
-        <div className="flex flex-wrap items-end gap-2 rounded-lg border-2 border-border p-3">
-          <label className="flex flex-col gap-1 text-xs">
-            <span className="font-medium uppercase text-muted">Search</span>
-            <input
-              type="search"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onBlur={applySearch}
-              onKeyDown={(e) => e.key === "Enter" && applySearch()}
-              placeholder="OTN, item, customer, quality…"
-              className="w-48 rounded-lg border-2 border-border bg-transparent px-2 py-1.5 text-sm outline-none focus:border-accent"
-            />
-          </label>
-
+        <div className="flex flex-wrap items-center gap-2 pt-0.5">
           <FacetDropdown
             label="Stage"
             options={stages.map((s) => ({ value: s.id, label: s.display_name }))}
@@ -136,8 +175,8 @@ export function OrdersFilterPanel({ stages, facets, values, hasAnyFilter }: Orde
             selected={values.delayStatus}
             onApply={(v) => apply({ delayStatus: v })}
             options={[
-              { value: "late", label: "⚠ Late" },
-              { value: "soon", label: "⏰ Due in 7 days" },
+              { value: "late", label: "Late" },
+              { value: "soon", label: "Due in 7 days" },
               { value: "late_or_soon", label: "Late + due in 7 days" },
             ]}
           />
@@ -153,31 +192,6 @@ export function OrdersFilterPanel({ stages, facets, values, hasAnyFilter }: Orde
               { value: "other", label: "Other" },
             ]}
           />
-
-          <label className="flex flex-col gap-1 text-xs">
-            <span className="font-medium uppercase text-muted whitespace-nowrap">Rev. Ex-Factory from</span>
-            <input
-              type="date"
-              defaultValue={values.dueFrom ?? ""}
-              onChange={(e) => apply({ dueFrom: e.target.value || undefined })}
-              className="rounded-lg border-2 border-border bg-transparent px-2 py-1.5 text-sm outline-none focus:border-accent"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs">
-            <span className="font-medium uppercase text-muted whitespace-nowrap">Rev. Ex-Factory to</span>
-            <input
-              type="date"
-              defaultValue={values.dueTo ?? ""}
-              onChange={(e) => apply({ dueTo: e.target.value || undefined })}
-              className="rounded-lg border-2 border-border bg-transparent px-2 py-1.5 text-sm outline-none focus:border-accent"
-            />
-          </label>
-
-          {hasAnyFilter ? (
-            <Link href="/orders" className="self-center text-sm text-accent hover:underline">
-              Clear all
-            </Link>
-          ) : null}
         </div>
       ) : null}
     </div>
