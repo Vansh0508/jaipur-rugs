@@ -520,6 +520,58 @@ consuming apps (atlas, hub, admin/feedback-app, admin/internal-portal) before tr
 the regeneration as done, per AGENTS.md Section 4's "a shared package change... don't
 land it without checking what else it touched."
 
+**Branch divergence discovered and reconciled, `atlas-workflow-and-deploy` retired in
+favor of `main` (2026-09-14).** While about to deploy the column-request work above,
+Ayaan asked to check changes Vansh had made — turned out `main` and
+`atlas-workflow-and-deploy` had silently diverged on 2026-09-10 (`91b5fe7`, their last
+common ancestor) and never been reconciled: `main` gained Vansh's Orders UI redesign
+(`c4ceb7b` — view tabs, filters moved into the table, a settings dropdown with Columns/
+Filters/Row Height submenus, row height options, copy-OTN, a date-range picker; new
+deps `@gravity-ui/icons` + `@internationalized/date`), while `atlas-workflow-and-deploy`
+independently gained everything through `022` above. Neither branch had both. The
+working directory switching branches mid-session also `git stash`'d uncommitted work in
+progress at the time — nothing was actually lost, just needed recovering, all confirmed
+present before continuing.
+
+Reconciled by hand rather than trusting a mechanical `git merge` on `OrdersTable.tsx`
+(rewritten heavily on both sides): took Vansh's version as the structural base, then
+re-applied the column/data work on top of it — the full reordered/expanded column list,
+`columnOrder` state, a search box + reorder buttons added to his "Hide Columns"
+submenu, and "Request a Column" added as a fourth submenu alongside his existing three,
+rather than as a separate button. `ColumnSettingsMenu.tsx`/`RequestColumnMenu.tsx`
+(this session's earlier standalone versions) and `OrdersFilterPanel.tsx` (superseded by
+filters-in-table) were all deleted as orphaned once their logic moved elsewhere and
+confirmed nothing still imported them. Also fixed while reviewing: a leftover Chinese
+character ("至", should read "to") in the new date-range picker's separator. Flagged to
+Ayaan but deliberately not touched: the new icon library dependency reverses a
+previously-recorded deliberate "no icon library" decision (`apps/atlas/components/shell/icons.tsx`'s
+own prior comment) — AGENTS.md Section 1 territory, his call to make with Vansh, not
+mine to override either way. Verified with a clean type-check and full production build
+after every resolution step. Merged into `main` (fast-forward, since
+`atlas-workflow-and-deploy` was reconciled first) and pushed both branches, now
+pointing at the same commit (`d7c0b8c`).
+
+**Working branch retired in favor of `main`, direct decision, same day.** Ayaan then
+asked to make `main` the one shared working branch going forward ("so that we can work
+combinedly" with Vansh) rather than maintaining two — done: local checkout switched to
+`main`, and (a second direct instruction) the office server's deploy checkout switched
+too (`git checkout main`, tracking `origin/main`), so `git pull` there now follows
+`main` instead of `atlas-workflow-and-deploy`. Caught and fixed while deploying: Vansh's
+commit had added `@internationalized/date` to `apps/atlas/package.json` but the
+`pnpm-lock.yaml` update never got committed alongside it — invisible locally (a loose
+`pnpm install`/`next build` resolves it from an already-hoisted copy without complaint)
+but `pnpm install --frozen-lockfile` (what this office deploy, and presumably any
+Docker-based CI-style install, actually uses) failed outright with
+`ERR_PNPM_OUTDATED_LOCKFILE`. Fixed by regenerating the lockfile properly (both on the
+office server and locally, to keep them identical) and committing the 3-line fix.
+`deploy/atlas/office-deploy.md` updated to say `main`, not `atlas-workflow-and-deploy` —
+see that file for the current deploy instructions; don't trust a cached mental model of
+which branch is live there without checking `git branch -vv` on the box itself first.
+The VPS (`deploy-atlas.bat`) was not touched by this rename — it builds from whatever's
+on the local disk of whoever runs it, not from a git pull, so it has no branch to be
+wrong about; it just needs `main` checked out locally (or the equivalent working tree)
+next time someone runs it, same as any other local build.
+
 ## Still pending
 
 - `supabase/functions/guest-signup`, `employee-signin`, and `submit-feedback` are deployed
@@ -674,8 +726,9 @@ people. Two changes, both live:
 
 **Not done in this pass, flagged for whoever owns the actual Atlas frontend** (its source
 lives at `G:\Automation\MonoRepo\jaipur-rugs\`, github.com/Vansh0508/jaipur-rugs,
-branch `atlas-workflow-and-deploy` — same repo as this worktree, just possibly a
-different checkout/session): the "my access" page still needs a **Customer code(s)**
+branch `main` as of 2026-09-14 — see this file's own later entry on the
+`atlas-workflow-and-deploy` -> `main` branch reconciliation; same repo as this worktree,
+just possibly a different checkout/session): the "my access" page still needs a **Customer code(s)**
 input wired to `customer-codes-add`, distinct from the existing **Salesperson code(s)**
 field wired to `salesperson-codes-add` — right now nothing in the frontend calls the new
 function yet. Also requested but out of reach from a database-only session: trimming the
