@@ -502,7 +502,7 @@ export interface ColumnRequestWithRequester extends ColumnRequestRow {
 }
 
 /** Pending "add this NAV column" requests (see db/orders/022_column_requests.sql and
- * ColumnSettingsMenu.tsx/RequestColumnMenu.tsx's "Request a column" list) — admin-only
+ * OrdersTable.tsx's "Request a Column" submenu) — admin-only
  * view (orders_column_requests_select's RLS already scopes a non-admin caller to only
  * their own requests, so this would just come back empty/partial for them; the /my-access
  * page only renders this section when access.isAdmin is true, matching that). Joined to

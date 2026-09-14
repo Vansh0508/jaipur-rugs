@@ -85,7 +85,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               Person" column already uses. Kept to just Sales Order No. (above) + Sales
               Person (name) per direct follow-up, 2026-09-12 — no separate Sales Code
               row here (the Orders table still offers it as an optional column for
-              anyone who wants it, see ColumnSettingsMenu). */}
+              anyone who wants it, see its Columns submenu). */}
           <DetailRow label="Sales Person" value={order.order_wise_merchant} />
           <DetailRow label="Follow Up Person" value={order.follow_up_person} />
           <DetailRow label="Sales Order Date" value={order.sales_order_date} />

@@ -30,14 +30,9 @@ export default async function ShellLayout({ children }: { children: ReactNode })
           CSS `:hover` — see that component's comment) and renders UserMenu pinned to
           its bottom, SidebarNav filling the rest above it. */}
       <SidebarShell isAdmin={access.isAdmin} fullName={access.fullName} email={access.email} />
-      {/* The content area is its own detached white card, not flush against the grey
-          shell — `m-1` (4px) gives it a gap on every side (top/right/bottom against the
-          viewport, left against the sidebar), `rounded` is Tailwind's 4px radius step,
-          and the arbitrary shadow value is deliberately asymmetric (a stronger,
-          left-shifted shadow layer plus a lighter all-around one) since no shadow
-          utility in the default scale can express "more on one edge." Per the redesign,
-          2026-09-10. */}
-      <main className="m-1 h-full flex-1 overflow-y-auto rounded bg-surface p-8 shadow-[-8px_0_20px_-6px_rgba(0,0,0,0.18),0_2px_10px_-2px_rgba(0,0,0,0.10)]">
+      {/* The content area is its own detached white card, floating against the grey
+          shell with rounded-3xl corners, crisp border, and subtle elevation matching the reference design. */}
+      <main className="my-2.5 mr-2.5 ml-1.5 flex-1 min-w-0 h-[calc(100vh-20px)] overflow-y-auto rounded-3xl border border-border/80 bg-surface p-6 lg:p-7 shadow-xs flex flex-col">
         {children}
       </main>
     </div>

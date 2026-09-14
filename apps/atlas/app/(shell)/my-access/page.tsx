@@ -86,8 +86,9 @@ export default async function MyAccessPage({ searchParams }: { searchParams: Pro
 
       {access.isAdmin ? (
         // Admin-only (orders.read.all — same permission ShellLayout's sidebar already
-        // gates on) — the review side of RequestColumnMenu.tsx's "Request a column" list.
-        // Deliberately read-only for now (no in-app approve/decline button): resolving a
+        // gates on) — the review side of OrdersTable.tsx's "Request a Column" submenu
+        // (inside its settings dropdown). Deliberately read-only for now (no in-app
+        // approve/decline button): resolving a
         // request means actually adding that field to the database, which is a real
         // migration + an orders-sync.mjs update, not a click — see
         // db/orders/022_column_requests.sql's header for why v1 keeps that manual.
