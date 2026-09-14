@@ -45,7 +45,7 @@ export const DEFAULT_PAGE_SIZE = 20;
 
 export type ConstructionType = "knotted" | "tufted" | "handloom" | "other" | "swatch";
 export type AgingBucket = "0-7" | "8-15" | "16-30" | "30+";
-export type DelayStatusFilter = "late" | "soon" | "late_or_soon";
+export type DelayStatusFilter = "late" | "soon" | "late_or_soon" | "on_track";
 export type YesNo = "yes" | "no";
 
 export interface OrderFilters {
@@ -79,9 +79,15 @@ export interface OrderFilters {
   /** Computed against revised_ex_factory_date, not promised_delivery_date — confirmed
    * against the live feed that promised_delivery_date is essentially always blank (see
    * the live-preview prototype's own finding, same ERP feed); revised_ex_factory_date is
-   * the real signal every delay computation in this app already uses. "Late"/"soon" are
-   * meaningless once an order has reached a terminal stage, so those are excluded too —
-   * requires `terminalStageIds` (compute once from listStages() and pass through). */
+   * the real signal every delay computation in this app already uses. "late"/"soon"/
+   * "on_track" are meaningless once an order has reached a terminal stage, so those are
+   * excluded too — requires `terminalStageIds` (compute once from listStages() and pass
+   * through). Added 2026-09-14, alongside the Orders top tab bar: "on_track" — the one
+   * value that ISN'T about a date being unfavorable, so terminal orders stay excluded
+   * for consistency but a missing date doesn't. Deliberately NOT the same "on time"
+   * concept the per-row badge column computes (that one also factors in the stage TAT
+   * standard's pace projection, "Late" vs "Delayed" — see lib/tat.ts's onTimeStatus);
+   * this is a simpler pure date-window bucket, safe to compute as a plain SQL filter. */
   delayStatus?: DelayStatusFilter;
   terminalStageIds?: string[];
   /** Date range on revised_ex_factory_date (yyyy-mm-dd strings). */
@@ -286,11 +292,21 @@ function applyOrderFilters(supabase: SupabaseClient, filters: OrderFilters) {
   if (filters.delayStatus) {
     const today = new Date().toISOString().slice(0, 10);
     const in7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    query = query.not("revised_ex_factory_date", "is", null);
     if (filters.terminalStageIds?.length) query = query.not("stage_id", "in", `(${filters.terminalStageIds.join(",")})`);
-    if (filters.delayStatus === "late") query = query.lt("revised_ex_factory_date", today);
-    else if (filters.delayStatus === "soon") query = query.gte("revised_ex_factory_date", today).lte("revised_ex_factory_date", in7Days);
-    else query = query.lte("revised_ex_factory_date", in7Days); // late_or_soon: <= today+7 covers both
+    if (filters.delayStatus === "late") query = query.not("revised_ex_factory_date", "is", null).lt("revised_ex_factory_date", today);
+    else if (filters.delayStatus === "soon") {
+      query = query.not("revised_ex_factory_date", "is", null).gte("revised_ex_factory_date", today).lte("revised_ex_factory_date", in7Days);
+    } else if (filters.delayStatus === "on_track") {
+      // Deliberately simpler than the "On Time" column's own on_track state (which also
+      // weighs the stage-TAT-standard pace projection, not just the raw date) — this tab
+      // is a pure date-window bucket: not already past due, and not due within the next
+      // 7 days either. A missing revised_ex_factory_date counts as on_track too (nothing
+      // known to be at risk), unlike the other three branches, which all require a real
+      // date to compare against.
+      query = query.or(`revised_ex_factory_date.is.null,revised_ex_factory_date.gt.${in7Days}`);
+    } else {
+      query = query.not("revised_ex_factory_date", "is", null).lte("revised_ex_factory_date", in7Days); // late_or_soon: <= today+7 covers both
+    }
   }
 
   if (filters.dueFrom) query = query.gte("revised_ex_factory_date", filters.dueFrom);

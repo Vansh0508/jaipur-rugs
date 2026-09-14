@@ -629,7 +629,26 @@ export function OrdersTable({
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 px-0.5">
         {/* Left Side: View Tabs + Selection */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* View Tabs */}
+          {/* View Tabs — relabeled 2026-09-14 (direct request) from All Orders/Delayed/
+              On Hold/Quick Ship to All Orders/Late/Delayed/On Track/Due in 7 days.
+              On Hold and Quick Ship weren't dropped — both are still real filters, just
+              demoted to the filter bar below instead of a top-level tab (same place
+              Delay Status/Construction/etc. already live).
+              "Delayed" and "Due in 7 days" are unchanged under the hood (delayStatus
+              late/soon) — pure revised_ex_factory_date comparisons, already correct
+              across the full dataset. "On Track" is new but equally simple (see
+              lib/queries/orders.ts's delayStatus doc — deliberately just "not late, not
+              due soon," not the same richer pace-aware on_track the per-row "On Time"
+              badge computes). "Late" is NOT wired yet: this app's own established
+              vocabulary for that word (lib/tat.ts's onTimeStatus, from a real
+              production conversation, 2026-09-07: "flag it as Late not delayed") means
+              something genuinely different from "Delayed" — not yet past the target
+              date, but off-pace to make it, which needs the same stage-TAT-standard
+              projection the "On Time" column already computes per row. Making that a
+              real, fast, dataset-wide tab (not just whatever's on the current page)
+              needs a Postgres function ported from stageStandard()/onTimeStatus(),
+              which isn't something to write and ship untested against live data —
+              flagged to Ayaan as the next piece once DB access is confirmed working. */}
           <div className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-surface p-0.5 shadow-xs text-xs">
             <button
               type="button"
@@ -645,6 +664,12 @@ export function OrdersTable({
                 {totalCount}
               </span>
             </button>
+            <span
+              title="Coming once the live database connection is back — see this tab bar's own comment for why this one specifically needs it"
+              className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-full px-3 py-1 font-medium text-muted/50"
+            >
+              <span>Late</span>
+            </span>
             <button
               type="button"
               onClick={() => router.push(buildLink({ delayStatus: values.delayStatus === "late" ? undefined : "late" }))}
@@ -658,25 +683,25 @@ export function OrdersTable({
             </button>
             <button
               type="button"
-              onClick={() => router.push(buildLink({ onHold: values.onHold === "yes" ? undefined : "yes" }))}
+              onClick={() => router.push(buildLink({ delayStatus: values.delayStatus === "on_track" ? undefined : "on_track" }))}
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium transition-colors cursor-pointer ${
-                values.onHold === "yes"
+                values.delayStatus === "on_track"
+                  ? "bg-success text-white shadow-xs"
+                  : "text-muted hover:text-foreground"
+              }`}
+            >
+              <span>On Track</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push(buildLink({ delayStatus: values.delayStatus === "soon" ? undefined : "soon" }))}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium transition-colors cursor-pointer ${
+                values.delayStatus === "soon"
                   ? "bg-amber-600 text-white shadow-xs"
                   : "text-muted hover:text-foreground"
               }`}
             >
-              <span>On Hold</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => router.push(buildLink({ quickShip: values.quickShip === "yes" ? undefined : "yes" }))}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium transition-colors cursor-pointer ${
-                values.quickShip === "yes"
-                  ? "bg-emerald-600 text-white shadow-xs"
-                  : "text-muted hover:text-foreground"
-              }`}
-            >
-              <span>Quick Ship</span>
+              <span>Due in 7 days</span>
             </button>
           </div>
 
@@ -854,9 +879,10 @@ export function OrdersTable({
                   selected={values.delayStatus}
                   onApply={(v) => router.push(buildLink({ delayStatus: v }))}
                   options={[
-                    { value: "late", label: "Late" },
+                    { value: "late", label: "Delayed" },
                     { value: "soon", label: "Due in 7 days" },
-                    { value: "late_or_soon", label: "Late + due in 7 days" },
+                    { value: "on_track", label: "On Track" },
+                    { value: "late_or_soon", label: "Delayed + due in 7 days" },
                   ]}
                 />
               </div>
