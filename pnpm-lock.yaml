@@ -148,6 +148,9 @@ importers:
       '@heroui/styles':
         specifier: ^3.2.4
         version: 3.2.4(tailwind-merge@3.4.0)(tailwindcss@4.3.3)
+      '@internationalized/date':
+        specifier: ^3.12.4
+        version: 3.12.4
       '@jaipur-rugs/auth':
         specifier: workspace:*
         version: link:../../packages/auth
