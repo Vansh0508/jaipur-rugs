@@ -740,6 +740,33 @@ export async function joinOwnDepartment(supabase: SupabaseClient, departmentCode
   return data;
 }
 
+interface RequestOrdersColumnResponse {
+  id: string;
+  /** True if this exact person already had a pending request for this exact field —
+   * the function dedupes rather than creating a second row every time the "Request a
+   * column" list is reopened. */
+  alreadyRequested: boolean;
+}
+
+/**
+ * Invokes `orders-request-column` — self-service, always the CALLER'S OWN account. Logs
+ * a request for one specific NAV field (from the full catalog in
+ * apps/atlas/lib/requestableNavFields.ts) that isn't in Atlas's `orders` table yet, for
+ * Ayaan to review and, if approved, actually add. Direct decision, 2026-09-12: rather
+ * than add all ~180 candidate NAV fields up front (more load on orders-sync.mjs's every-
+ * 30-minute pull for fields most people never look at), only fields someone actually
+ * asks for get added, one at a time — see db/orders/022_column_requests.sql.
+ */
+export async function requestOrdersColumn(supabase: SupabaseClient, navFieldName: string, notes?: string) {
+  const { data, error } = await supabase.functions.invoke<RequestOrdersColumnResponse>("orders-request-column", {
+    body: { navFieldName, notes },
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Orders workflow layer (db/orders/004) — the structured replacement for the
 // order@/mzpreview@ email relay. Prototyped and load-tested in a local preview tool

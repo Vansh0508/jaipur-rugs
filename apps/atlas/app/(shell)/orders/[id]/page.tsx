@@ -79,11 +79,13 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           <DetailRow label="Sales Order No." value={order.sales_order_no} />
           <DetailRow label="Customer PO No." value={order.customer_po_no} />
           <DetailRow label="Size" value={order.size} />
-          <DetailRow label="Sales Code" value={order.salesperson_code} />
           {/* Direct fix, 2026-09-11: this used to be labeled "Salesperson" and show
               salesperson_code (a raw code, e.g. "JR-S001") — order_wise_merchant is the
               actual salesperson's name, same field the Orders table's own "Sales
-              Person" column already uses. */}
+              Person" column already uses. Kept to just Sales Order No. (above) + Sales
+              Person (name) per direct follow-up, 2026-09-12 — no separate Sales Code
+              row here (the Orders table still offers it as an optional column for
+              anyone who wants it, see ColumnSettingsMenu). */}
           <DetailRow label="Sales Person" value={order.order_wise_merchant} />
           <DetailRow label="Follow Up Person" value={order.follow_up_person} />
           <DetailRow label="Sales Order Date" value={order.sales_order_date} />

@@ -6,7 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { Key, Selection } from "@heroui/react";
 import { Table, Checkbox } from "@jaipur-rugs/ui-kit";
 import { StageChip, OnTimeBadge } from "./StageChip";
-import { ColumnVisibilityMenu, type ColumnDef } from "./ColumnVisibilityMenu";
+import { ColumnSettingsMenu, type ColumnDef } from "./ColumnSettingsMenu";
+import { RequestColumnMenu } from "./RequestColumnMenu";
 import { SelectionActionBar } from "./SelectionActionBar";
 import { onTimeStatus, daysLateFromOriginalExFactory } from "@/lib/tat";
 import { stageStandard } from "@/lib/stageTat";
@@ -193,17 +194,32 @@ function exportCells(o: OrderRow, stageNameById: Map<string, string>) {
  * whatever page is already loaded) — see handleSortChange.
  *
  * Order rewritten 2026-09-11 per direct request: the columns used every day (OTN, Sales
- * Code, Sales Person, Customer PO, Stage + its on-time signals) go first so they're on
- * screen without scrolling right, with the rest following in the exact sequence given —
- * Quality/Design/Size/Construction, the date fields, Current Location, then Follow Up
- * Person. Column ids are all unchanged from before this reorder (only new ones —
- * salesCode, origExFactoryDelay — were added), so anyone's saved column visibility
- * (useLocalPreference below, "atlas:orders:columns") still applies correctly; only the
- * on-screen left-to-right order moved. Total Days and Merchant weren't named as "main"
- * columns in that request, so they moved to the end rather than being dropped. */
+ * Order No., Sales Person, Customer PO, Stage + its on-time signals) go first so they're
+ * on screen without scrolling right, with the rest following in the exact sequence given
+ * — Quality/Design/Size/Construction, the date fields, Current Location, then Follow Up
+ * Person. Total Days and Merchant weren't named as "main" columns in that request, so
+ * they moved to the end rather than being dropped.
+ *
+ * Expanded 2026-09-12 with the full rug/order field set (everything from "salesCode"
+ * onward below) — direct request: since the underlying data already carries every one
+ * of these fields, each user should be able to add whichever ones match how THEY read
+ * this table, not just the curated front set above. All new ones default to hidden (see
+ * DEFAULT_HIDDEN_COLUMN_IDS) so a first-time view still looks like the curated set;
+ * ColumnSettingsMenu is what lets someone add them back in and reorder anything, saved
+ * per-browser via useLocalPreference below ("atlas:orders:columns" for visibility,
+ * "atlas:orders:columnOrder" for order) — this is per-device, not tied to the login
+ * itself, so the same account on a second computer starts from these defaults again;
+ * a true per-account preference would need a real DB table + RLS + an edge function to
+ * write it (AGENTS.md Section 4 — no app writes to Postgres directly), which is a
+ * deliberate follow-up to raise separately, not something to add silently here.
+ *
+ * Column ids already in use before this pass are unchanged (Sales Code's old front-row
+ * slot is now Sales Order No.; Sales Code itself moved into the optional set below,
+ * default-hidden rather than dropped), so anyone's already-saved preference keeps
+ * applying to the columns it always did. */
 const ALL_COLUMNS: (ColumnDef & { defaultWidth: number; minWidth: number; sortable?: boolean })[] = [
   { id: "otn", label: "OTN / Item", defaultWidth: 140, minWidth: 110, sortable: true },
-  { id: "salesCode", label: "Sales Code", defaultWidth: 110, minWidth: 90, sortable: true },
+  { id: "salesOrderNo", label: "Sales Order No.", defaultWidth: 130, minWidth: 100, sortable: true },
   { id: "salesPerson", label: "Sales Person", defaultWidth: 150, minWidth: 110, sortable: true },
   { id: "customerPo", label: "Customer PO", defaultWidth: 130, minWidth: 100, sortable: true },
   // Stage isn't sortable — a real attempt at sorting it by the joined stages.display_order
@@ -233,7 +249,77 @@ const ALL_COLUMNS: (ColumnDef & { defaultWidth: number; minWidth: number; sortab
   // Order Date for the same ordering.
   { id: "totalDays", label: "Total Days", defaultWidth: 110, minWidth: 90 },
   { id: "merchant", label: "Merchant", defaultWidth: 160, minWidth: 110, sortable: true },
+
+  // --- Optional/full field set below — default-hidden, see DEFAULT_HIDDEN_COLUMN_IDS ---
+  { id: "salesCode", label: "Sales Code", defaultWidth: 110, minWidth: 90, sortable: true },
+  { id: "currentStatusErp", label: "Current Status (ERP)", defaultWidth: 160, minWidth: 120, sortable: true },
+  { id: "itemDescription", label: "Item Description", defaultWidth: 200, minWidth: 140, sortable: true },
+  { id: "serialNo", label: "Serial No.", defaultWidth: 120, minWidth: 90, sortable: true },
+  { id: "shape", label: "Shape", defaultWidth: 100, minWidth: 80, sortable: true },
+  { id: "grColorName", label: "GR Color Name", defaultWidth: 140, minWidth: 100, sortable: true },
+  { id: "brColorName", label: "BR Color Name", defaultWidth: 140, minWidth: 100, sortable: true },
+  { id: "sizeCm", label: "Size (cm)", defaultWidth: 110, minWidth: 90, sortable: true },
+  { id: "stdCubage", label: "Std Cubage", defaultWidth: 110, minWidth: 90, sortable: true },
+  { id: "pileFibre", label: "Pile Fibre", defaultWidth: 120, minWidth: 90, sortable: true },
+  { id: "pileHeight", label: "Pile Height", defaultWidth: 120, minWidth: 90, sortable: true },
+  { id: "backing", label: "Backing", defaultWidth: 120, minWidth: 90, sortable: true },
+  { id: "authorization", label: "Authorization", defaultWidth: 140, minWidth: 100, sortable: true },
+  { id: "hsnSacNo", label: "HSN/SAC No.", defaultWidth: 120, minWidth: 90, sortable: true },
+  { id: "usItemCode", label: "US Item Code", defaultWidth: 130, minWidth: 100, sortable: true },
+  { id: "indiaCollection", label: "India Collection", defaultWidth: 150, minWidth: 110, sortable: true },
+  { id: "matchingCode", label: "Matching Code", defaultWidth: 130, minWidth: 100, sortable: true },
+  { id: "originalExIndia", label: "Original Ex-India", defaultWidth: 130, minWidth: 100, sortable: true },
+  { id: "promisedDeliveryDate", label: "Promised Delivery Date", defaultWidth: 160, minWidth: 120, sortable: true },
+  { id: "expectedReadyDate", label: "Expected Ready Date", defaultWidth: 150, minWidth: 110, sortable: true },
+  { id: "onHold", label: "On Hold", defaultWidth: 100, minWidth: 80, sortable: true },
+  { id: "quickShip", label: "Quick Ship", defaultWidth: 100, minWidth: 80, sortable: true },
+  { id: "orderPriority", label: "Priority", defaultWidth: 90, minWidth: 70, sortable: true },
+  { id: "productionOrderNo", label: "Production Order No.", defaultWidth: 160, minWidth: 120, sortable: true },
+  { id: "productionOrderStatus", label: "Production Order Status", defaultWidth: 170, minWidth: 130, sortable: true },
+  { id: "projectCoordinator", label: "Project Coordinator", defaultWidth: 150, minWidth: 110, sortable: true },
+  { id: "customerServiceZone", label: "Customer Service Zone", defaultWidth: 160, minWidth: 120, sortable: true },
+  { id: "salesLineNo", label: "Sales Line No.", defaultWidth: 110, minWidth: 90, sortable: true },
+  { id: "remark", label: "Remark", defaultWidth: 200, minWidth: 140, sortable: true },
+  { id: "warehouseShipmentCreated", label: "Warehouse Shipment Created", defaultWidth: 170, minWidth: 130, sortable: true },
+  { id: "erpSyncedAt", label: "Last Synced", defaultWidth: 150, minWidth: 110, sortable: true },
 ];
+
+/** Every column added in the 2026-09-12 expansion above, hidden by default so a
+ * first-time view still looks like the pre-expansion curated set — someone who wants any
+ * of these adds them back via ColumnSettingsMenu. Only applies to a browser with NO
+ * saved preference yet (useLocalPreference's initialValue is only used until something
+ * is actually stored) — an existing customized preference is never overwritten by this. */
+const DEFAULT_HIDDEN_COLUMN_IDS = [
+  "salesCode", "currentStatusErp", "itemDescription", "serialNo", "shape", "grColorName",
+  "brColorName", "sizeCm", "stdCubage", "pileFibre", "pileHeight", "backing", "authorization",
+  "hsnSacNo", "usItemCode", "indiaCollection", "matchingCode", "originalExIndia",
+  "promisedDeliveryDate", "expectedReadyDate", "onHold", "quickShip", "orderPriority",
+  "productionOrderNo", "productionOrderStatus", "projectCoordinator", "customerServiceZone",
+  "salesLineNo", "remark", "warehouseShipmentCreated", "erpSyncedAt",
+];
+
+/** Reorders `all` per a user's saved id order (ColumnSettingsMenu's up/down buttons,
+ * persisted as "atlas:orders:columnOrder") — any id in `savedOrder` that no longer
+ * matches a real column (a stale id from before a rename) is just skipped, and any
+ * column NOT mentioned in `savedOrder` (new columns added after someone last customized
+ * their order, or a first-time user with no saved order at all) is appended at the end
+ * in ALL_COLUMNS' own default order, so nothing new is ever silently lost off-screen. */
+function orderColumns(all: typeof ALL_COLUMNS, savedOrder: string[]): typeof ALL_COLUMNS {
+  if (!savedOrder.length) return all;
+  const remaining = new Map(all.map((c) => [c.id, c]));
+  const ordered: typeof ALL_COLUMNS = [];
+  for (const id of savedOrder) {
+    const col = remaining.get(id);
+    if (col) {
+      ordered.push(col);
+      remaining.delete(id);
+    }
+  }
+  for (const col of all) {
+    if (remaining.has(col.id)) ordered.push(col);
+  }
+  return ordered;
+}
 
 export function OrdersTable({
   rows,
@@ -257,9 +343,17 @@ export function OrdersTable({
 
   const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set<Key>());
   const [computedSort, setComputedSort] = useState<ComputedSort>(null);
-  const [hiddenColumns, setHiddenColumns] = useLocalPreference<string[]>("atlas:orders:columns", []);
+  const [hiddenColumns, setHiddenColumns] = useLocalPreference<string[]>("atlas:orders:columns", DEFAULT_HIDDEN_COLUMN_IDS);
+  // Left-to-right order the user has dragged columns into via ColumnSettingsMenu's
+  // up/down buttons — empty means "no customization yet, use ALL_COLUMNS' own order".
+  const [columnOrder, setColumnOrder] = useLocalPreference<string[]>("atlas:orders:columnOrder", []);
   const hidden = useMemo(() => new Set(hiddenColumns), [hiddenColumns]);
-  const visibleColumns = useMemo(() => ALL_COLUMNS.filter((c) => !hidden.has(c.id)), [hidden]);
+  const orderedAllColumns = useMemo(() => orderColumns(ALL_COLUMNS, columnOrder), [columnOrder]);
+  const visibleColumns = useMemo(() => orderedAllColumns.filter((c) => !hidden.has(c.id)), [orderedAllColumns, hidden]);
+  function resetColumns() {
+    setHiddenColumns(DEFAULT_HIDDEN_COLUMN_IDS);
+    setColumnOrder([]);
+  }
   // Which row's Follow Up Person email was just copied — flashes "Copied" on that one
   // cell for 1.5s, keyed by order id so it never de-syncs across the two lookups
   // sharing the same name (e.g. two orders both "SURENDRA DHAKAD").
@@ -347,7 +441,14 @@ export function OrdersTable({
   return (
     <div className="flex h-full flex-col gap-2">
       <div className="flex shrink-0 items-center gap-3">
-        <ColumnVisibilityMenu columns={ALL_COLUMNS} hidden={hidden} onChange={(next) => setHiddenColumns([...next])} />
+        <ColumnSettingsMenu
+          columns={orderedAllColumns}
+          hidden={hidden}
+          onVisibilityChange={(next) => setHiddenColumns([...next])}
+          onOrderChange={setColumnOrder}
+          onReset={resetColumns}
+        />
+        <RequestColumnMenu />
       </div>
 
       {/* `relative` so SelectionActionBar (an `absolute`-positioned floating bar) sits
@@ -441,6 +542,7 @@ export function OrdersTable({
                       </>
                     ),
                     customerPo: order.customer_po_no ?? "—",
+                    salesOrderNo: order.sales_order_no ?? "—",
                     salesCode: order.salesperson_code ?? "—",
                     salesPerson: order.order_wise_merchant ?? "—",
                     quality: order.quality ?? "—",
@@ -481,6 +583,37 @@ export function OrdersTable({
                     revisedExFactory: displayDate(order.revised_ex_factory_date),
                     revisedExIndia: displayDate(order.revised_ex_india_date),
                     currentLocation: order.current_location ?? "—",
+                    // --- Optional/full field set below (see DEFAULT_HIDDEN_COLUMN_IDS) ---
+                    currentStatusErp: order.raw_current_status ?? "—",
+                    itemDescription: order.item_description ?? "—",
+                    serialNo: order.serial_no ?? "—",
+                    shape: order.shape ?? "—",
+                    grColorName: order.gr_color_name ?? "—",
+                    brColorName: order.br_color_name ?? "—",
+                    sizeCm: order.size_cm ?? "—",
+                    stdCubage: order.std_cubage ?? "—",
+                    pileFibre: order.pile_fibre ?? "—",
+                    pileHeight: order.pile_height ?? "—",
+                    backing: order.backing ?? "—",
+                    authorization: order.authorization ?? "—",
+                    hsnSacNo: order.hsn_sac_no ?? "—",
+                    usItemCode: order.us_item_code ?? "—",
+                    indiaCollection: order.india_collection ?? "—",
+                    matchingCode: order.matching_code ?? "—",
+                    originalExIndia: displayDate(order.original_ex_india_date),
+                    promisedDeliveryDate: displayDate(order.promised_delivery_date),
+                    expectedReadyDate: displayDate(order.expected_ready_date),
+                    onHold: order.on_hold ?? "—",
+                    quickShip: order.quick_ship ? "Yes" : "No",
+                    orderPriority: order.order_priority ?? "—",
+                    productionOrderNo: order.production_order_no ?? "—",
+                    productionOrderStatus: order.production_order_status ?? "—",
+                    projectCoordinator: order.project_coordinator ?? "—",
+                    customerServiceZone: order.customer_service_zone ?? "—",
+                    salesLineNo: order.sales_line_no ?? "—",
+                    remark: order.remark ?? "—",
+                    warehouseShipmentCreated: order.warehouse_shipment_created ? "Yes" : "No",
+                    erpSyncedAt: order.erp_synced_at ? new Date(order.erp_synced_at).toLocaleString() : "—",
                     followUpPerson: (() => {
                       // Computed from the real Zone x Priority x Quality-type routing
                       // table (lib/followUpPerson.ts), NOT orders.follow_up_person —

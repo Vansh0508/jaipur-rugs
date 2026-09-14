@@ -11,6 +11,7 @@ export type OrderRow = Tables<"orders">;
 export type StageRow = Tables<"stages">;
 export type StageEventRow = Tables<"order_stage_events">;
 export type ShippingDetailRow = Tables<"shipping_details">;
+export type ColumnRequestRow = Tables<"orders_column_requests">;
 
 /** These 5 customer codes are internal warehouse stock/inventory, not real customer
  * orders — the same 5 the pre-Atlas tool (ai.jaipurrugs.com/track-jr-order/) already
@@ -135,6 +136,7 @@ export const SORTABLE_COLUMNS = {
   otn: "otn_no",
   merchant: "merchant_name",
   customerPo: "customer_po_no",
+  salesOrderNo: "sales_order_no",
   salesCode: "salesperson_code",
   salesPerson: "order_wise_merchant",
   design: "design",
@@ -143,6 +145,7 @@ export const SORTABLE_COLUMNS = {
   construction: "construction",
   pendingDays: "current_status_pending_days",
   originalExFactory: "original_ex_factory_date",
+  originalExIndia: "original_ex_india_date",
   salesOrderDate: "sales_order_date",
   revisedExFactory: "revised_ex_factory_date",
   revisedExIndia: "revised_ex_india_date",
@@ -150,6 +153,40 @@ export const SORTABLE_COLUMNS = {
   // followUpPerson deliberately absent — the Orders table displays a *computed* value
   // (lib/followUpPerson.ts), not the raw orders.follow_up_person column, so sorting by
   // that raw field would silently not match what's shown. Same reasoning as Stage.
+
+  // Everything below added 2026-09-12 — the full rug/order field set, made available
+  // (mostly default-hidden) so each user can add whichever columns match how THEY read
+  // this table, per direct request. All real DB columns, so all sortable, same as every
+  // other field above.
+  itemDescription: "item_description",
+  serialNo: "serial_no",
+  shape: "shape",
+  grColorName: "gr_color_name",
+  brColorName: "br_color_name",
+  sizeCm: "size_cm",
+  stdCubage: "std_cubage",
+  pileFibre: "pile_fibre",
+  pileHeight: "pile_height",
+  backing: "backing",
+  authorization: "authorization",
+  hsnSacNo: "hsn_sac_no",
+  usItemCode: "us_item_code",
+  indiaCollection: "india_collection",
+  matchingCode: "matching_code",
+  promisedDeliveryDate: "promised_delivery_date",
+  expectedReadyDate: "expected_ready_date",
+  onHold: "on_hold",
+  quickShip: "quick_ship",
+  orderPriority: "order_priority",
+  productionOrderNo: "production_order_no",
+  productionOrderStatus: "production_order_status",
+  projectCoordinator: "project_coordinator",
+  customerServiceZone: "customer_service_zone",
+  salesLineNo: "sales_line_no",
+  remark: "remark",
+  warehouseShipmentCreated: "warehouse_shipment_created",
+  erpSyncedAt: "erp_synced_at",
+  currentStatusErp: "raw_current_status",
 } as const;
 export type SortableColumn = keyof typeof SORTABLE_COLUMNS;
 
@@ -460,6 +497,30 @@ export async function getShippingDetail(
  * only, NOT the automated delay-alert routing table (that's a separate, still-unbuilt
  * thing — see ERP_AND_EXTERNAL_REQUESTS.md request #5). A name with no entry here just
  * means no confirmed email was found in the company directory — never guessed. */
+export interface ColumnRequestWithRequester extends ColumnRequestRow {
+  requester_name: string | null;
+}
+
+/** Pending "add this NAV column" requests (see db/orders/022_column_requests.sql and
+ * ColumnSettingsMenu.tsx/RequestColumnMenu.tsx's "Request a column" list) — admin-only
+ * view (orders_column_requests_select's RLS already scopes a non-admin caller to only
+ * their own requests, so this would just come back empty/partial for them; the /my-access
+ * page only renders this section when access.isAdmin is true, matching that). Joined to
+ * employees for a display name — same nested-select pattern requireAtlasStaffAccess.ts
+ * already uses for department_access_grants -> departments. */
+export async function listPendingColumnRequests(supabase: SupabaseClient): Promise<ColumnRequestWithRequester[]> {
+  const { data, error } = await supabase
+    .from("orders_column_requests")
+    .select("*, employees(full_name)")
+    .eq("status", "pending")
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row) => {
+    const { employees, ...rest } = row as ColumnRequestRow & { employees: { full_name: string } | null };
+    return { ...rest, requester_name: employees?.full_name ?? null };
+  });
+}
+
 export async function listFollowUpPersonEmails(supabase: SupabaseClient): Promise<Record<string, string>> {
   const { data, error } = await supabase.from("follow_up_person_directory").select("name, email");
   if (error) throw error;

@@ -60,6 +60,8 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | (2026-09-11) | `orders_perf_facets_and_stats_rpcs` | orders | `db/orders/018_perf_facets_and_stats_rpcs.sql` |
 | (2026-09-11) | `customer_codes_add_conflict_fix` | orders | `db/orders/019_customer_codes_add_conflict_fix.sql` |
 | (2026-09-11) | `rug_lens_facets_cross_filter` | orders | `db/orders/020_rug_lens_facets_cross_filter.sql` |
+| — (written, NOT applied, deliberately) | `nav_full_field_expansion` | orders | `db/orders/021_nav_full_field_expansion.sql` |
+| (2026-09-12) | `column_requests` + `column_requests_resolved_by_index` | orders | `db/orders/022_column_requests.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
@@ -480,6 +482,43 @@ this RPC in one round trip instead of three parallel paginated passes;
 `packages/supabase-client/src/types.ts`'s `Functions` entry for `rug_lens_facets` was
 updated to the new signature. Confirmed compiling clean via type-check and a full
 production build before committing.
+
+**NAV field expansion → column-request workflow (2026-09-12).** Direct request: "ITS
+200+ COLOUMNS" (a real reference spreadsheet, `NAV FORMAT.XLSX`, listing 202 NAV
+fields). Verified before writing anything: diffed those 202 against the 42 fields
+`orders-sync.mjs` already pulls, then confirmed the remaining 160 against the LIVE
+`NAV-002-Rug List - Main` view's real `INFORMATION_SCHEMA.COLUMNS` (read-only, from the
+office server — the only machine with a route to it) rather than trusting the
+spreadsheet's spelling — 225 real columns exist there today; 158 of the 160 matched
+exactly (the other 2 don't exist in this view under that name), plus 22 more real
+columns turned up that weren't even in the spreadsheet. `021_nav_full_field_expansion.sql`
+captures all 180 verified fields as a ready-to-use migration — **written, deliberately
+NOT applied**: Ayaan chose a request-based model instead ("no load in the server and
+database instead only that column will be added which are required and requested by the
+user"), so `022_column_requests.sql` (applied, advisor-clean — see below) adds a small
+`orders_column_requests` table instead. An employee requests one specific field (browsed
+from the full 180-field catalog, `apps/atlas/lib/requestableNavFields.ts`, via
+`RequestColumnMenu.tsx`'s "Request a column" list next to the Orders table); the request
+lands there for Ayaan to review on `/my-access` (admin-only, gated on the same
+`orders.read.all` `requireAtlasStaffAccess.ts` already checks); only approved fields
+actually get added — one small follow-up migration + one `orders-sync.mjs` field at a
+time, copying that field's already-verified name/type straight out of `021`'s reference
+rather than re-investigating it. Resolving a request (marking it added/declined) is a
+plain admin action for now, not a second Edge Function/UI writer — v1 keeps that side
+manual on purpose. New Edge Function `orders-request-column` (verify_jwt: true, same
+"service-role client + `requested_by` always the CALLER'S OWN employee_id" pattern as
+`salesperson-codes-add`), deployed and smoke-tested (no Authorization header → 401, the
+expected rejection). `get_advisors` clean after `022` beyond the one pre-existing,
+unrelated `auth_leaked_password_protection` WARN — the migration's own `unindexed_foreign_keys`
+INFO finding (`resolved_by`) was fixed same-session with a follow-up index, not deferred.
+`packages/supabase-client/src/types.ts` was also fully regenerated in this pass — its
+header had said since 2026-08-19 that several orders-module tables were "hand-authored,
+pending a migration that hasn't landed yet," which was already stale (that migration
+landed long ago); this regeneration both adds real types for `orders_column_requests`
+and finally corrects that stale note. Confirmed compiling clean across all four
+consuming apps (atlas, hub, admin/feedback-app, admin/internal-portal) before treating
+the regeneration as done, per AGENTS.md Section 4's "a shared package change... don't
+land it without checking what else it touched."
 
 ## Still pending
 

@@ -1,5 +1,7 @@
 import { getServerSupabaseClient } from "@/lib/supabaseClient.server";
 import { listMySalespersonCodes, listMyCustomerCodes } from "@/lib/queries/merchants";
+import { listPendingColumnRequests } from "@/lib/queries/orders";
+import { requireAtlasStaffAccess } from "@/lib/auth/requireAtlasStaffAccess";
 import { AddSalespersonCodesForm } from "@/components/AddSalespersonCodesForm";
 import { AddCustomerCodesForm } from "@/components/AddCustomerCodesForm";
 import { JoinDepartmentForm } from "@/components/JoinDepartmentForm";
@@ -13,10 +15,15 @@ import { JoinDepartmentForm } from "@/components/JoinDepartmentForm";
 export default async function MyAccessPage({ searchParams }: { searchParams: Promise<{ welcome?: string }> }) {
   const params = await searchParams;
   const supabase = await getServerSupabaseClient();
-  const [codes, customerCodes] = await Promise.all([
+  // allowUnauthorized: true — same reasoning as ShellLayout's own call (this page must
+  // stay reachable by someone with no access yet); only isAdmin is used here, to gate
+  // the "Pending column requests" section below.
+  const [access, codes, customerCodes] = await Promise.all([
+    requireAtlasStaffAccess(supabase, { allowUnauthorized: true }),
     listMySalespersonCodes(supabase),
     listMyCustomerCodes(supabase),
   ]);
+  const pendingColumnRequests = access.isAdmin ? await listPendingColumnRequests(supabase) : [];
 
   return (
     <div className="flex flex-col gap-8">
@@ -76,6 +83,37 @@ export default async function MyAccessPage({ searchParams }: { searchParams: Pro
           <p className="text-sm text-muted">No customer codes added yet.</p>
         )}
       </div>
+
+      {access.isAdmin ? (
+        // Admin-only (orders.read.all — same permission ShellLayout's sidebar already
+        // gates on) — the review side of RequestColumnMenu.tsx's "Request a column" list.
+        // Deliberately read-only for now (no in-app approve/decline button): resolving a
+        // request means actually adding that field to the database, which is a real
+        // migration + an orders-sync.mjs update, not a click — see
+        // db/orders/022_column_requests.sql's header for why v1 keeps that manual.
+        <div>
+          <h2 className="mb-3 text-sm font-semibold uppercase text-muted">Pending column requests</h2>
+          {pendingColumnRequests.length ? (
+            <ul className="flex flex-col gap-2">
+              {pendingColumnRequests.map((req) => (
+                <li
+                  key={req.id}
+                  className="flex items-center justify-between gap-4 rounded-lg border-2 border-border px-3 py-2 text-sm"
+                >
+                  <div>
+                    <span className="font-medium text-foreground">{req.nav_field_name}</span>
+                    <span className="ml-2 text-xs text-muted">
+                      requested by {req.requester_name ?? "unknown"} · {new Date(req.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted">No pending requests.</p>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
