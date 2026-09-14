@@ -572,6 +572,36 @@ on the local disk of whoever runs it, not from a git pull, so it has no branch t
 wrong about; it just needs `main` checked out locally (or the equivalent working tree)
 next time someone runs it, same as any other local build.
 
+**Per-account view preferences + real column-request approval — written, NOT yet
+applied/deployed (2026-09-14, `023_user_view_preferences_and_request_approval.sql`).**
+Three direct follow-ups on the same day's earlier column-request work: (1) "lock the
+user's view acc to their user id... from any system" — Orders view preferences (shown
+columns/order/hidden filters/row height) move off browser localStorage onto a real
+per-employee table (`user_orders_view_preferences`, RLS-scoped SELECT, written to
+through a new self-service Edge Function `orders-save-view-preferences`); (2) "admin
+will approve it" — `column_request_status` gains `'approved'` as its own status,
+distinct from `'added'` (approving is a real decision recorded immediately via a new
+admin-only Edge Function `orders-resolve-column-request`; actually making the field
+exist is still a real migration + `orders-sync.mjs` update + deploy, not something a
+click safely automates for a live sync — same reasoning `022`'s own header already
+gives); (3) "request... from a search and dropdown option" on `/my-access` specifically
+— `RequestColumnForm.tsx` moved the request UI off `OrdersTable.tsx`'s settings
+dropdown onto that page. A fourth ask the same message, drag-to-reorder columns, was
+added as native HTML5 drag-and-drop alongside (not replacing) the existing up/down
+buttons.
+
+**Blocked mid-session**: the Supabase MCP connection dropped partway through this
+session (visible as a tool-availability change, not an error from any specific call) —
+neither `apply_migration` nor `deploy_edge_function` has been reachable since, so `023`
+is unapplied and both new Edge Functions are undeployed as of this entry.
+`packages/supabase-client/src/types.ts` hand-authors `user_orders_view_preferences`
+and the `'approved'` enum value in the meantime (flagged explicitly at that file's own
+header, same pattern already used once before in this ledger for exactly this
+situation) — regenerate and replace once `023` actually lands. Confirmed compiling
+clean (type-check + full build, all four consuming apps) regardless, so this is
+ready to activate the moment the connection comes back: apply `023`, deploy both
+functions, done — no further code changes needed at that point.
+
 ## Still pending
 
 - `supabase/functions/guest-signup`, `employee-signin`, and `submit-feedback` are deployed
