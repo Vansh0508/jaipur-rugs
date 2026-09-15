@@ -699,6 +699,32 @@ unchanged both times (the two pre-existing, unrelated findings only). Written, n
 applied; the validation script re-run is still the actual thing that decides whether
 the frontend "Late" tab gets enabled, not any individual advisor check on its own.
 
+**`028` applied 2026-09-15, advisors confirmed back to baseline. Validation script
+re-run: PASS — 0 mismatches across 13,739 real orders.** That's the actual bar this
+whole `024`-`028` sequence was built around, not any individual migration landing —
+"Late" wired up the same day: `listOrders()` now queries `orders_with_on_time_status`
+instead of the bare `orders` table (same RLS via `security_invoker`, plus the two
+computed columns), a new `onTimeStatus` filter dimension (deliberately separate from the
+existing date-only `delayStatus` one — "Late" and "Delayed" are genuinely different
+things here, not two names for the same filter), and the tab bar's "Late" button went
+from a disabled placeholder to a real one. Sanity-checked against live counts before
+calling it done: 706 orders (of ~13,573 non-stock, non-terminal) currently show "late" —
+not past due yet, off-pace given their stage's TAT standard; 9,674 "delayed", 3,176
+"on_track", 17 "unknown". Confirmed compiling clean (type-check + full build), deployed
+to the office server, verified healthy (307 on `/` and `/orders`, clean logs beyond the
+routine, pre-existing, unrelated auth-refresh-token noise every Supabase Auth app gets
+from expired browser sessions).
+
+The whole `023`-`028` sequence is worth reading end to end for anyone touching this
+pattern again: two permission gaps (`EXECUTE` on the `private` functions, `SELECT` on
+the reference table — neither is granted by default, and neither shows up until
+something outside the function owner actually tries to query through the view), one
+real correctness bug (date vs. timestamp comparison, exactly the kind of boundary error
+that reads fine on inspection and is wrong against real data), and one regression
+(`CREATE OR REPLACE FUNCTION` silently drops a prior `ALTER FUNCTION ... SET`) — four
+distinct problems, caught in order, only because `validate-on-time-status-port.mjs` and
+`get_advisors` were run after every single migration rather than once at the end.
+
 ## Still pending
 
 - `supabase/functions/guest-signup`, `employee-signin`, and `submit-feedback` are deployed
