@@ -602,6 +602,40 @@ clean (type-check + full build, all four consuming apps) regardless, so this is
 ready to activate the moment the connection comes back: apply `023`, deploy both
 functions, done — no further code changes needed at that point.
 
+**Orders tab bar relabeled, "Late" tab deliberately left disabled pending a SQL port
+(2026-09-14/15, `024_on_time_status_view.sql`).** Direct request: replace the top tab
+bar (All Orders/Delayed/On Hold/Quick Ship) with All Orders/Late/Delayed/On
+Track/Due in 7 days. On Hold and Quick Ship weren't dropped, just demoted to the filter
+bar below (unchanged filters, just no longer a top-level tab). Delayed and Due in 7
+days are unchanged under the hood (`delayStatus=late`/`soon` — plain
+`revised_ex_factory_date` comparisons); On Track is a new, simple date-window
+`delayStatus` value ("not late, not due soon," a missing date counts as on_track too) —
+neither needed a migration.
+
+"Late" is different in kind, not just degree: confirmed directly (asked explicitly
+whether it should just mean the same thing as "Delayed" — no, it's the real
+pace-projection warning this app's own "On Time" column already computes per row, from
+a real 2026-09-07 production conversation: "flag it as Late not delayed"). Computing
+that correctly across the full 13,685+-row dataset (not just whichever page happens to
+be loaded) means porting `apps/atlas/lib/stageTat.ts`'s `stageStandard`/
+`loomStandardDays`/`maxDimensionFt` + `lib/tat.ts`'s `onTimeStatus` into Postgres —
+`024` does that: `private.zero_priority_knotted_rate` (a real reference table for the
+per-quality knot rate lookup — the exact thing `stageTat.ts`'s own header comment said
+this data should eventually become), three `private` helper functions, and a
+`security_invoker` view, `orders_with_on_time_status`, exposing `orders`'s columns plus
+`computed_stage_standard_days`/`computed_on_time_status`. **Written, NOT applied** (same
+blocked Supabase connection as `023` above) **and, even once applied, the frontend
+"Late" tab must NOT be wired to it until
+`apps/atlas/scripts/validate-on-time-status-port.mjs` has actually been run and passed**
+— it re-implements the exact same TS logic in the script itself and diffs it against
+the SQL view's output for every real order, not a sample; zero mismatches is the bar. A
+regex/lookup-table port like this is exactly the kind of change that can look correct
+under code review and still be subtly wrong on real data (an ERP quality/size string
+this app hasn't seen a clean example of yet, a POSIX-vs-JS regex edge case, etc.) —
+this is a live TAT tool 124 people use for real decisions, so "written carefully" isn't
+being treated as equivalent to "verified," and the tab stays visibly disabled with an
+explanatory tooltip in the meantime rather than silently wrong or silently missing.
+
 ## Still pending
 
 - `supabase/functions/guest-signup`, `employee-signin`, and `submit-feedback` are deployed
