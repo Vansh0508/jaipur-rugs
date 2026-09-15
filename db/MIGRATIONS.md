@@ -636,6 +636,27 @@ this is a live TAT tool 124 people use for real decisions, so "written carefully
 being treated as equivalent to "verified," and the tab stays visibly disabled with an
 explanatory tooltip in the meantime rather than silently wrong or silently missing.
 
+**`023` and `024` applied 2026-09-15**, via the other Supabase-connected session
+(handed the exact SQL/function file paths + project id, applied verbatim, nothing else
+touched — confirmed by its own report back). Both Edge Functions
+(`orders-save-view-preferences`, `orders-resolve-column-request`) deployed and
+confirmed `ACTIVE`. Advisors clean for `023`. `024` surfaced one real WARN
+(`function_search_path_mutable` on all 4 new `private` functions) — same finding, same
+fix, as `007_hub_advisor_fixes.sql`/`008_driver_code_helper_fixes.sql` before it.
+
+Running `validate-on-time-status-port.mjs` (from this session, via SSH to the office
+server — it holds the real `SUPABASE_SERVICE_ROLE_KEY`, the other session's own local
+`.env.local` didn't) caught a second, more important problem before either the WARN or
+this ledger entry existed: nobody could query `orders_with_on_time_status` at all —
+`permission denied for schema private` (`42501`), even for `service_role`. A view's own
+SELECT-list function calls need the querying role to hold real `EXECUTE` on them
+(unlike an RLS policy predicate's function calls) — `private` schema functions get none
+by default, which is the whole point of that schema, but it meant the view was
+unusable as built. `025_on_time_status_fixes.sql` grants exactly the `EXECUTE` (and
+`USAGE ON SCHEMA private`) those 4 functions need, plus the `search_path` fix — written,
+not yet applied. Once it lands, `validate-on-time-status-port.mjs` needs a clean run
+before the frontend "Late" tab gets wired up — still the actual bar, not "025 applied."
+
 ## Still pending
 
 - `supabase/functions/guest-signup`, `employee-signin`, and `submit-feedback` are deployed
