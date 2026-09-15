@@ -711,6 +711,48 @@ export async function addOwnCustomerCodes(supabase: SupabaseClient, codes: strin
   return data;
 }
 
+interface RemoveOwnSalespersonCodeResponse {
+  employeeId: string;
+  removed: string;
+}
+
+/**
+ * Invokes `salesperson-codes-remove` — the undo counterpart to addOwnSalespersonCodes.
+ * Self-service, always the CALLER'S OWN account. Added 2026-09-15 alongside
+ * customer-codes-remove: until then, a code added by mistake (e.g. someone else's,
+ * pasted in as a workaround) could never be taken back off an account.
+ */
+export async function removeOwnSalespersonCode(supabase: SupabaseClient, code: string) {
+  const { data, error } = await supabase.functions.invoke<RemoveOwnSalespersonCodeResponse>(
+    "salesperson-codes-remove",
+    { body: { code } },
+  );
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+interface RemoveOwnCustomerCodeResponse {
+  employeeId: string;
+  removed: string;
+}
+
+/**
+ * Invokes `customer-codes-remove` — the undo counterpart to addOwnCustomerCodes. Same
+ * posture: self-service, always the CALLER'S OWN account, effective immediately.
+ */
+export async function removeOwnCustomerCode(supabase: SupabaseClient, code: string) {
+  const { data, error } = await supabase.functions.invoke<RemoveOwnCustomerCodeResponse>(
+    "customer-codes-remove",
+    { body: { code } },
+  );
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
 export type SelfServiceDepartmentCode = "management" | "production" | "backops";
 
 interface JoinDepartmentResponse {

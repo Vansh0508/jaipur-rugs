@@ -4,6 +4,8 @@ import { listPendingColumnRequests, listApprovedColumnRequests } from "@/lib/que
 import { requireAtlasStaffAccess } from "@/lib/auth/requireAtlasStaffAccess";
 import { AddSalespersonCodesForm } from "@/components/AddSalespersonCodesForm";
 import { AddCustomerCodesForm } from "@/components/AddCustomerCodesForm";
+import { SalespersonCodesList } from "@/components/SalespersonCodesList";
+import { CustomerCodesList } from "@/components/CustomerCodesList";
 import { JoinDepartmentForm } from "@/components/JoinDepartmentForm";
 import { RequestColumnForm } from "@/components/RequestColumnForm";
 import { ColumnRequestAdminList } from "@/components/ColumnRequestAdminList";
@@ -14,7 +16,11 @@ import { ColumnRequestAdminList } from "@/components/ColumnRequestAdminList";
 // and db/orders/017_backops_department_self_service.sql), or joining Management/
 // Production/Back Ops. Everyone gets this page, not just people missing access — most
 // people will just see an empty state, which is fine.
-export default async function MyAccessPage({ searchParams }: { searchParams: Promise<{ welcome?: string }> }) {
+export default async function MyAccessPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ welcome?: string; signupIssues?: string }>;
+}) {
   const params = await searchParams;
   const supabase = await getServerSupabaseClient();
   // allowUnauthorized: true — same reasoning as ShellLayout's own call (this page must
@@ -52,6 +58,18 @@ export default async function MyAccessPage({ searchParams }: { searchParams: Pro
         </p>
       ) : null}
 
+      {params.signupIssues ? (
+        // Sign-up's department/code/customer-code calls are best-effort (the account
+        // already exists by that point, so one of these failing shouldn't undo it) — but
+        // until 2026-09-15 a failure there was swallowed with no feedback at all: the
+        // account would look "empty" with no explanation. SignupForm now redirects here
+        // with this param instead of silently going to /orders when something didn't save.
+        <p className="rounded-lg border-2 border-danger/30 bg-danger/5 px-4 py-3 text-sm text-foreground">
+          Your account was created, but we couldn&apos;t save your {formatSignupIssues(params.signupIssues)} — please
+          add it again below.
+        </p>
+      ) : null}
+
       <AddSalespersonCodesForm />
 
       <AddCustomerCodesForm />
@@ -60,32 +78,12 @@ export default async function MyAccessPage({ searchParams }: { searchParams: Pro
 
       <div>
         <h2 className="mb-3 text-sm font-semibold uppercase text-muted">Your current sales codes</h2>
-        {codes.length ? (
-          <ul className="flex flex-wrap gap-2">
-            {codes.map((code) => (
-              <li key={code} className="rounded-lg border-2 border-border px-3 py-1.5 text-sm text-foreground">
-                {code}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-muted">No sales codes added yet.</p>
-        )}
+        <SalespersonCodesList codes={codes} />
       </div>
 
       <div>
         <h2 className="mb-3 text-sm font-semibold uppercase text-muted">Your current customer codes</h2>
-        {customerCodes.length ? (
-          <ul className="flex flex-wrap gap-2">
-            {customerCodes.map((code) => (
-              <li key={code} className="rounded-lg border-2 border-border px-3 py-1.5 text-sm text-foreground">
-                {code}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-muted">No customer codes added yet.</p>
-        )}
+        <CustomerCodesList codes={customerCodes} />
       </div>
 
       <RequestColumnForm />
@@ -131,4 +129,13 @@ export default async function MyAccessPage({ searchParams }: { searchParams: Pro
       ) : null}
     </div>
   );
+}
+
+/** Turns SignupForm's comma-joined `signupIssues` param (e.g. "sales code,customer
+ * code") into readable prose for the banner above. */
+function formatSignupIssues(raw: string): string {
+  const items = raw.split(",").filter(Boolean);
+  if (items.length <= 1) return items[0] ?? "access";
+  if (items.length === 2) return `${items[0]} or ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, or ${items[items.length - 1]}`;
 }

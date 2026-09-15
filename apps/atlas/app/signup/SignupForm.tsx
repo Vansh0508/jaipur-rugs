@@ -88,15 +88,20 @@ export function SignupForm() {
       }
 
       // Best-effort from here on — the account already exists and is signed in, so a
-      // failure in either of these shouldn't undo the sign-up; worst case, they add the
-      // same thing later from /my-access instead.
+      // failure in either of these shouldn't undo the sign-up. It used to fail
+      // completely silently (swallowed catch, straight to /orders) — fixed 2026-09-15
+      // after that left someone unable to tell why their account looked empty (Pranjal
+      // Jain's account: a customer-code save failed with no error shown anywhere).
+      // Failures are now collected and surfaced via a redirect to /my-access instead,
+      // which tells the person exactly what didn't save and lets them retry it there.
+      const failedSteps: string[] = [];
       if (department === "sales") {
         const codes = parseCodeList(salespersonCodesRaw);
         if (codes.length) {
           try {
             await addOwnSalespersonCodes(supabase, codes);
           } catch {
-            // swallowed deliberately — see comment above.
+            failedSteps.push("sales code");
           }
         }
         const customerCodes = parseCodeList(customerCodesRaw);
@@ -104,14 +109,14 @@ export function SignupForm() {
           try {
             await addOwnCustomerCodes(supabase, customerCodes);
           } catch {
-            // swallowed deliberately — see comment above.
+            failedSteps.push("customer code");
           }
         }
       } else if (department === "management" || department === "production") {
         try {
           await joinOwnDepartment(supabase, department);
         } catch {
-          // swallowed deliberately — see comment above.
+          failedSteps.push("department");
         }
       } else if (department === "backops") {
         // Joining the department itself grants no order visibility (see
@@ -120,14 +125,14 @@ export function SignupForm() {
         try {
           await joinOwnDepartment(supabase, department);
         } catch {
-          // swallowed deliberately — see comment above.
+          failedSteps.push("department");
         }
         const salesCodes = parseCodeList(salespersonCodesRaw);
         if (salesCodes.length) {
           try {
             await addOwnSalespersonCodes(supabase, salesCodes);
           } catch {
-            // swallowed deliberately — see comment above.
+            failedSteps.push("sales code");
           }
         }
         const customerCodes = parseCodeList(customerCodesRaw);
@@ -135,16 +140,21 @@ export function SignupForm() {
           try {
             await addOwnCustomerCodes(supabase, customerCodes);
           } catch {
-            // swallowed deliberately — see comment above.
+            failedSteps.push("customer code");
           }
         }
       }
 
-      // proxy.ts re-verifies Atlas authorization on the very next request and bounces
-      // to the Hub launcher if this brand-new account has no reason to be in Atlas yet
-      // (no department/salesperson-code/customer-code grant) — expected for anyone who
-      // picked nothing and hasn't been granted access yet.
-      router.push("/orders");
+      if (failedSteps.length) {
+        const qs = new URLSearchParams({ signupIssues: Array.from(new Set(failedSteps)).join(",") });
+        router.push(`/my-access?${qs.toString()}`);
+      } else {
+        // proxy.ts re-verifies Atlas authorization on the very next request and bounces
+        // to the Hub launcher if this brand-new account has no reason to be in Atlas yet
+        // (no department/salesperson-code/customer-code grant) — expected for anyone who
+        // picked nothing and hasn't been granted access yet.
+        router.push("/orders");
+      }
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create this account.");
