@@ -364,6 +364,54 @@ tables. `003_orders_sync_cron.sql`'s scheduled job is applied but fails closed (
 the `orders-sync` Edge Function is deployed and the `orders_sync_secret` Vault entry is
 created — neither done yet, see "Still pending" below.
 
+**Orders module — dispatch status + shipment tracking (2026-09-15, applied —
+`db/orders/029_dispatch_tracking.sql`):** real "Dispatched" stage + courier tracking
+info, closing a genuine gap found investigating a merchant-reported rug-count
+discrepancy (see `ERP_AND_EXTERNAL_REQUESTS.md` request #9 for the full story — a
+dispatched rug just silently disappears from `NAV-002-Rug List - Main`, the view
+`orders-sync.mjs` otherwise reads from, with no "Dispatched" status text anywhere in
+it; the real fact only exists in two entirely different NAV reports).
+
+New `dispatched` stage (`is_terminal = true`, deliberately not reusing the existing
+`delivered` stage — checked first, it had zero raw_status mappings, i.e. unused, but
+"delivered" means the customer actually received it, a later and distinct real-world
+milestone). Six new nullable `orders` columns: `dispatched_at`, `sales_shipment_no`
+(from `NAV-011- Posted Whse Shipment Packing List`, keyed on Item No_ — this schema's
+real unique key, not OTN No_, which isn't guaranteed unique), and `tracking_no` /
+`shipping_agent_code` / `shipping_agent_name` / `ewb_no` (from a separate AWB-tracking
+NAV view, `View-0462-Sales_Inv_With_AWB_Tracking_And_Bale_Wise_Details`, also keyed on
+Item No_ — `shipping_agent_name` resolved from NAV's own `JRCPL Live$Shipping Agent`
+master table at sync time, e.g. "MH-004" -> "BLUE DART EXPRESS LIMITED", confirmed live
+rather than assumed from the raw code).
+
+Both new sync passes (`orders-sync.mjs`'s `syncDispatchStatus`/`syncTrackingInfo`, run
+after the main sync loop so they have final say on `stage_id`) only ever UPDATE an
+existing `orders` row — they deliberately do not insert a new row for an item either
+source NAV report mentions that Supabase has never synced via `NAV-002` at all (this
+really happens, see request #9's finding of 9 such rugs) — backfilling a never-synced
+order is a bigger, separate decision than showing dispatch status for orders Atlas
+already knows about. Both passes also only ever touch a field while it's still null —
+never cleared once set — because both source NAV reports only retain a rolling window
+(confirmed live: NAV-011 ~30 days, the tracking view ~3 months); an item aging out of a
+later pull must not be read as "undo the dispatch."
+
+`is_terminal = true` means this "just works" with `private.orders_on_time_status()`
+(024_on_time_status_view.sql) and `orders-delay-alerts.mjs`'s terminal-stage exclusion —
+both already treat any terminal stage as on-track/not-alertable, zero code changes
+needed in either. Advisor-clean after applying (checked — only the pre-existing
+project-wide `auth_leaked_password_protection` WARN, unrelated).
+
+**Also found, not yet understood, flagged separately**: a `nav011_pull_requests` table
+(shipment_id, warehouse_no, status, claimed_at, result jsonb, error, requested_by,
+requested_at, completed_at — looks like an async request-queue design, maybe for an
+on-demand per-shipment NAV-011 lookup) exists live on this project but has **zero
+references anywhere in git history** — `git log`/`git fetch` confirmed no unpulled
+commits contain it. Someone applied it directly without ever committing a migration
+file for it, a real violation of this same file's own "every migration that lands must
+be recorded here" rule. Not used by the feature above (which reads NAV-011 directly, in
+bulk, on the same schedule as everything else) — flagged for Ayaan/Vansh to explain or
+clean up, not touched or built on top of by this pass.
+
 ## Pre-existing history on this project (context, not part of this module's schema)
 
 This project was not a clean slate. Its migration history (`supabase_migrations.schema_migrations`)

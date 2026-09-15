@@ -6,6 +6,7 @@ import { computeStageDurations, formatDuration, onTimeStatus, daysLateFromOrigin
 import { stageStandard } from "@/lib/stageTat";
 import { stageColorClassName } from "@/lib/stageColors";
 import { displayDate } from "@/lib/displayDate";
+import { knownCourierTrackingUrl } from "@/lib/dispatchTracking";
 import { StageChip, OnTimeBadge } from "@/components/StageChip";
 import { ShippingDetailForm } from "@/components/ShippingDetailForm";
 import { StageCorrectionControl } from "@/components/StageCorrectionControl";
@@ -107,6 +108,40 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               real delay signal; see lib/tat.ts onTimeStatus's own comment on why Revised
               Ex Factory replaced it there back on 2026-09-07. */}
           <DetailRow label="Current Status (ERP)" value={order.raw_current_status} />
+          {/* From NAV-011 (a different NAV report than the one that fills everything
+              else on this page) — a dispatched rug just silently disappears from the
+              usual Rug List view, with no "Dispatched" status text anywhere in it, so
+              this is the only real source for these two facts. See
+              ERP_AND_EXTERNAL_REQUESTS.md request #9. */}
+          {order.dispatched_at ? (
+            <>
+              {/* dispatched_at is a timestamptz (set from a plain date, but Postgres/
+                  Supabase round-trips it with a time component) — sliced to just the
+                  date, same as every other date field on this page. */}
+              <DetailRow label="Dispatched" value={displayDate(order.dispatched_at?.slice(0, 10) ?? null)} />
+              <div className="flex items-center justify-between gap-4 text-sm">
+                <span className="text-muted">Tracking</span>
+                {order.tracking_no ? (
+                  knownCourierTrackingUrl(order.shipping_agent_name) ? (
+                    <a
+                      href={knownCourierTrackingUrl(order.shipping_agent_name)!}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium text-accent hover:underline"
+                    >
+                      {order.tracking_no} via {order.shipping_agent_name}
+                    </a>
+                  ) : (
+                    <span className="font-medium text-foreground">
+                      {order.tracking_no} — via {order.shipping_agent_name ?? "unknown transporter"} (no online tracking)
+                    </span>
+                  )
+                ) : (
+                  <span className="font-medium text-muted">Tracking Not Updated in NAV</span>
+                )}
+              </div>
+            </>
+          ) : null}
           <div className="flex items-center justify-between pt-2">
             <span className="text-sm text-muted">Stage doesn't look right?</span>
             <StageCorrectionControl orderId={order.id} stages={stages} currentStageId={order.stage_id} />

@@ -11,6 +11,82 @@ guessed. See the referenced date/finding for how each was verified.
 
 ## Open requests
 
+### 9. `NAV-002-Rug List - Main` is a 2-hourly batch report, not a live view — and one real order's rug count doesn't reconcile
+**Confirmed directly, 2026-09-15**: Ayaan asked Vansh to check with the ERP team whether
+this view only populates some of the time. Vansh's answer (Slack, 2026-09-15): "The data
+in db gets updated in real time. But the report collects data from a lot of tables. So,
+it starts the collection every 2 hours." This matches what querying it directly turned
+up the same day — a query against the view failed outright with `Invalid object name
+'TEMP.RugsListTemp'`, because the view reads from a temporary staging table that this
+2-hourly collection job rebuilds; catching it mid-rebuild throws, not just returns stale
+data.
+
+**Why this matters for Atlas**: `orders-sync.mjs` (and Atlas's own on-time/freshness
+expectations generally) inherit up to ~2 hours of built-in latency from the source
+report itself — no sync interval on Atlas's side can beat that. Worth setting the sync
+cron interval with this in mind (running every 30 min to catch a report that only
+changes every 2h is mostly wasted polling, though harmless). Also worth asking ERP
+whether the collection job has any monitoring for a run that fails/hangs mid-rebuild —
+right now a query landing in that window just errors with no indication to anyone.
+
+**RESOLVED — the actual discrepancy that started this investigation, 2026-09-15.** The
+merchant was right: this PO has **21 real rugs, not 12** — a real, structural gap in
+what `NAV-002-Rug List - Main` (the view Atlas's whole sync is built on) even includes,
+not a timing/staleness issue.
+
+Full reconciliation for Sales Order `JR/SO/2627/03956` / Customer PO
+`AS#|STORE|SEA|PO/26-27/130|JAKOB|LV-48` (customer 35787):
+- **12 rugs made it into Atlas** (via the Rug List view, same 12 Supabase has). Ashish
+  Sharma's manual count (Slack, 2026-09-15: "Total 12, 9 Dispatched, 1 In Progress, 2 in
+  Making") matches these 12 exactly, cross-checked against
+  `NAV-011- Posted Whse Shipment Packing List` (a **different** NAV view — has a real
+  `[OTN No_]` + `[Posting Date]` + `[Sales Shipment No]`, unlike the Rug List view which
+  has no shipped/dispatched status at all — dispatched rugs just silently disappear
+  from it): 8 shipped together 2026-08-27 + 1 shipped 2026-09-10 = the 9 dispatched;
+  `OTN-2259168` never shipped = the 1 in progress; `OTN-2259158`/`2259169` still "At
+  Loom" = the 2 in making. Every number ties out.
+- **9 more rugs never appeared in Atlas at all**: `OTN-2294175` through `2294183`,
+  shipped together in one shipment (`SLSHIP2627/10593`) on 2026-08-31 — found only in
+  the Posted Whse Shipment Packing List, under this exact same Customer PO. Checked
+  directly: these 9 OTNs have **zero rows, ever**, in `NAV-002-Rug List - Main` (queried
+  by OTN No_ directly, no date/status filter) and zero rows in Supabase under any PO.
+  From creation to dispatch, Atlas's sync source never saw them.
+
+**One honest caveat, raised by Ayaan and worth taking seriously**: Atlas's own tracking
+only starts on 2026-09-02 (earliest row in `orders`), and didn't read this NAV view
+*directly* until 2026-09-07 (before that, a different, narrower public feed — see the
+"Resolved" entry below on requests #1/#2/#3/#6). These 9 rugs shipped 2026-08-31 — only
+2 days before Atlas existed at all, and 7 days before the direct-view sync did. So this
+could be either (a) a real structural gap — these 9 never appear in this view, full
+stop — or (b) a timing gap — Atlas simply started watching too late to catch them
+before they aged out of the view. Weak evidence against (b): the 8 rugs that *did* make
+it in were shipped 2026-08-27 (older than these 9) and were *still* in the view as late
+as 2026-09-07 (11 days post-shipment) — if dispatched rugs generally linger that long,
+these 9 (only 2-7 days old when Atlas started looking) should have too. But this isn't
+proof either way — there's no way to query what the view showed on a past date; it has
+no history.
+
+**Ask (still open):** ERP/Dinesh's team — check whether these 9 OTNs ever appeared in
+`NAV-002-Rug List - Main` at any point (they'd have logs/history Atlas doesn't), to
+settle which of the two explanations above is actually true. If it's (a), this likely
+recurs on other POs too and is worth a real fix on the view itself; if it's (b), it's a
+one-time gap from Atlas's own rollout window and not an ongoing concern.
+
+**Built on Atlas's own side, 2026-09-15 (`db/orders/029_dispatch_tracking.sql` +
+`orders-sync.mjs`)** — this does NOT answer the "why did 9 rugs never appear" question
+above, but it does fix the underlying display problem for every order Atlas already
+knows about: a real "Dispatched" stage, sourced from `NAV-011- Posted Whse Shipment
+Packing List` (confirmed as the right report via Ashish Sharma's manual count above),
+plus real courier tracking info where NAV has one (a separate AWB-tracking view,
+`View-0462...` — only ~5-9% of shipments ever get a real trackable number; most are a
+domestic transfer via a regional transporter with no public tracking site, which is
+handled honestly — see that migration's own comment). Also checked broadly while
+building this: NAV's own `JRCPL Live$Shipping Agent` table resolves codes like "MH-004"
+to real names ("BLUE DART EXPRESS LIMITED") — the tracking link only appears for the
+three couriers with a confirmed-real public tracking page (FedEx/Blue Dart/DHL); a real
+tracking number from a smaller regional transporter shows as plain text, not a fake
+link, per direct decision, 2026-09-15.
+
 ### 4. "Follow Up Person" is blank for most real orders
 **Ask:** NAV/ERP team (Dinesh's team) — populate this field for every order at the
 source, per the real routing rule described below, so Atlas doesn't need a fallback

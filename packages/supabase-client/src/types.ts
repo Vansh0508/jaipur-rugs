@@ -1659,6 +1659,16 @@ export type Database = {
           updated_at: string
           us_item_code: string | null
           warehouse_shipment_created: boolean
+          // Dispatch + shipment tracking, added by db/orders/029_dispatch_tracking.sql —
+          // see that migration and orders-sync.mjs's syncDispatchStatus/syncTrackingInfo
+          // for where these come from (NAV-011 / a separate AWB-tracking NAV view, not
+          // NAV_VIEW). Grouped here rather than alphabetized among the fields above.
+          dispatched_at: string | null
+          sales_shipment_no: string | null
+          tracking_no: string | null
+          shipping_agent_code: string | null
+          shipping_agent_name: string | null
+          ewb_no: string | null
         }
         Insert: {
           authorization?: string | null
@@ -1714,6 +1724,12 @@ export type Database = {
           updated_at?: string
           us_item_code?: string | null
           warehouse_shipment_created?: boolean
+          dispatched_at?: string | null
+          sales_shipment_no?: string | null
+          tracking_no?: string | null
+          shipping_agent_code?: string | null
+          shipping_agent_name?: string | null
+          ewb_no?: string | null
         }
         Update: {
           authorization?: string | null
@@ -1769,6 +1785,12 @@ export type Database = {
           updated_at?: string
           us_item_code?: string | null
           warehouse_shipment_created?: boolean
+          dispatched_at?: string | null
+          sales_shipment_no?: string | null
+          tracking_no?: string | null
+          shipping_agent_code?: string | null
+          shipping_agent_name?: string | null
+          ewb_no?: string | null
         }
         Relationships: [
           {

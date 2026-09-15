@@ -29,6 +29,7 @@ import { FacetDropdown, SingleSelect, HeroDateRangePicker } from "./FilterPrimit
 import { onTimeStatus, daysLateFromOriginalExFactory } from "@/lib/tat";
 import { stageStandard } from "@/lib/stageTat";
 import { resolveFollowUpPerson } from "@/lib/followUpPerson";
+import { knownCourierTrackingUrl } from "@/lib/dispatchTracking";
 import { displayDate } from "@/lib/displayDate";
 import { copyToClipboard, buildClipboardText, buildClipboardHtml } from "@/lib/clipboardCopy";
 import { exportRowsToExcel } from "@/lib/exportToExcel";
@@ -60,6 +61,54 @@ function totalDaysSinceSalesOrder(salesOrderDate: string | null): number | null 
   const now = new Date();
   const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   return Math.max(0, Math.round((todayUtc - startMs) / (24 * 60 * 60 * 1000)));
+}
+
+/** The Stage column's hover-popover content once an order is dispatched (order.
+ * dispatched_at set) — three real cases, confirmed live 2026-09-15 investigating
+ * ERP_AND_EXTERNAL_REQUESTS.md request #9:
+ *   1. A real tracking number AND a courier we know a real public tracking page for
+ *      (FedEx/Blue Dart/DHL) -> a real clickable link, tracking number shown alongside
+ *      to paste in.
+ *   2. A real tracking/consignment number but a regional transporter with no public
+ *      tracking site (most real shipments — ~94% go by a regional transporter or
+ *      company vehicle) -> the number as plain text, not a fake link. Direct decision,
+ *      2026-09-15: honest about a number existing with nowhere real to click through to,
+ *      rather than treating it the same as "no tracking at all".
+ *   3. No tracking number at all (the large majority of orders, at least until they
+ *      reach an actual courier handover) -> "Tracking Not Updated in NAV", per direct
+ *      instruction. */
+function DispatchTrackingInfo({
+  trackingNo,
+  shippingAgentName,
+}: {
+  trackingNo: string | null;
+  shippingAgentName: string | null;
+}) {
+  if (!trackingNo) {
+    return <span className="text-muted">Tracking Not Updated in NAV</span>;
+  }
+  const courierUrl = knownCourierTrackingUrl(shippingAgentName);
+  if (courierUrl) {
+    return (
+      <div>
+        <a
+          href={courierUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="font-medium text-accent hover:underline"
+        >
+          Track via {shippingAgentName}
+        </a>
+        <div className="mt-0.5 text-muted">AWB: {trackingNo}</div>
+      </div>
+    );
+  }
+  return (
+    <span className="text-foreground">
+      {trackingNo}
+      <span className="text-muted"> — via {shippingAgentName ?? "unknown transporter"} (no online tracking)</span>
+    </span>
+  );
 }
 
 function useLinkBuilder() {
@@ -1444,11 +1493,30 @@ export function OrdersTable({
                       construction: order.construction ?? "—",
                       stage: (
                         <div className="whitespace-nowrap">
-                          <StageChip code={stage?.code ?? null} label={stage?.display_name ?? "Unresolved"} />
+                          {order.dispatched_at ? (
+                            // Real dispatch fact from NAV-011 (not NAV_VIEW, which has
+                            // no "Dispatched" status text at all — a dispatched rug just
+                            // silently disappears from it, see
+                            // ERP_AND_EXTERNAL_REQUESTS.md request #9). Hover reveals
+                            // tracking info via a plain CSS group-hover, not the shared
+                            // Popover primitive — that one's documented as click-to-open
+                            // by design; this needed genuine hover per direct
+                            // instruction, 2026-09-15.
+                            <span className="group relative inline-block">
+                              <StageChip code={stage?.code ?? null} label={stage?.display_name ?? "Dispatched"} />
+                              <span className="pointer-events-none invisible absolute left-0 top-full z-20 mt-1 w-max min-w-[200px] max-w-[280px] rounded-lg border-2 border-border bg-surface p-2.5 text-xs shadow-lg group-hover:visible group-hover:pointer-events-auto">
+                                <DispatchTrackingInfo trackingNo={order.tracking_no} shippingAgentName={order.shipping_agent_name} />
+                              </span>
+                            </span>
+                          ) : (
+                            <StageChip code={stage?.code ?? null} label={stage?.display_name ?? "Unresolved"} />
+                          )}
                           {/* The actual granular ERP status ("At Stores", "At Branch",
                               "At Design - R&D", ...) — the coarse stage bucket alone
                               ("Pre-Loom") wasn't enough, this shows exactly where the
-                              order really is. */}
+                              order really is. Left as whatever NAV_VIEW last showed even
+                              once dispatched — that's genuinely useful context (where it
+                              shipped FROM), not a stale-data bug. */}
                           <div className="mt-0.5 text-[11px] text-muted">{order.raw_current_status ?? "—"}</div>
                         </div>
                       ),
