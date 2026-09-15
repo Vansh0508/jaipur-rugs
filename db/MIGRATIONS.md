@@ -657,6 +657,36 @@ unusable as built. `025_on_time_status_fixes.sql` grants exactly the `EXECUTE` (
 not yet applied. Once it lands, `validate-on-time-status-port.mjs` needs a clean run
 before the frontend "Late" tab gets wired up — still the actual bar, not "025 applied."
 
+**`025` applied 2026-09-15** (via the other session again — advisors confirmed the
+`function_search_path_mutable` WARN gone, nothing new). Re-running
+`validate-on-time-status-port.mjs` got further but hit a second, different permission
+gap: `permission denied for table zero_priority_knotted_rate` — `loom_standard_days()`
+reads that table directly, and same reasoning as `025`, a plain reference table grants
+nothing to anyone but its owner by default. `026_on_time_status_table_grant.sql`
+(`grant select ... to authenticated, service_role`) fixed it — Postgres's own error
+message named the exact fix needed.
+
+**`026` applied 2026-09-15. Third re-run of the validation script actually executed
+(no more permission errors) and found a REAL correctness bug** — not a permissions gap
+this time. `computed_stage_standard_days` matched the TypeScript on every single row
+checked (confirming the `stageStandard`/`loomStandardDays`/`maxDimensionFt` port is
+correct), but `computed_on_time_status` disagreed on a large fraction of rows, in two
+consistent, explainable directions: an order due exactly today came back
+`js=delayed`/`sql=late`, and an order due in the next few days sometimes came back
+`js=late`/`sql=on_track`. Root cause: `lib/tat.ts`'s `onTimeStatus()` compares real
+instants (`Date.now()` vs. `new Date("yyyy-mm-dd").getTime()`, always midnight UTC of
+that date) — `024`'s SQL instead compared plain `date` values, a whole day "behind" at
+the boundary, since at any point after midnight UTC on the due date (i.e. essentially
+always, during normal daytime hours) JS has already crossed that instant and calls it
+delayed, while `current_date > v_target` is still false when the two dates are equal.
+`027_on_time_status_timestamp_fix.sql` replaces the date-only comparison with real
+`timestamptz` arithmetic, explicitly anchored to UTC (`AT TIME ZONE 'UTC'`, not trusting
+the session timezone to already be UTC) — written, not yet applied. Re-run the
+validation script again once it lands; a second full pass with zero mismatches is still
+the bar, not just "the obvious two are fixed" — a regex/date port producing two
+distinct, explainable-in-hindsight bugs on the first real run is exactly why this
+process insisted on checking every real order rather than a sample or a code read.
+
 ## Still pending
 
 - `supabase/functions/guest-signup`, `employee-signin`, and `submit-feedback` are deployed
