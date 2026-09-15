@@ -687,6 +687,18 @@ the bar, not just "the obvious two are fixed" — a regex/date port producing tw
 distinct, explainable-in-hindsight bugs on the first real run is exactly why this
 process insisted on checking every real order rather than a sample or a code read.
 
+**`027` applied 2026-09-15 — and the advisor check (run after every migration this
+session, no exceptions) caught a regression from it immediately.** `function_search_path_mutable`
+came back, this time only for `private.orders_on_time_status`: `create or replace
+function` does NOT preserve a prior `alter function ... set search_path`, so `027`'s
+replace (needed to fix the timestamp bug) silently dropped `025`'s pinning on that one
+function. `028_on_time_status_search_path_regression.sql` re-pins it — a real,
+worth-remembering gotcha for any future `create or replace function` on an
+already-pinned function in this project, not just this one. Advisors otherwise
+unchanged both times (the two pre-existing, unrelated findings only). Written, not yet
+applied; the validation script re-run is still the actual thing that decides whether
+the frontend "Late" tab gets enabled, not any individual advisor check on its own.
+
 ## Still pending
 
 - `supabase/functions/guest-signup`, `employee-signin`, and `submit-feedback` are deployed
