@@ -337,6 +337,7 @@ export interface OrdersTableProps {
     onHold?: string;
     quickShip?: string;
     delayStatus?: string;
+    onTimeStatus?: string;
     ctype?: string;
     dueFrom?: string;
     dueTo?: string;
@@ -639,22 +640,26 @@ export function OrdersTable({
               across the full dataset. "On Track" is new but equally simple (see
               lib/queries/orders.ts's delayStatus doc — deliberately just "not late, not
               due soon," not the same richer pace-aware on_track the per-row "On Time"
-              badge computes). "Late" is NOT wired yet: this app's own established
-              vocabulary for that word (lib/tat.ts's onTimeStatus, from a real
-              production conversation, 2026-09-07: "flag it as Late not delayed") means
-              something genuinely different from "Delayed" — not yet past the target
-              date, but off-pace to make it, which needs the same stage-TAT-standard
-              projection the "On Time" column already computes per row. Making that a
-              real, fast, dataset-wide tab (not just whatever's on the current page)
-              needs a Postgres function ported from stageStandard()/onTimeStatus(),
-              which isn't something to write and ship untested against live data —
-              flagged to Ayaan as the next piece once DB access is confirmed working. */}
+              badge computes).
+              "Late" is a SEPARATE filter dimension, onTimeStatus (not delayStatus) —
+              this app's own established vocabulary for that word (lib/tat.ts's
+              onTimeStatus, from a real production conversation, 2026-09-07: "flag it as
+              Late not delayed") means something genuinely different from "Delayed": not
+              yet past the target date, but off-pace to make it, which needs the same
+              stage-TAT-standard projection the "On Time" column already computes per
+              row. Wired up 2026-09-15 via orders_with_on_time_status (see
+              db/orders/024_on_time_status_view.sql's header for the full port, and
+              025-028 for what actually broke and got fixed on the way to a clean
+              validate-on-time-status-port.mjs run against every real order — not
+              enabled on faith that the port "looked right"). */}
           <div className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-surface p-0.5 shadow-xs text-xs">
             <button
               type="button"
-              onClick={() => router.push(buildLink({ delayStatus: undefined, onHold: undefined, quickShip: undefined }))}
+              onClick={() =>
+                router.push(buildLink({ delayStatus: undefined, onTimeStatus: undefined, onHold: undefined, quickShip: undefined }))
+              }
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium transition-colors cursor-pointer ${
-                !values.delayStatus && !values.onHold && !values.quickShip
+                !values.delayStatus && !values.onTimeStatus && !values.onHold && !values.quickShip
                   ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 shadow-xs"
                   : "text-muted hover:text-foreground"
               }`}
@@ -664,12 +669,17 @@ export function OrdersTable({
                 {totalCount}
               </span>
             </button>
-            <span
-              title="Coming once the live database connection is back — see this tab bar's own comment for why this one specifically needs it"
-              className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-full px-3 py-1 font-medium text-muted/50"
+            <button
+              type="button"
+              onClick={() => router.push(buildLink({ onTimeStatus: values.onTimeStatus === "late" ? undefined : "late" }))}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium transition-colors cursor-pointer ${
+                values.onTimeStatus === "late"
+                  ? "bg-amber-600 text-white shadow-xs"
+                  : "text-muted hover:text-foreground"
+              }`}
             >
               <span>Late</span>
-            </span>
+            </button>
             <button
               type="button"
               onClick={() => router.push(buildLink({ delayStatus: values.delayStatus === "late" ? undefined : "late" }))}

@@ -89,6 +89,15 @@ export interface OrderFilters {
    * standard's pace projection, "Late" vs "Delayed" — see lib/tat.ts's onTimeStatus);
    * this is a simpler pure date-window bucket, safe to compute as a plain SQL filter. */
   delayStatus?: DelayStatusFilter;
+  /** Filters on orders_with_on_time_status's computed_on_time_status column — the REAL
+   * pace-aware on-time status (see that comment above delayStatus for the distinction).
+   * Currently only "late" is actually surfaced by the UI (the top tab bar's "Late"
+   * tab); the type stays the full set on purpose so "delayed"/"on_track" are available
+   * without another migration if a future tab wants them. No terminalStageIds handling
+   * needed here — computed_on_time_status already returns 'on_track' unconditionally
+   * for a terminal-stage order (matching onTimeStatus()'s own short-circuit), so a
+   * "late" filter can never match one in the first place. */
+  onTimeStatus?: "on_track" | "late" | "delayed" | "unknown";
   terminalStageIds?: string[];
   /** Date range on revised_ex_factory_date (yyyy-mm-dd strings). */
   dueFrom?: string;
@@ -236,7 +245,14 @@ function applyConstructionTypeFilter(query: any, ctype: ConstructionType) {
  * construction-type applied as their respective conditions. Kept as one function so the
  * facets query and the list query can never quietly drift out of sync with each other. */
 function applyOrderFilters(supabase: SupabaseClient, filters: OrderFilters) {
-  let query = supabase.from("orders").select("*", { count: "exact" });
+  // orders_with_on_time_status, not the bare orders table — same columns plus two
+  // computed ones (computed_stage_standard_days/computed_on_time_status), a
+  // security_invoker view so orders_select's RLS still scopes every row identically.
+  // Added 2026-09-15 for the "Late" tab's onTimeStatus filter below — see
+  // db/orders/024_on_time_status_view.sql (ported from lib/stageTat.ts/lib/tat.ts,
+  // validated row-for-row against every real order via
+  // scripts/validate-on-time-status-port.mjs before this was wired up).
+  let query = supabase.from("orders_with_on_time_status").select("*", { count: "exact" });
 
   if (!filters.includeStock) query = query.not("customer_no", "in", `(${STOCK_CUSTOMER_CODES.join(",")})`);
 
@@ -308,6 +324,8 @@ function applyOrderFilters(supabase: SupabaseClient, filters: OrderFilters) {
       query = query.not("revised_ex_factory_date", "is", null).lte("revised_ex_factory_date", in7Days); // late_or_soon: <= today+7 covers both
     }
   }
+
+  if (filters.onTimeStatus) query = query.eq("computed_on_time_status", filters.onTimeStatus);
 
   if (filters.dueFrom) query = query.gte("revised_ex_factory_date", filters.dueFrom);
   if (filters.dueTo) query = query.lte("revised_ex_factory_date", filters.dueTo);
