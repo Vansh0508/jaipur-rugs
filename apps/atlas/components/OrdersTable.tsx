@@ -969,20 +969,28 @@ export function OrdersTable({
 
               <Button
                 isIconOnly
-                aria-label="More options"
+                aria-label="Columns, filters, and row height"
                 onClick={() => {
                   setMenuOpen((prev) => !prev);
                   if (menuOpen) setActiveSubmenu(null);
                 }}
-                className={`flex items-center justify-center h-8 w-8 text-muted hover:text-foreground hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-r-full transition-colors cursor-pointer bg-transparent border-none ${
+                className={`flex items-center justify-center gap-0.5 h-8 w-auto px-1.5 text-muted hover:text-foreground hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-r-full transition-colors cursor-pointer bg-transparent border-none ${
                   menuOpen ? "bg-neutral-100 dark:bg-neutral-800 text-foreground" : ""
                 }`}
               >
-                <ChevronDown
-                  width={13}
-                  height={13}
-                  className={`transition-transform duration-200 ${menuOpen ? "rotate-180" : ""}`}
-                />
+                {/* Button (Hero UI) doesn't forward a `title` prop, hence the wrapping
+                    span — this is the whole hover-tooltip fix for a real
+                    discoverability complaint, 2026-09-15: the Columns/Filters/Row
+                    Height menu lived behind a bare, unlabeled chevron with no visible
+                    hint it opened anything. */}
+                <span title="Columns, filters, and row height" className="flex items-center gap-0.5">
+                  <LayoutColumns3 width={13} height={13} />
+                  <ChevronDown
+                    width={13}
+                    height={13}
+                    className={`transition-transform duration-200 ${menuOpen ? "rotate-180" : ""}`}
+                  />
+                </span>
               </Button>
             </div>
 
