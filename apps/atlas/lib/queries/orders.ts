@@ -543,14 +543,25 @@ export interface ColumnRequestWithRequester extends ColumnRequestRow {
  * partial for them; the /my-access page only renders these sections when
  * access.isAdmin is true, matching that). Joined to employees for a display name — same
  * nested-select pattern requireAtlasStaffAccess.ts already uses for
- * department_access_grants -> departments. */
+ * department_access_grants -> departments.
+ *
+ * The embed is disambiguated to the `requested_by` FK explicitly (rather than a bare
+ * `employees(full_name)`) because `orders_column_requests` has TWO foreign keys into
+ * `employees` (`requested_by` and `resolved_by`, see db/orders/022_column_requests.sql)
+ * — a bare embed is genuinely ambiguous to PostgREST, which fails the whole query with
+ * PGRST201 ("more than one relationship was found") rather than guessing. Confirmed
+ * live 2026-09-16: this broke /my-access outright for every admin (the only place this
+ * function is called) until fixed here — `employees!orders_column_requests_requested_by_fkey`
+ * is the constraint name Postgres auto-generated for that column's inline `references`
+ * clause (no explicit name was given in 022), confirmed against the live error's own
+ * `hint` field before using it. */
 async function listColumnRequestsByStatus(
   supabase: SupabaseClient,
   status: "pending" | "approved" | "declined" | "added",
 ): Promise<ColumnRequestWithRequester[]> {
   const { data, error } = await supabase
     .from("orders_column_requests")
-    .select("*, employees(full_name)")
+    .select("*, employees!orders_column_requests_requested_by_fkey(full_name)")
     .eq("status", status)
     .order("created_at", { ascending: true });
   if (error) throw error;
