@@ -298,7 +298,7 @@ async function syncDispatchStatus(pool, dispatchedStageId) {
     const batchItemNos = itemNos.slice(i, i + BATCH_SIZE);
     const { data: existing, error: existingError } = await supabaseAdmin
       .from("orders")
-      .select("id, item_no, dispatched_at")
+      .select("id, item_no, otn_no, dispatched_at")
       .in("item_no", batchItemNos);
     if (existingError) {
       console.error(`[orders-sync] dispatch-status lookup batch failed: ${existingError.message}`);
@@ -308,10 +308,18 @@ async function syncDispatchStatus(pool, dispatchedStageId) {
     const toUpdate = (existing ?? []).filter((o) => !o.dispatched_at);
     if (!toUpdate.length) continue;
 
+    // otn_no must be included even though this is really an update, not an insert —
+    // Supabase's upsert still builds a real `INSERT ... ON CONFLICT (item_no) DO
+    // UPDATE`, and Postgres validates the row's NOT NULL constraints (otn_no has no
+    // default) before it even gets to resolving the conflict, regardless of which
+    // branch actually runs. Hit live, 2026-09-16: every one of these upserts failed
+    // with "null value in column otn_no" until this was added — same otn_no already on
+    // the row, just re-stating it so the constraint is satisfied.
     const upsertRows = toUpdate.map((o) => {
       const info = byItemNo.get(o.item_no);
       return {
         item_no: o.item_no,
+        otn_no: o.otn_no,
         dispatched_at: info.postingDate,
         sales_shipment_no: info.shipmentNo,
         stage_id: dispatchedStageId,
@@ -389,7 +397,7 @@ async function syncTrackingInfo(pool) {
     const batchItemNos = itemNos.slice(i, i + BATCH_SIZE);
     const { data: existing, error: existingError } = await supabaseAdmin
       .from("orders")
-      .select("item_no, tracking_no")
+      .select("item_no, otn_no, tracking_no")
       .in("item_no", batchItemNos);
     if (existingError) {
       console.error(`[orders-sync] tracking-info lookup batch failed: ${existingError.message}`);
@@ -398,11 +406,14 @@ async function syncTrackingInfo(pool) {
 
     const toUpdate = (existing ?? []).filter((o) => !o.tracking_no);
     if (!toUpdate.length) continue;
+    // otn_no included for the same reason syncDispatchStatus's own upsert needs it —
+    // see that function's comment.
 
     const upsertRows = toUpdate.map((o) => {
       const info = byItemNo.get(o.item_no);
       return {
         item_no: o.item_no,
+        otn_no: o.otn_no,
         tracking_no: info.trackingNo,
         shipping_agent_code: info.agentCode,
         shipping_agent_name: info.agentName,
