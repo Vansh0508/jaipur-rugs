@@ -31,19 +31,12 @@ function toArray(value: string | string[] | undefined): string[] {
 export default async function RugLensPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
   const supabase = await getServerSupabaseClient();
-  const access = await requireRugLensAccess(supabase);
-
-  if (!access.hasRugLensAccess) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-        <h1 className="text-xl font-semibold text-foreground">RugLens is restricted</h1>
-        <p className="max-w-md text-sm text-muted">
-          This view is currently limited to Sales and Back Ops. If you need access, ask whoever manages Atlas department
-          access to add you to one of those departments.
-        </p>
-      </div>
-    );
-  }
+  // Open to everyone with general Atlas access, 2026-09-16 — see
+  // requireRugLensAccess.ts's header comment for the full history. Still called (not
+  // just requireAtlasStaffAccess directly) so a future narrowing has one real place to
+  // change, and so this page keeps doing the same defensive re-check every other Atlas
+  // page does (AGENTS.md Section 5) rather than trusting a shared session alone.
+  await requireRugLensAccess(supabase);
 
   const pageSize = Number(toSingle(params.pageSize)) || DEFAULT_PAGE_SIZE;
   const page = Math.max(1, Number(toSingle(params.page)) || 1);

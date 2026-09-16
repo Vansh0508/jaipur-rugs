@@ -167,9 +167,10 @@ function applyRugLensFilters(query: any, filters: RugLensFilters) {
 }
 
 /** RLS already scopes which rows come back (see requireRugLensAccess.ts and
- * private.can_view_order() — a Sales department grant already resolves correctly there;
- * a Back Ops grant will too as soon as that department is wired into can_view_order(),
- * not before). This just applies RugLens's own filters on top, with real pagination. */
+ * private.can_view_order() — since db/orders/030_ruglens_stock_visibility_for_
+ * everyone.sql, 2026-09-16, this resolves correctly for anyone with real Atlas access
+ * at all, not just Sales/Back Ops). This just applies RugLens's own filters on top,
+ * with real pagination. */
 export async function listOpenStock(supabase: SupabaseClient, filters: RugLensFilters = {}): Promise<RugLensListResult> {
   let query = applyRugLensFilters(supabase.from("orders").select("*", { count: "exact" }), filters).order(
     "current_location",
