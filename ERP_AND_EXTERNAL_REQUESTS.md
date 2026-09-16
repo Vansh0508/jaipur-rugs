@@ -66,11 +66,35 @@ these 9 (only 2-7 days old when Atlas started looking) should have too. But this
 proof either way — there's no way to query what the view showed on a past date; it has
 no history.
 
-**Ask (still open):** ERP/Dinesh's team — check whether these 9 OTNs ever appeared in
-`NAV-002-Rug List - Main` at any point (they'd have logs/history Atlas doesn't), to
-settle which of the two explanations above is actually true. If it's (a), this likely
-recurs on other POs too and is worth a real fix on the view itself; if it's (b), it's a
-one-time gap from Atlas's own rollout window and not an ongoing concern.
+**Mostly settled, 2026-09-16 — strong evidence for (b), the timing gap, not (a) the
+structural one.** Deploying the dispatch-tracking feature below (against all of
+NAV-011, not just this one PO) surfaced the same pattern at real scale: **7,338 real
+RUG-prefixed items** dispatched per NAV-011 have no matching row in `orders` at all —
+far more than this one PO's 9. But their dispatch dates tell the real story:
+
+| Month dispatched | Missing count |
+|---|---|
+| 2026-03 | 1,788 |
+| 2026-04 | 3,116 |
+| 2026-05 | 2,867 |
+| 2026-06 | 2,595 |
+| 2026-07 | 2,301 |
+| 2026-08 | 3,160 |
+| **2026-09** | **47** |
+
+A massive drop-off exactly at September — when Atlas started existing (2026-09-02) and
+reading this NAV view directly (2026-09-07). If this were a permanent structural
+exclusion (hypothesis a), the September rate should look like every other month, not
+collapse to a tiny fraction of it. This is overwhelmingly a **one-time historical
+backlog from before Atlas ever tracked anything**, not an ongoing bug — matching
+hypothesis (b) from the caveat above.
+
+**Ask (narrowed, not closed):** the September figure (47) isn't zero — a small,
+ongoing trickle of this same gap may still exist (this PO's original 9 are part of it).
+Worth ERP/Dinesh's team confirming whether that's expected variance or a real,
+smaller, still-live version of the same issue — but the case for "recurs on every PO
+at scale" is now weak; "closed as a rollout-window artifact, not needing a NAV-side
+fix" is the more likely read pending that confirmation.
 
 **Built on Atlas's own side, 2026-09-15 (`db/orders/029_dispatch_tracking.sql` +
 `orders-sync.mjs`)** — this does NOT answer the "why did 9 rugs never appear" question
