@@ -4,6 +4,7 @@ import {
   listStages,
   listFollowUpPersonEmails,
   getMyOrdersViewPreferences,
+  getOrdersSummary,
   DEFAULT_PAGE_SIZE,
   type OrderFilters,
   type AgingBucket,
@@ -12,7 +13,9 @@ import {
   type SortableColumn,
 } from "@/lib/queries/orders";
 import { getServerSupabaseClient } from "@/lib/supabaseClient.server";
+import { requireAtlasStaffAccess } from "@/lib/auth/requireAtlasStaffAccess";
 import { OrdersTable } from "@/components/OrdersTable";
+import { OrdersSummaryPanel } from "@/components/OrdersSummaryPanel";
 import { ExportOrdersButton } from "@/components/ExportOrdersButton";
 import { StageChip } from "@/components/StageChip";
 
@@ -43,12 +46,18 @@ function toArray(value: string | string[] | undefined): string[] {
 export default async function OrdersPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
   const supabase = await getServerSupabaseClient();
-  const [stages, facets, followUpPersonEmails, viewPreferences] = await Promise.all([
+  const [stages, facets, followUpPersonEmails, viewPreferences, access] = await Promise.all([
     listStages(supabase),
     listOrderFacets(supabase),
     listFollowUpPersonEmails(supabase),
     getMyOrdersViewPreferences(supabase),
+    requireAtlasStaffAccess(supabase),
   ]);
+  // The summary panel is strictly production-only — direct request when it was approved
+  // for the live DB (2026-09-17): "this view should be visible only to production team,"
+  // and, asked explicitly, NOT admins either. Everyone else skips the aggregate query
+  // entirely, not just the rendering.
+  const showSummary = access.departmentCodes.includes("production");
   const terminalStageIds = stages.filter((s) => s.is_terminal).map((s) => s.id);
 
   const pageSize = Number(toSingle(params.pageSize)) || DEFAULT_PAGE_SIZE;
@@ -84,7 +93,12 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
     sortDir,
   };
 
-  const { rows: orders, totalCount } = await listOrders(supabase, filters);
+  // The summary is a separate aggregate over the same filters (not a sum of this page's
+  // rows — see getOrdersSummary), so the two run side by side rather than back to back.
+  const [{ rows: orders, totalCount }, summary] = await Promise.all([
+    listOrders(supabase, filters),
+    showSummary ? getOrdersSummary(supabase, filters) : Promise.resolve(null),
+  ]);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const hasAnyFilter = Object.entries(params).some(
     ([k, v]) => !["page", "pageSize", "sortBy", "sortDir"].includes(k) && v,
@@ -111,6 +125,8 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
         </div>
         <ExportOrdersButton rows={orders} stages={stages} />
       </div>
+
+      {summary ? <OrdersSummaryPanel summary={summary} stages={stages} /> : null}
 
       <div className="min-h-0 flex-1">
         <OrdersTable

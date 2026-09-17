@@ -570,6 +570,117 @@ export async function getDashboardStats(supabase: SupabaseClient): Promise<Dashb
   };
 }
 
+export type OnTimeStatus = NonNullable<OrderFilters["onTimeStatus"]>;
+
+export interface OrdersSummaryBucket {
+  count: number;
+  /** Sum of std_cubage (square feet) — null cubage counts as 0 but still counts a piece. */
+  sqft: number;
+}
+
+export interface OrdersSummaryStage extends OrdersSummaryBucket {
+  delayedCount: number;
+  delayedSqft: number;
+  lateCount: number;
+  lateSqft: number;
+  onTrackCount: number;
+  onTrackSqft: number;
+}
+
+/** Filter-aware totals for the Orders page's summary panel — every number here is over
+ * the FULL filtered set (not the visible page), computed by `orders_filtered_summary()`
+ * (db/orders/032_orders_filtered_summary_rpc.sql). Requested by the production team at
+ * the 2026-09-17 UAT walkthrough: not another column, a rollup that follows the filters
+ * ("this customer has X sq ft delayed in pre-loom") so nobody has to export and sum. */
+export interface OrdersSummary {
+  totalCount: number;
+  totalSqft: number;
+  /** Keyed by the same computed_on_time_status the per-row On Time badge shows. */
+  byStatus: Record<OnTimeStatus, OrdersSummaryBucket>;
+  /** stage_id -> totals; only stages with at least one matching row are present. */
+  byStage: Record<string, OrdersSummaryStage>;
+}
+
+interface OrdersFilteredSummaryRow {
+  total_count: number | string;
+  total_sqft: number | string;
+  by_status: Record<string, { count?: number | string; sqft?: number | string }> | null;
+  by_stage: Record<string, Record<string, number | string | undefined>> | null;
+}
+
+function listOrNull(value: string | string[] | undefined): string[] | null {
+  const list = toList(value);
+  return list.length ? list : null;
+}
+
+const EMPTY_BUCKET: OrdersSummaryBucket = { count: 0, sqft: 0 };
+
+/** The SQL function's parameters mirror applyOrderFilters() branch for branch — this is
+ * the one place OrderFilters is translated into those arguments, so a new filter added
+ * to applyOrderFilters needs a matching parameter in 032 AND a line here, or the panel's
+ * totals will quietly stop matching the table (totalCount here vs. listOrders' count is
+ * the tell). Pagination/sort fields are irrelevant to an aggregate and ignored. */
+export async function getOrdersSummary(supabase: SupabaseClient, filters: OrderFilters = {}): Promise<OrdersSummary> {
+  const priorities = toList(filters.priority).map(Number).filter((n) => !Number.isNaN(n));
+  const { data, error } = await supabase
+    .rpc("orders_filtered_summary", {
+      p_include_stock: Boolean(filters.includeStock),
+      p_stage_ids: listOrNull(filters.stageId),
+      p_customer_nos: listOrNull(filters.customerNo),
+      p_merchant_names: listOrNull(filters.merchantName),
+      p_order_wise_merchants: listOrNull(filters.orderWiseMerchant),
+      p_follow_up_people: listOrNull(filters.followUpPerson),
+      p_customer_po_nos: listOrNull(filters.customerPoNo),
+      p_qualities: listOrNull(filters.quality),
+      p_designs: listOrNull(filters.design),
+      p_sizes: listOrNull(filters.size),
+      p_production_order_statuses: listOrNull(filters.productionOrderStatus),
+      p_priorities: priorities.length ? priorities : null,
+      p_aging: filters.aging ?? null,
+      p_on_hold: filters.onHold ?? null,
+      p_quick_ship: filters.quickShip ?? null,
+      p_delay_status: filters.delayStatus ?? null,
+      p_terminal_stage_ids: filters.terminalStageIds?.length ? filters.terminalStageIds : null,
+      p_on_time_status: filters.onTimeStatus ?? null,
+      p_due_from: filters.dueFrom || null,
+      p_due_to: filters.dueTo || null,
+      p_ctype: filters.ctype ?? null,
+      p_search: filters.search || null,
+    })
+    .single();
+  if (error) throw error;
+  const row = data as OrdersFilteredSummaryRow | null;
+
+  const bucket = (raw: { count?: number | string; sqft?: number | string } | undefined): OrdersSummaryBucket =>
+    raw ? { count: Number(raw.count ?? 0), sqft: Number(raw.sqft ?? 0) } : EMPTY_BUCKET;
+
+  const byStage: Record<string, OrdersSummaryStage> = {};
+  for (const [stageId, v] of Object.entries(row?.by_stage ?? {})) {
+    byStage[stageId] = {
+      count: Number(v.count ?? 0),
+      sqft: Number(v.sqft ?? 0),
+      delayedCount: Number(v.delayed_count ?? 0),
+      delayedSqft: Number(v.delayed_sqft ?? 0),
+      lateCount: Number(v.late_count ?? 0),
+      lateSqft: Number(v.late_sqft ?? 0),
+      onTrackCount: Number(v.on_track_count ?? 0),
+      onTrackSqft: Number(v.on_track_sqft ?? 0),
+    };
+  }
+
+  return {
+    totalCount: Number(row?.total_count ?? 0),
+    totalSqft: Number(row?.total_sqft ?? 0),
+    byStatus: {
+      on_track: bucket(row?.by_status?.on_track),
+      late: bucket(row?.by_status?.late),
+      delayed: bucket(row?.by_status?.delayed),
+      unknown: bucket(row?.by_status?.unknown),
+    },
+    byStage,
+  };
+}
+
 export async function getOrder(supabase: SupabaseClient, orderId: string): Promise<OrderRow | null> {
   const { data, error } = await supabase.from("orders").select("*").eq("id", orderId).maybeSingle();
   if (error) throw error;

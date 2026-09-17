@@ -412,6 +412,32 @@ be recorded here" rule. Not used by the feature above (which reads NAV-011 direc
 bulk, on the same schedule as everything else) — flagged for Ayaan/Vansh to explain or
 clean up, not touched or built on top of by this pass.
 
+**Orders module — filter-aware summary totals for /orders (2026-09-17, applied —
+`db/orders/032_orders_filtered_summary_rpc.sql`):** one new read-only function,
+`public.orders_filtered_summary(...)`, backing a new summary panel above the Orders
+table — total pieces and square feet (`std_cubage`) over the FULL filtered set, split by
+`computed_on_time_status` (Delayed / Late / On track / No target date), plus a per-stage
+breakdown. Direct request from the production team's UAT walkthrough the same morning:
+explicitly *not* another column — a rollup that follows whatever filters are on, so
+nobody exports to Excel to sum square feet by hand. Aggregated in Postgres for the same
+reason as `018`: /orders is paginated server-side, so summing the rows on screen would
+be wrong for any filter matching more than one page. Its 22 parameters mirror
+`applyOrderFilters()` branch for branch (the same TS<->SQL duplication `018`/`024`
+already carry; `getOrdersSummary()` in `apps/atlas/lib/queries/orders.ts` is the only
+caller and owns the mapping — a new filter needs a parameter here AND a line there, and
+the panel's total disagreeing with the table's count is the tell). `security invoker`,
+reading through `orders_with_on_time_status` (`024`), so `orders_select` RLS scopes it
+identically to the table beneath it and its Delayed/Late split is the exact same status
+each row's badge shows. Dry-run as a plain query against live data before applying:
+unfiltered total matched a direct `count(*)` exactly (13,983 non-stock rows), ~280ms
+for the full aggregate including the view's two per-row `private.*` calls. Applied via
+`apply_migration` from this session; advisors clean afterwards (security: only the
+pre-existing project-wide `auth_leaked_password_protection` WARN; performance: only
+pre-existing INFO notices, none touching this function). Frontend gate: the panel is
+fetched and rendered only for production-department members — not admins either, asked
+explicitly — direct request at approval time, "this view should be visible only to
+production team."
+
 ## Pre-existing history on this project (context, not part of this module's schema)
 
 This project was not a clean slate. Its migration history (`supabase_migrations.schema_migrations`)

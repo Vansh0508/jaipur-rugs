@@ -2606,6 +2606,38 @@ export type Database = {
           total: number
         }[]
       }
+      orders_filtered_summary: {
+        Args: {
+          p_aging?: string
+          p_ctype?: string
+          p_customer_nos?: string[]
+          p_customer_po_nos?: string[]
+          p_delay_status?: string
+          p_designs?: string[]
+          p_due_from?: string
+          p_due_to?: string
+          p_follow_up_people?: string[]
+          p_include_stock?: boolean
+          p_merchant_names?: string[]
+          p_on_hold?: string
+          p_on_time_status?: string
+          p_order_wise_merchants?: string[]
+          p_priorities?: number[]
+          p_production_order_statuses?: string[]
+          p_qualities?: string[]
+          p_quick_ship?: string
+          p_search?: string
+          p_sizes?: string[]
+          p_stage_ids?: string[]
+          p_terminal_stage_ids?: string[]
+        }
+        Returns: {
+          by_stage: Json
+          by_status: Json
+          total_count: number
+          total_sqft: number
+        }[]
+      }
       orders_list_facets: {
         Args: never
         Returns: {
