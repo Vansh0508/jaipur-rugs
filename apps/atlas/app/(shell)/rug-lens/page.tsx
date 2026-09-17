@@ -49,6 +49,7 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
     location: toArray(params.location),
     quality: toArray(params.quality),
     size: toArray(params.size),
+    customerCode: toArray(params.customerCode),
     itemType,
     search,
     includeHeldOrAssigned,
@@ -61,13 +62,14 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
     listRugLensFacets(supabase, filters),
     listOpenStock(supabase, filters),
   ]);
-  const { locations: locationOptions, qualities: qualityOptions, sizes: sizeOptions } = facets;
+  const { locations: locationOptions, qualities: qualityOptions, sizes: sizeOptions, customerCodes: customerCodeOptions } = facets;
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const hasAnyFilter =
     toArray(params.location).length > 0 ||
     toArray(params.quality).length > 0 ||
     toArray(params.size).length > 0 ||
+    toArray(params.customerCode).length > 0 ||
     Boolean(itemType) ||
     Boolean(search) ||
     includeHeldOrAssigned;
@@ -93,12 +95,14 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
         locationOptions={locationOptions}
         qualityOptions={qualityOptions}
         sizeOptions={sizeOptions}
+        customerCodeOptions={customerCodeOptions}
         hasAnyFilter={hasAnyFilter}
         values={{
           q: search ?? "",
           location: toArray(params.location),
           quality: toArray(params.quality),
           size: toArray(params.size),
+          customerCode: toArray(params.customerCode),
           itemType,
           // Was dropped from this object in an earlier edit (page.tsx's facets
           // refactor) — restored: without it, the Availability toggle's visual state

@@ -15,18 +15,27 @@ export interface RugLensFilterPanelProps {
   locationOptions: string[];
   qualityOptions: string[];
   sizeOptions: string[];
+  customerCodeOptions: string[];
   values: {
     q: string;
     location: string[];
     quality: string[];
     size: string[];
+    customerCode: string[];
     itemType?: string;
     availability?: string;
   };
   hasAnyFilter: boolean;
 }
 
-export function RugLensFilterPanel({ locationOptions, qualityOptions, sizeOptions, values, hasAnyFilter }: RugLensFilterPanelProps) {
+export function RugLensFilterPanel({
+  locationOptions,
+  qualityOptions,
+  sizeOptions,
+  customerCodeOptions,
+  values,
+  hasAnyFilter,
+}: RugLensFilterPanelProps) {
   const router = useRouter();
   const [filtersVisible, setFiltersVisible] = useLocalPreference("atlas:rugLens:filtersVisible", true);
   const [searchInput, setSearchInput] = useState(values.q);
@@ -113,6 +122,14 @@ export function RugLensFilterPanel({ locationOptions, qualityOptions, sizeOption
             options={sizeOptions.map((v) => ({ value: v, label: v }))}
             selected={current.size}
             onApply={(v) => apply({ size: v })}
+          />
+          {/* Customer Code = which of the 5 STOCK_CUSTOMER_CODES, direct request
+              2026-09-17. */}
+          <FacetDropdown
+            label="Customer Code"
+            options={customerCodeOptions.map((v) => ({ value: v, label: v }))}
+            selected={current.customerCode}
+            onApply={(v) => apply({ customerCode: v })}
           />
           {/* Sample = a swatch by size (Std Cubage), same rule Orders' own
               Construction filter uses — see lib/queries/rugLens.ts's

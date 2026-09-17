@@ -70,6 +70,9 @@ export interface RugLensFilters {
   quality?: string | string[];
   /** Exact multi-select, same semantics as location above. */
   size?: string | string[];
+  /** Exact multi-select over the 5 STOCK_CUSTOMER_CODES themselves — same semantics as
+   * location above. Direct request, 2026-09-17. */
+  customerCode?: string | string[];
   /** Corrected 2026-09-11, direct feedback: originally a Serial No_ prefix rule ("SS" =
    * sample) — now the same std_cubage-based "swatch" size classification Orders' own
    * Construction filter already uses (see SWATCH_MAX_SQFT and applyRugLensFilters'
@@ -142,6 +145,9 @@ function applyRugLensFilters(query: any, filters: RugLensFilters) {
   const sizes = toList(filters.size);
   if (sizes.length) query = query.in("size", sizes);
 
+  const customerCodes = toList(filters.customerCode);
+  if (customerCodes.length) query = query.in("customer_no", customerCodes);
+
   // "Sample" = a swatch by size, not by serial number — same rule Orders' own
   // Construction filter uses for ctype="swatch" (Std Cubage > 0 and < SWATCH_MAX_SQFT
   // sq ft). "Rug" is everything else, including a NULL std_cubage (has to be spelled
@@ -191,6 +197,7 @@ export interface RugLensFacets {
   locations: string[];
   qualities: string[];
   sizes: string[];
+  customerCodes: string[];
 }
 
 /** Shape of `rug_lens_facets()`'s single row — `supabase` here is a plain, un-generic'd
@@ -200,25 +207,24 @@ interface RugLensFacetsRow {
   locations: string[] | null;
   qualities: string[] | null;
   sizes: string[] | null;
+  customer_codes: string[] | null;
 }
 
-/** Distinct Location/Quality/Size values among rows that actually match the current
- * open-stock condition — and, direct feedback 2026-09-12, CROSS-FILTERED against each
- * other: picking a Location narrows what Quality/Size can even be picked from (and
- * vice versa), standard faceted-search behavior. Each facet is computed with every
- * OTHER filter applied (itemType/search/includeHeldOrAssigned always; the other two of
- * location/quality/size) but deliberately NOT its own current selection — a facet
- * should never filter out values the user already picked from itself, only react to
- * what's picked elsewhere.
+/** Distinct Location/Quality/Size/Customer Code values among rows that actually match
+ * the current open-stock condition — and, direct feedback 2026-09-12 (extended to
+ * Customer Code 2026-09-17), CROSS-FILTERED against each other: picking any one narrows
+ * what the other three can even be picked from. Each facet is computed with every OTHER
+ * filter applied (itemType/search/includeHeldOrAssigned always; the other three of
+ * location/quality/size/customerCode) but deliberately NOT its own current selection —
+ * a facet should never filter out values the user already picked from itself, only
+ * react to what's picked elsewhere.
  *
- * Computed by `rug_lens_facets()` (db/orders/020_rug_lens_facets_cross_filter.sql) —
- * one round trip, Postgres computes all three cross-filtered arrays off one shared
- * scan of `orders` — rather than three separate parallel paginated passes in JS.
- * SECURITY INVOKER (the default), so the existing RLS still scopes what it aggregates
- * over, same as every other query in this app. Verified live against real data before
- * being wired in here: narrowing by one real Quality value correctly shrank the
- * Location/Size options while leaving the Quality list itself unnarrowed (a facet never
- * hides its own current selection's siblings).
+ * Computed by `rug_lens_facets()` (db/orders/020_rug_lens_facets_cross_filter.sql,
+ * extended to a 4th facet by 031_rug_lens_facets_customer_code.sql) — one round trip,
+ * Postgres computes all four cross-filtered arrays off one shared scan of `orders` —
+ * rather than four separate parallel paginated passes in JS. SECURITY INVOKER (the
+ * default), so the existing RLS still scopes what it aggregates over, same as every
+ * other query in this app.
  *
  * *** 2026-09-11 incident note, resolved 2026-09-11 — kept for history, not a live
  * warning anymore: this function used to call a `rug_lens_facets()` Postgres RPC before
@@ -226,13 +232,19 @@ interface RugLensFacetsRow {
  * /rug-lens page load in production (PGRST202) until reverted to a plain paginated
  * query. The two conditions that revert's note required before trying an RPC again —
  * confirmed live in pg_proc, and Ayaan's explicit sign-off — are both satisfied as of
- * this rewrite (018 and 020 are applied and verified; Ayaan asked directly for this). ***/
+ * this rewrite (018 and 020 are applied and verified; Ayaan asked directly for this).
+ * 031 (adding Customer Code) drops and recreates this function under a new 7-arg
+ * signature (Postgres treats a different argument count as a distinct overload, not a
+ * replacement) — deployed with the DB migration applied and the code below updated to
+ * match in the same push, to avoid the same class of gap that caused the original
+ * incident. ***/
 export async function listRugLensFacets(supabase: SupabaseClient, filters: RugLensFilters): Promise<RugLensFacets> {
   const { data, error } = await supabase
     .rpc("rug_lens_facets", {
       p_location: toList(filters.location),
       p_quality: toList(filters.quality),
       p_size: toList(filters.size),
+      p_customer_code: toList(filters.customerCode),
       p_item_type: filters.itemType ?? null,
       p_search: filters.search ?? null,
       p_include_held_or_assigned: filters.includeHeldOrAssigned ?? false,
@@ -242,5 +254,10 @@ export async function listRugLensFacets(supabase: SupabaseClient, filters: RugLe
   const row = data as RugLensFacetsRow | null;
   const sort = (values: string[] | null | undefined) =>
     [...(values ?? [])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  return { locations: sort(row?.locations), qualities: sort(row?.qualities), sizes: sort(row?.sizes) };
+  return {
+    locations: sort(row?.locations),
+    qualities: sort(row?.qualities),
+    sizes: sort(row?.sizes),
+    customerCodes: sort(row?.customer_codes),
+  };
 }
