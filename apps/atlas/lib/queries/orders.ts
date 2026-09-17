@@ -132,6 +132,77 @@ export interface OrderListResult {
   totalCount: number;
 }
 
+/** Rebuilds a real `OrderFilters` from OrdersTable's own `values` prop (the shape
+ * orders/page.tsx already passes down, itself built from the URL's searchParams) — the
+ * one other place this exact field-by-field mapping happens is that page's own
+ * searchParams -> OrderFilters conversion; this is the reverse direction (already-
+ * resolved values -> OrderFilters), needed so a CLIENT component can re-run the same
+ * query with a different limit/sort than what the server originally fetched.
+ *
+ * Added 2026-09-17, direct request: "select and copy" (and Export to Excel) only ever
+ * grabbed however many rows the on-screen page happened to hold — 20, 50, whatever the
+ * page-size setting was — with no way to grab more of the whole filtered set without
+ * changing the actual on-screen pagination. This is what lets OrdersTable.tsx fetch a
+ * chosen quantity (or "all") of the CURRENTLY filtered rows, from the browser, entirely
+ * independent of the page-size setting still driving what's actually on screen. */
+export function buildOrderFiltersFromValues(
+  values: {
+    q: string;
+    stageId: string[];
+    customerNo: string[];
+    merchantName: string[];
+    orderWiseMerchant: string[];
+    followUpPerson: string[];
+    customerPoNo: string[];
+    quality: string[];
+    design: string[];
+    size: string[];
+    productionOrderStatus: string[];
+    priority: string[];
+    aging?: string;
+    onHold?: string;
+    quickShip?: string;
+    delayStatus?: string;
+    onTimeStatus?: string;
+    ctype?: string;
+    dueFrom?: string;
+    dueTo?: string;
+  },
+  extra: {
+    terminalStageIds: string[];
+    sortBy?: SortableColumn;
+    sortDir?: "asc" | "desc";
+    limit: number;
+  },
+): OrderFilters {
+  return {
+    search: values.q || undefined,
+    stageId: values.stageId,
+    customerNo: values.customerNo,
+    merchantName: values.merchantName,
+    orderWiseMerchant: values.orderWiseMerchant,
+    followUpPerson: values.followUpPerson,
+    customerPoNo: values.customerPoNo,
+    quality: values.quality,
+    design: values.design,
+    size: values.size,
+    productionOrderStatus: values.productionOrderStatus,
+    priority: values.priority,
+    aging: values.aging as AgingBucket | undefined,
+    onHold: values.onHold as YesNo | undefined,
+    quickShip: values.quickShip as YesNo | undefined,
+    delayStatus: values.delayStatus as DelayStatusFilter | undefined,
+    onTimeStatus: values.onTimeStatus as OrderFilters["onTimeStatus"],
+    terminalStageIds: extra.terminalStageIds,
+    dueFrom: values.dueFrom,
+    dueTo: values.dueTo,
+    ctype: values.ctype as ConstructionType | undefined,
+    sortBy: extra.sortBy,
+    sortDir: extra.sortDir,
+    limit: extra.limit,
+  };
+}
+
 // Exported — lib/queries/rugLens.ts reuses this exact threshold for its own
 // Sample/Rug classification (std_cubage-based, not the serial-number-prefix rule it
 // used at first), so the two "what counts as a swatch" definitions in this app can't

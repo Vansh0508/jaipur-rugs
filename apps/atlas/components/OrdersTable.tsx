@@ -38,10 +38,13 @@ import { getBrowserSupabaseClient } from "@/lib/supabaseClient.browser";
 import {
   PAGE_SIZE_OPTIONS,
   DEFAULT_PAGE_SIZE,
+  listOrders,
+  buildOrderFiltersFromValues,
   type OrderRow,
   type StageRow,
   type OrderFacets,
   type ViewPreferencesRow,
+  type SortableColumn,
 } from "@/lib/queries/orders";
 
 /** Narrows a jsonb column's loosely-typed value (Json = string | number | boolean |
@@ -110,6 +113,12 @@ function DispatchTrackingInfo({
     </span>
   );
 }
+
+/** Options for the "Select All" quantity picker — the same numbers PAGE_SIZE_OPTIONS
+ * already offers for on-screen pagination, plus "all". Deliberately not a separate,
+ * unrelated list — same numbers the user already sees and understands from the Rows:
+ * selector, just applied to Copy/Export instead of what's rendered on screen. */
+const EXPORT_QUANTITY_OPTIONS: (number | "all")[] = [...PAGE_SIZE_OPTIONS, "all"];
 
 function useLinkBuilder() {
   const searchParams = useSearchParams();
@@ -443,6 +452,23 @@ export function OrdersTable({
   const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set<Key>());
   const [computedSort, setComputedSort] = useState<ComputedSort>(null);
 
+  // How many rows "Select All" + Copy/Export actually operate on — decoupled from the
+  // on-screen page-size setting, per direct request, 2026-09-17: "select and copy" used
+  // to only ever grab however many rows the current page held (20, 50, whatever), with
+  // no way to grab more of the whole filtered set without changing the real on-screen
+  // pagination. Defaults to matching pageSize so nobody who never touches this control
+  // sees any change from before. fetchedExportRows caches the one extra fetch a
+  // non-default quantity needs (cleared whenever the quantity changes again) — the
+  // common case (quantity === pageSize) never fetches at all, it just reuses `rows`.
+  const [exportQuantity, setExportQuantity] = useState<number | "all">(pageSize);
+  const [fetchedExportRows, setFetchedExportRows] = useState<OrderRow[] | null>(null);
+  const [exportFetchError, setExportFetchError] = useState<string | null>(null);
+  useEffect(() => {
+    setFetchedExportRows(null);
+    setExportFetchError(null);
+  }, [exportQuantity]);
+  const terminalStageIds = useMemo(() => stages.filter((s) => s.is_terminal).map((s) => s.id), [stages]);
+
   // View preferences (shown columns, order, hidden filters, row height) — seeded from
   // the account's saved row (initialViewPreferences, fetched server-side) rather than
   // localStorage, so it follows the login across devices per direct request, 2026-09-14:
@@ -621,20 +647,55 @@ export function OrdersTable({
     router.push(buildLink({ sortBy: columnId, sortDir: dir }));
   }
 
-  const selectedCount = selectedKeys === "all" ? rows.length : selectedKeys.size;
-  function selectedRows(): OrderRow[] {
-    if (selectedKeys === "all") return rows;
-    return rows.filter((o) => (selectedKeys as Set<Key>).has(o.id));
+  // "Select All" reporting its count as exportQuantity (not just rows.length) is
+  // deliberate — see this file's exportQuantity comment. A manual, individual selection
+  // (checking specific boxes) is untouched by any of this; that count is always exactly
+  // what's checked.
+  const selectedCount =
+    selectedKeys === "all" ? (exportQuantity === "all" ? totalCount : Math.min(exportQuantity, totalCount)) : selectedKeys.size;
+
+  /** Only "Select All" can ever need the extra fetch — a manual selection is always
+   * already-loaded rows. Fetches once per distinct exportQuantity value (cached in
+   * fetchedExportRows, cleared by the effect above whenever exportQuantity changes) —
+   * repeated Copy/Export presses at the same quantity never refetch. */
+  async function resolveSelectedRows(): Promise<OrderRow[]> {
+    if (selectedKeys !== "all") {
+      return rows.filter((o) => (selectedKeys as Set<Key>).has(o.id));
+    }
+    if (exportQuantity === pageSize) return rows; // the common case — already have it
+    if (fetchedExportRows) return fetchedExportRows;
+
+    const supabase = getBrowserSupabaseClient();
+    const filters = buildOrderFiltersFromValues(values, {
+      terminalStageIds,
+      sortBy: currentSort as SortableColumn | undefined,
+      sortDir: currentDir,
+      limit: exportQuantity === "all" ? Math.max(totalCount, 1) : exportQuantity,
+    });
+    const { rows: fetched } = await listOrders(supabase, filters);
+    setFetchedExportRows(fetched);
+    return fetched;
   }
 
   async function handleCopySelected(): Promise<boolean> {
-    const selected = selectedRows();
-    if (!selected.length) return false;
-    return copyToClipboard(buildClipboardRows(selected, stageById), buildOrdersClipboardHtml(selected, stageById));
+    try {
+      const selected = await resolveSelectedRows();
+      if (!selected.length) return false;
+      return copyToClipboard(buildClipboardRows(selected, stageById), buildOrdersClipboardHtml(selected, stageById));
+    } catch {
+      setExportFetchError("Couldn't fetch all matching rows — try a smaller quantity.");
+      return false;
+    }
   }
 
-  function handleExportSelected() {
-    const selected = selectedRows();
+  async function handleExportSelected() {
+    let selected: OrderRow[];
+    try {
+      selected = await resolveSelectedRows();
+    } catch {
+      setExportFetchError("Couldn't fetch all matching rows — try a smaller quantity.");
+      return;
+    }
     if (!selected.length) return;
     exportRowsToExcel(
       selected.map((o) => exportCells(o, stageNameById)),
@@ -1719,6 +1780,17 @@ export function OrdersTable({
           onCopy={handleCopySelected}
           onExport={handleExportSelected}
           onClear={() => setSelectedKeys(new Set())}
+          quantityPicker={
+            selectedKeys === "all" && totalCount > pageSize
+              ? {
+                  value: exportQuantity,
+                  options: EXPORT_QUANTITY_OPTIONS,
+                  totalCount,
+                  onChange: setExportQuantity,
+                }
+              : undefined
+          }
+          error={exportFetchError}
         />
       </div>
     </div>
