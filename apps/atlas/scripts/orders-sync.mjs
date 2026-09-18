@@ -68,6 +68,19 @@ const NAV011_VIEW = "[NAV-011- Posted Whse Shipment Packing List]";
 const AWB_TRACKING_VIEW = "[View-0462-Sales_Inv_With_AWB_Tracking_And_Bale_Wise_Details]";
 const SHIPPING_AGENT_TABLE = "[JRCPL Live$Shipping Agent]";
 
+// Bigger than the main loop's BATCH_SIZE on purpose — syncDispatchStatus/syncTrackingInfo
+// upsert a handful of columns (not a full mapErpRowToOrder() row, ~50+ columns), so a
+// much bigger .in() item_no list per round trip is still a small payload. Added
+// 2026-09-18, real production incident: these two passes' extra round trips (on top of
+// the main loop's own ~370 batches × 2 calls) coincided with real "canceling statement
+// due to statement timeout" 500s on orders_dashboard_stats/orders_list_facets during a
+// live sync run — table bloat and the RPCs' own query cost were both ruled out directly
+// (checked live: 48MB table, autovacuum current, RPCs measured fast when built), so this
+// cuts the number of concurrent-with-everything-else round trips these two passes add,
+// regardless of the exact contention mechanism. See ERP_AND_EXTERNAL_REQUESTS.md or the
+// commit message for the fuller incident writeup.
+const LIGHTWEIGHT_BATCH_SIZE = 1500;
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!supabaseUrl || !serviceRoleKey) {
@@ -294,8 +307,8 @@ async function syncDispatchStatus(pool, dispatchedStageId) {
   let updated = 0;
   let stageEventsInserted = 0;
 
-  for (let i = 0; i < itemNos.length; i += BATCH_SIZE) {
-    const batchItemNos = itemNos.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < itemNos.length; i += LIGHTWEIGHT_BATCH_SIZE) {
+    const batchItemNos = itemNos.slice(i, i + LIGHTWEIGHT_BATCH_SIZE);
     const { data: existing, error: existingError } = await supabaseAdmin
       .from("orders")
       .select("id, item_no, otn_no, dispatched_at")
@@ -393,8 +406,8 @@ async function syncTrackingInfo(pool) {
   const itemNos = [...byItemNo.keys()];
   let updated = 0;
 
-  for (let i = 0; i < itemNos.length; i += BATCH_SIZE) {
-    const batchItemNos = itemNos.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < itemNos.length; i += LIGHTWEIGHT_BATCH_SIZE) {
+    const batchItemNos = itemNos.slice(i, i + LIGHTWEIGHT_BATCH_SIZE);
     const { data: existing, error: existingError } = await supabaseAdmin
       .from("orders")
       .select("item_no, otn_no, tracking_no")

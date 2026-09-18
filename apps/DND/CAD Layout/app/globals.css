@@ -1,0 +1,7 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+@import "@jaipur-rugs/config/tailwind-theme.css";
+
+/* ui-kit's components live in a sibling workspace package outside this app's tree — tell
+   the Tailwind v4 scanner to include it (same as every other app). */
+@source "../../../../packages/ui-kit/src";
