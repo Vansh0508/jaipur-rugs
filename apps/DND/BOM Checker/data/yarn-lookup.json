@@ -1,0 +1,897 @@
+[
+  {
+    "code": "9",
+    "material": "Wool",
+    "description": "Wool Yarn Standard (Hand Spun)  3 Ply 24-30  Dyed (For Processed)"
+  },
+  {
+    "code": "167",
+    "material": "Bamboo Silk",
+    "description": "Bamboo silk Machine Spun  12 Ply 2/16 Dyed (For Processed)"
+  },
+  {
+    "code": "119",
+    "material": "Wool",
+    "description": "Wool Yarn Standard (Hand Spun) New Zealand 6 Ply 70-80 Dyed (For Processed)"
+  },
+  {
+    "code": "170",
+    "material": "Wool",
+    "description": "Wool Yarn Standard  New Zealand 2Ply 60 COUNT Dyed (For Processed)"
+  },
+  {
+    "code": "116",
+    "material": "polyester",
+    "description": "Polyester ECOSE YARN  machine spun 12/16 Ne Count (3600 denier / 150 TPM) dyed"
+  },
+  {
+    "code": "11",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard 2 Ply 20-25 Dyed (For Processed)"
+  },
+  {
+    "code": "25",
+    "material": "Viscose",
+    "description": "Viscose Yarn Machine Spun  24 Ply 2/16 Dyed (For Processed)"
+  },
+  {
+    "code": "97",
+    "material": "Wool",
+    "description": "Wool Yarn Hand Spun  1 Ply 18-24 count Twist Dyed (For Processed)"
+  },
+  {
+    "code": "165",
+    "material": "Silk",
+    "description": "Recycle georgette silk Hand spun yarn 7-12 count 1 ply Dyed (For Processed)"
+  },
+  {
+    "code": "46",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard 1 Ply 26-32 abrash Dyed (For Processed)"
+  },
+  {
+    "code": "171",
+    "material": "Silk",
+    "description": "Silk Yarn HS 1 Ply 30-40 dyed spooled (For Processed)  recyecle export loom silk"
+  },
+  {
+    "code": "173",
+    "material": "Wool",
+    "description": "Wool Yarn MS 2 Ply 10-20 Count DY"
+  },
+  {
+    "code": "10",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard 1 Ply 26-32 Dyed (For Processed)"
+  },
+  {
+    "code": "51",
+    "material": "polyester",
+    "description": "Lurex Yarn Machine Spun  12 Ply  Dyed (For Processed)"
+  },
+  {
+    "code": "135",
+    "material": "Wool",
+    "description": "Wool Yarn RHS (LATOO)  1 Ply 5-7 dyed (For Processed)  wool AFGANI"
+  },
+  {
+    "code": "169",
+    "material": "Wool",
+    "description": "Wool Yarn Standard  New Zealand 6 Ply 60 COUNT Dyed (For Processed)"
+  },
+  {
+    "code": "34",
+    "material": "Silk",
+    "description": "2/60 MS Silk Yarn 14 X2 28Ply Dyed (For Processed)"
+  },
+  {
+    "code": "126",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard 2 Ply 20-25 natural/dyed (For Processed) afghani"
+  },
+  {
+    "code": "86",
+    "material": "Wool",
+    "description": "Wool Yarn Hand Spun  2 Ply 24-30 fiber Dyed (For Processed)"
+  },
+  {
+    "code": "148",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard Heavy Abrash  3Ply 20-25Dyed (For Processed) tai dai"
+  },
+  {
+    "code": "71",
+    "material": "Silk",
+    "description": "Silk Yarn Standard (Hand Spun)  1 Ply 28-30 Dyed (For Processed)"
+  },
+  {
+    "code": "142",
+    "material": "Wool",
+    "description": "natural wool yarn Hand Spun 20-25 count 1ply hank dayed"
+  },
+  {
+    "code": "67",
+    "material": "Mix",
+    "description": "wool,viscose& polyester yarn Hand Spun 24-30 count 1ply hank"
+  },
+  {
+    "code": "80",
+    "material": "Wool",
+    "description": "Lincoln Wool MS Yarn  1 Ply 40-42 Count Dyed (For Processed)"
+  },
+  {
+    "code": "77",
+    "material": "Jute",
+    "description": "Jute yarn hand spun 0 count 1ply hank"
+  },
+  {
+    "code": "99",
+    "material": "Mix",
+    "description": "NULL"
+  },
+  {
+    "code": "89",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  5 Ply 60 Dyed (For Processed)"
+  },
+  {
+    "code": "150",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  4 Ply 50 Dyed (For Processed)"
+  },
+  {
+    "code": "6",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun 4 Ply 60 Dyed (For Processed)"
+  },
+  {
+    "code": "102",
+    "material": "Wool & Viscose",
+    "description": "Wool viscose Yarn Machine Spun  1 Ply 30 Undyed (For Processed) natural wool 70% viscsose 30% blended"
+  },
+  {
+    "code": "23",
+    "material": "Wool",
+    "description": "Wool Yarn Standard Light Twisted(HS)  1 Ply 12-16 Dyed (For Processed)"
+  },
+  {
+    "code": "29",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard 3 Ply 20-25 Dyed (For Processed)"
+  },
+  {
+    "code": "132",
+    "material": "Bamboo Silk",
+    "description": "Bamboo Yarn mill Spun  1 Ply 30 count  Dyed (For Processed)"
+  },
+  {
+    "code": "94",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  1 Ply 10 Dyed (For Processed)"
+  },
+  {
+    "code": "2",
+    "material": "Wool",
+    "description": "Wool Yarn Standard (Hand Spun)  2 Ply 24-30  Dyed (For Processed)"
+  },
+  {
+    "code": "72",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  4 Ply 60 Dyed (For Processed)"
+  },
+  {
+    "code": "96",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  1 Ply 10 count Dyed (For Processed)"
+  },
+  {
+    "code": "66",
+    "material": "polyester",
+    "description": "10 count polyester yarn 10 count 1ply Dyed (for processed)"
+  },
+  {
+    "code": "162",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun Twisted  1 Ply 20-25 Dyed (For Processed) SUMAK space dyeing"
+  },
+  {
+    "code": "160",
+    "material": "polyester",
+    "description": "pet yarn machine spun 16-20 count fiber dyed"
+  },
+  {
+    "code": "143",
+    "material": "Wool",
+    "description": "Wool 90% silk10 % blended Yarn Standard (Hand Spun)  1 Ply 10-12  fiber Dyed (For Processed)"
+  },
+  {
+    "code": "60",
+    "material": "Silk",
+    "description": "Silk Yarn Standard (Hand Spun)  2 Ply 28-30 abrash Dyed (For Processed)"
+  },
+  {
+    "code": "110",
+    "material": "Wool",
+    "description": "Wool Yarn Hand Spun  1 Ply 4-6 Undyed (For Processed) natural wool"
+  },
+  {
+    "code": "127",
+    "material": "polyester",
+    "description": "Polyester YARN  machine spun 5-8 count dyed malai dori"
+  },
+  {
+    "code": "101",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  1 Ply 30 Undyed (For Processed) natural wool"
+  },
+  {
+    "code": "87",
+    "material": "Wool",
+    "description": "NULL"
+  },
+  {
+    "code": "41",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard 1 Ply 8-12 Dyed (For Processed) HT DYEING"
+  },
+  {
+    "code": "130",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  1 Ply 10 dyed (For Processed)  wool saridion"
+  },
+  {
+    "code": "178",
+    "material": "Silk",
+    "description": "Silk Yarn HS 2 Ply 30-40 dyed (For Processed)  recyecle saree silk"
+  },
+  {
+    "code": "38",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun 50 count space Dyed (For Processed)"
+  },
+  {
+    "code": "138",
+    "material": "Zari",
+    "description": "Zari Yarn Machine Spun  42 Ply  Dyed (For Processed)"
+  },
+  {
+    "code": "114",
+    "material": "Viscose",
+    "description": "Recycle viscose chow-chow Hand spun yarn 5-7 count 1 ply Dyed (For Processed)"
+  },
+  {
+    "code": "85",
+    "material": "Jute",
+    "description": "Jute yarn hand spun 30 count Special/Super PD 1ply hank"
+  },
+  {
+    "code": "159",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard 2 Ply 20-25 Dyed (For Processed)  RMR pindi over dyeing"
+  },
+  {
+    "code": "88",
+    "material": "Wool",
+    "description": "Wool Viscose Yarn Machine Spun  14 Ply 60/2/16 Dyed (For Processed)"
+  },
+  {
+    "code": "128",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  4 Ply twist 50 Dyed abrash tai dye (For Processed)"
+  },
+  {
+    "code": "105",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard 1 Ply 16-20 Dyed (For Processed) abrash dyeing"
+  },
+  {
+    "code": "48",
+    "material": "Silk",
+    "description": "Silk Yarn Machine Spun  10x2 20 Ply  Dyed (For Processed)"
+  },
+  {
+    "code": "166",
+    "material": "Silk",
+    "description": "Silk Yarn   10 Ply 2/60 Dyed (For Processed)"
+  },
+  {
+    "code": "111",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  1 Ply 10 dyed (For Processed)  wool saredion"
+  },
+  {
+    "code": "106",
+    "material": "Silk",
+    "description": "Silk Yarn Standard (Hand Spun)  1 Ply 12-16 Dyed (For Processed)"
+  },
+  {
+    "code": "8",
+    "material": "Wool",
+    "description": "Wool Yarn Standard (ms semi) New Zealand 2 Ply 70-80 Dyed (For Processed)"
+  },
+  {
+    "code": "70",
+    "material": "Wool & Bamboo silk",
+    "description": "Lincoln Wool MS Yarn  1 Ply  Bamboo silk 2-16 6ply  mix ply dayed"
+  },
+  {
+    "code": "40",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard 1 Ply 20-25 natural/dyed (For Processed) afgani"
+  },
+  {
+    "code": "7",
+    "material": "Silk",
+    "description": "Ms Silk Yarn 14 Ply Dyed (For Processed)"
+  },
+  {
+    "code": "156",
+    "material": "Tancil",
+    "description": "Tencel yarn Machine Spun  24 Ply 2/16 Dyed (For Processed)"
+  },
+  {
+    "code": "154",
+    "material": "Wool",
+    "description": "Wool Yarn Hand spun Standard 1 Ply 6-9 count dyed (For Processed)"
+  },
+  {
+    "code": "121",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  1 Ply 10 Undyed (For Processed) natural wool"
+  },
+  {
+    "code": "109",
+    "material": "Bamboo Silk",
+    "description": "Bamboo Yarn Hand Spun  1 Ply 24-30 count  Dyed (For Processed)"
+  },
+  {
+    "code": "43",
+    "material": "Bamboo Silk",
+    "description": "Bamboo silk Machine Spun  24 Ply 2/16 Dyed (For Processed)"
+  },
+  {
+    "code": "157",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard 2 Ply 20-25 Dyed (For Processed) Bleached RMR over dyeing"
+  },
+  {
+    "code": "137",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  1 Ply 30 Undyed (For Processed) natural wool space dyeing"
+  },
+  {
+    "code": "4",
+    "material": "Wool",
+    "description": "Wool Yarn Standard (Hand Spun)  2 Ply 30-40  Dyed (For Processed)"
+  },
+  {
+    "code": "163",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  1 Ply 20-25  Undyed (For Processed) natural wool and dayed"
+  },
+  {
+    "code": "68",
+    "material": "Bamboo Silk",
+    "description": "2/16 bamboo silk 8 ply machine spun dyed yarn"
+  },
+  {
+    "code": "79",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun blended yarn 4 Ply 60 Dyed (For Processed)"
+  },
+  {
+    "code": "175",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard 1 Ply 8-15 Dyed (For Processed)  natural/dayed HT DYEING"
+  },
+  {
+    "code": "63",
+    "material": "Wool",
+    "description": "natural wool yarn Hand Spun 20-25 count 1ply hank"
+  },
+  {
+    "code": "81",
+    "material": "Silk",
+    "description": "Silk Yarn Standard (Hand Spun)  1 Ply 28-30 abrash Dyed (For Processed)"
+  },
+  {
+    "code": "103",
+    "material": "Bamboo Silk",
+    "description": "Bamboo Yarn Hand Spun  1 Ply 15-20 count  Dyed (For Processed)"
+  },
+  {
+    "code": "53",
+    "material": "Viscose",
+    "description": "viscose yarn 60 count 1ply dyed natural look"
+  },
+  {
+    "code": "64",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  3 Ply 70-80 Dyed (For Processed)"
+  },
+  {
+    "code": "58",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  4 Ply 60 Dyed (For Processed) natural wool"
+  },
+  {
+    "code": "140",
+    "material": "Nylon",
+    "description": "Nylon Yarn Machine Spun  1 Ply 60 Dyed (For Processed)"
+  },
+  {
+    "code": "164",
+    "material": "Nylon",
+    "description": "Nylon silkenza Machine Spun 8/Ply 2/4NE Filament Dyed (For Processed)"
+  },
+  {
+    "code": "65",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  4 Ply 60 Dyed (For Processed)SPACE"
+  },
+  {
+    "code": "22",
+    "material": "Wool",
+    "description": "Wool Yarn Standard Light Twisted(HS)  2 Ply 24-32 Dyed (For Processed)"
+  },
+  {
+    "code": "36",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  4 Ply 55 Dyed (For Processed) natural wool"
+  },
+  {
+    "code": "16",
+    "material": "Silk",
+    "description": "Silk Yarn Standard (Hand Spun)  1 Ply 12-15 Dyed (For Processed)"
+  },
+  {
+    "code": "152",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  1 Ply 60 Fiber Dyed (For Processed)"
+  },
+  {
+    "code": "124",
+    "material": "wool",
+    "description": "Wool Yarn Hand Spun  2 Ply 5-7 dyed (For Processed)  wool"
+  },
+  {
+    "code": "125",
+    "material": "Zari",
+    "description": "Wool Yarn Hand Spun  2 Ply 5-7 space dyed (For Processed)  wool"
+  },
+  {
+    "code": "112",
+    "material": "Wool",
+    "description": "Wool Yarn Standard  New Zealand 4 Ply 60 COUNT Dyed (For Processed)"
+  },
+  {
+    "code": "74",
+    "material": "Wool",
+    "description": "WOOLEN YARN NATURAL WOOL HAND SPUN 20-25 UNDAYED HANK (80% imp.20%nz blend)"
+  },
+  {
+    "code": "133",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  1 Ply 10 count space Dyed (For Processed)"
+  },
+  {
+    "code": "44",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard Heavy Abrash  3Ply 20-25Dyed (For Processed)"
+  },
+  {
+    "code": "98",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  3 Ply 55-60 count Dyed (For Processed)"
+  },
+  {
+    "code": "32",
+    "material": "Wool",
+    "description": "50 count wool"
+  },
+  {
+    "code": "147",
+    "material": "Wool",
+    "description": "Wool 50% SILK 50 % blended Yarn Standard (Hand Spun)  2 Ply 26-32  Dyed (For Processed)"
+  },
+  {
+    "code": "172",
+    "material": "Wool & Silk",
+    "description": "Silk Yarn WST. Standard (Hand Spun)  1 Ply 12-16 Dyed (For Processed)"
+  },
+  {
+    "code": "69",
+    "material": "polyester",
+    "description": "Polyester yarn 0 count 1ply machine spun dyed yarn"
+  },
+  {
+    "code": "50",
+    "material": "Wool",
+    "description": "38-42 count rhs 1ply"
+  },
+  {
+    "code": "158",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard 2 Ply 20-25 Dyed (For Processed) Without Bleached RMR over dyeing"
+  },
+  {
+    "code": "141",
+    "material": "Jute",
+    "description": "Jute yarn Machine spun 60 count 3ply hank"
+  },
+  {
+    "code": "26",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  2 Ply 55 Dyed (For Processed)"
+  },
+  {
+    "code": "78",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun Felted  1 Ply 10 count Dyed (For Processed)"
+  },
+  {
+    "code": "95",
+    "material": "Silk",
+    "description": "NULL"
+  },
+  {
+    "code": "177",
+    "material": "Wool & polyester",
+    "description": "wool pet blended yarn"
+  },
+  {
+    "code": "131",
+    "material": "Wool",
+    "description": "Wool 50% SILK 50 % blended Yarn Standard (Hand Spun)  1 Ply 24-30  Dyed (For Processed)"
+  },
+  {
+    "code": "30",
+    "material": "Bamboo Silk",
+    "description": "Bamboo silk Machine Spun  12 Ply 2/16 Dyed (For Processed)"
+  },
+  {
+    "code": "91",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  4 Ply 60 Dyed (For Processed)"
+  },
+  {
+    "code": "113",
+    "material": "Wool",
+    "description": "Wool NZ Yarn Hand Spun  1 Ply 8-12 Undyed (For Processed) natural wool"
+  },
+  {
+    "code": "19",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  3 Ply 55 Dyed (For Processed)"
+  },
+  {
+    "code": "136",
+    "material": "wool",
+    "description": "Wool Yarn Standard Light Twisted(HS)  2 Ply 12-16 Dyed (For Processed)"
+  },
+  {
+    "code": "107",
+    "material": "Wool & Viscose",
+    "description": "wool viscose fiber dyed yarn machine spun 1 ply 30 count"
+  },
+  {
+    "code": "122",
+    "material": "Wool",
+    "description": "Wool 70% tencil 30 % blended Yarn Standard (Hand Spun)  1 Ply 10-12  fiber Dyed (For Processed)"
+  },
+  {
+    "code": "144",
+    "material": "Nettle",
+    "description": "nettle yarn hs 40-50 dyed 1 ply hank"
+  },
+  {
+    "code": "76",
+    "material": "Viscose",
+    "description": "Viscose Yarn Machine Spun  24 Ply 2/16 Dyed (For Processed)"
+  },
+  {
+    "code": "17",
+    "material": "Wool & Viscose",
+    "description": "Wool viscose blended Yarn Machine Spun\u00a0 45 Count 4 Ply natural"
+  },
+  {
+    "code": "179",
+    "material": "Acrylic",
+    "description": "Acrylic  mix yarn (VIMAR)"
+  },
+  {
+    "code": "54",
+    "material": "Wool & Viscose",
+    "description": "Wool Viscose Yarn Machine Spun  12 Ply 70-80 Dyed (For Processed)"
+  },
+  {
+    "code": "104",
+    "material": "Jasmine",
+    "description": "JASMINE Yarn MACHINE Spun  2 Ply 60 count  Dyed (For Processed)"
+  },
+  {
+    "code": "146",
+    "material": "Linen",
+    "description": "Linen yarn 16-20 count HS"
+  },
+  {
+    "code": "61",
+    "material": "Wool",
+    "description": "Lincoln Wool MS Yarn  2 Ply 40-42 Count Dyed (For Processed)"
+  },
+  {
+    "code": "161",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard  1ply 16-20 Fiber Dyed (For Processed)"
+  },
+  {
+    "code": "20",
+    "material": "Wool",
+    "description": "Wool Yarn Twisted RHS  1 Ply 18-23 Dyed (For Processed)"
+  },
+  {
+    "code": "27",
+    "material": "Viscose",
+    "description": "Viscose Yarn Machine Spun  12 Ply 2/16 Dyed (For Processed)"
+  },
+  {
+    "code": "5",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  1 Ply 8 Dyed (For Processed)"
+  },
+  {
+    "code": "59",
+    "material": "mix",
+    "description": "Wool viscose polyester blended Yarn Machine Spun\u00a0 17 Count 2 Ply natural"
+  },
+  {
+    "code": "176",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  2 Ply 10 count Dyed (For Processed)"
+  },
+  {
+    "code": "47",
+    "material": "Wool",
+    "description": "Wool Yarn Standard (Hand Spun) New Zealand 4 Ply 70-80 Dyed (For Processed)"
+  },
+  {
+    "code": "45",
+    "material": "Silk",
+    "description": "Silk Yarn 28 Ply Dyed (For Processed)"
+  },
+  {
+    "code": "12",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  1 Ply 7 Dyed (For Processed)"
+  },
+  {
+    "code": "118",
+    "material": "Silk",
+    "description": "Silk Yarn Standard (Hand Spun)  1 Ply 18-22 Dyed (For Processed)"
+  },
+  {
+    "code": "56",
+    "material": "Viscose",
+    "description": "Viscose Yarn Machine Spun  20 Ply 2/32 Dyed (For Processed)"
+  },
+  {
+    "code": "168",
+    "material": "Viscose",
+    "description": "Viscose Yarn Machine Spun  10 Ply 2/32 Dyed (For Processed)"
+  },
+  {
+    "code": "33",
+    "material": "Silk",
+    "description": "2/60 MS Silk Yarn 14 Ply Dyed (For Processed)"
+  },
+  {
+    "code": "39",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard 2 Ply 26-32 Dyed (For Processed)"
+  },
+  {
+    "code": "57",
+    "material": "Wool & Viscose",
+    "description": "Wool Viscose Yarn Machine Spun  4 Ply 50 Dyed (For Processed)"
+  },
+  {
+    "code": "31",
+    "material": "Linen",
+    "description": "NULL"
+  },
+  {
+    "code": "75",
+    "material": "Silk",
+    "description": "Silk Yarn Standard (Hand Spun)  1 Ply 24-30 Dyed (For Processed)"
+  },
+  {
+    "code": "13",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun Twisted 2 Ply 20-25 Dyed (For Processed) SUMAK"
+  },
+  {
+    "code": "151",
+    "material": "Silk",
+    "description": "Silk Yarn HS 2 Ply 30-40 dyed (For Processed)  recyecle export loom silk"
+  },
+  {
+    "code": "73",
+    "material": "Viscose",
+    "description": "Wool Yarn Machine Spun  16 Ply(Used For Theda) 55 Dyed (For Processed)"
+  },
+  {
+    "code": "120",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  5 Ply 60 Dyed (For Processed)"
+  },
+  {
+    "code": "18",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  4 Ply 50 Dyed (For Processed)"
+  },
+  {
+    "code": "108",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard 1 Ply 12-25 uneven count Dyed (For Processed) abrash dyeing"
+  },
+  {
+    "code": "35",
+    "material": "Mix",
+    "description": "polyester nylon Wool  blended Yarn Machine Spun\u00a0 45 Count 1 Ply natural"
+  },
+  {
+    "code": "129",
+    "material": "polyester",
+    "description": "Pet YARN  machine spun 5-7 count fiber dyed"
+  },
+  {
+    "code": "14",
+    "material": "Wool",
+    "description": "Wool Yarn Standard  New Zealand 4 Ply 60 COUNT Dyed (For Processed)"
+  },
+  {
+    "code": "123",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard 1 Ply 20-25 natural/dyed (For Processed) afgani"
+  },
+  {
+    "code": "3",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard 1 Ply 16-20 Dyed (For Processed)"
+  },
+  {
+    "code": "92",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  4 Ply 50 Dyed (For Processed)"
+  },
+  {
+    "code": "90",
+    "material": "Viscose",
+    "description": "Viscose Yarn Machine Spun  18 Ply 2/16 Dyed (For Processed)"
+  },
+  {
+    "code": "84",
+    "material": "Silk",
+    "description": "Silk Yarn   10 Ply 2/60 Dyed (For Processed)"
+  },
+  {
+    "code": "15",
+    "material": "Silk",
+    "description": "Silk Yarn 12 Ply Dyed (For Processed)"
+  },
+  {
+    "code": "21",
+    "material": "Wool",
+    "description": "Wool Yarn Semi Worsted New Zealand 3 Ply 80 Dyed (For Processed)"
+  },
+  {
+    "code": "145",
+    "material": "Silk",
+    "description": "Recycle chiffon silk Hand spun yarn 13-18 count 1 ply Dyed (For Processed)"
+  },
+  {
+    "code": "62",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  2 Ply 11 Dyed (For Processed) space dayed  wool"
+  },
+  {
+    "code": "37",
+    "material": "Viscose",
+    "description": "Viscose Yarn Machine Spun  24 Ply 2/16 Dyed (For Processed)"
+  },
+  {
+    "code": "134",
+    "material": "Wool",
+    "description": "Wool Yarn Hand spun Standard 1 Ply 10-15 natural/dyed (For Processed) Marino"
+  },
+  {
+    "code": "82",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard 1 Ply 20-25 abrash Dyed (For Processed)"
+  },
+  {
+    "code": "83",
+    "material": "Wool",
+    "description": "Wool Yarn RHS Standard 2 Ply 20-25 abrash Dyed (For Processed)"
+  },
+  {
+    "code": "1",
+    "material": "Wool",
+    "description": "Wool Yarn Standard (Hand Spun) 1 Ply 24-30  Dyed (For Processed)"
+  },
+  {
+    "code": "24",
+    "material": "Wool",
+    "description": "Wool Yarn MS 2 Ply 55 Count DY"
+  },
+  {
+    "code": "115",
+    "material": "Wool",
+    "description": "Wool Yarn MS 2 Ply 60 Count natural wool"
+  },
+  {
+    "code": "180",
+    "material": "Wool",
+    "description": "Wool Yarn Hand spun Standard 1 Ply 24-30 natural/dyed (For Processed) Marino"
+  },
+  {
+    "code": "28",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  4 Ply 60  ABRASH TAY-DAY Dyed (For Processed)"
+  },
+  {
+    "code": "153",
+    "material": "Wool & Viscose",
+    "description": "Wool Viscose Yarn Machine Spun  4 Ply 60 Dyed mix ply (For Processed)"
+  },
+  {
+    "code": "155",
+    "material": "Wool",
+    "description": "Wool Yarn Machine Spun  4 Ply twisted 30 count dyed (For Processed)"
+  },
+  {
+    "code": "42",
+    "material": "polyester",
+    "description": "Polyester Yarn Machine Spun  2 Ply 60 Dyed (For Processed)"
+  },
+  {
+    "code": "139",
+    "material": "Silk",
+    "description": "Recycle silk  chow-chow Hand spun yarn 5-7 count 1 ply Dyed (For Processed)"
+  },
+  {
+    "code": "52",
+    "material": "Bamboo Silk",
+    "description": "Bamboo silk Machine Spun  6 Ply 2/16 Dyed (For Processed)"
+  },
+  {
+    "code": "117",
+    "material": "Wool",
+    "description": "Wool Yarn RHS  1 Ply 2-5 Undyed (For Processed) natural wool"
+  },
+  {
+    "code": "93",
+    "material": "Viscose",
+    "description": "Viscose Yarn Machine Spun  40 Ply 2/32 Dyed (For Processed)"
+  },
+  {
+    "code": "49",
+    "material": "Wool & Bamboo silk",
+    "description": "Wool bamboo Yarn Machine Spun  7 Ply Dyed (For Processed)"
+  },
+  {
+    "code": "55",
+    "material": "Wool",
+    "description": "natural wool yarn mill spun 30 count 1ply"
+  },
+  {
+    "code": "149",
+    "material": "Tancil",
+    "description": "Tencel yarn Machine Spun  24 Ply 2/16 Dyed (For Processed)"
+  },
+  {
+    "code": "174",
+    "material": "Wool",
+    "description": "Wool Yarn (ms semi worsted )  1 Ply 6 count fiber Dyed (For Processed)"
+  }
+]

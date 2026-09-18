@@ -1,0 +1,2006 @@
+[
+  {
+    "design_prefix": "HPBS",
+    "design_code": "HPBS-7001",
+    "item_type": "RUG",
+    "quality": "Handloom Double Back",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "30"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LE",
+    "design_code": "LE-9216",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "11",
+      "20",
+      "99",
+      "10",
+      "63"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LRB",
+    "design_code": "LRB-13022",
+    "item_type": "RUG",
+    "quality": "6/6",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "44",
+      "43"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "YBL",
+    "design_code": "YBL-9033",
+    "item_type": "RUG",
+    "quality": "100 LINE",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "30",
+      "61",
+      "70",
+      "26"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "CRA",
+    "design_code": "CRA-5210",
+    "item_type": "RUG",
+    "quality": "10/14",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "01",
+      "07"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "EDM",
+    "design_code": "EDM-04",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "39",
+      "10D"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "ENR",
+    "design_code": "ENR-17501",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "45",
+      "11"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LP",
+    "design_code": "LP-7041",
+    "item_type": "RUG",
+    "quality": "4/25",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "66"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "MSP",
+    "design_code": "MSP-871",
+    "item_type": "RUG",
+    "quality": "Sumak Cut Pile",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "13"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "JPRM",
+    "design_code": "JPRM-3219",
+    "item_type": "RUG",
+    "quality": "9/9",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "11",
+      "30"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "SQN",
+    "design_code": "SQN-7109",
+    "item_type": "RUG",
+    "quality": "11/11",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "01",
+      "07"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LEX",
+    "design_code": "LEX-904",
+    "item_type": "RUG",
+    "quality": "6/6",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "11",
+      "86"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "SKRT",
+    "design_code": "SKRT-8141",
+    "item_type": "RUG",
+    "quality": "11/11",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "71",
+      "10"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "EARM",
+    "design_code": "EARM-3009",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "72",
+      "14"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "HTS",
+    "design_code": "HTS-7006",
+    "item_type": "RUG",
+    "quality": "Handloom Double Back",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "156"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TWL",
+    "design_code": "TWL-14",
+    "item_type": "RUG",
+    "quality": "Tufted",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "96"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TLA",
+    "design_code": "TLA-4131",
+    "item_type": "RUG",
+    "quality": "Tufted",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "28",
+      "06"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "ESP",
+    "design_code": "ESP-06",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "40",
+      "52",
+      "30"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "NE",
+    "design_code": "NE-2364",
+    "item_type": "RUG",
+    "quality": "10/10",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "07",
+      "04"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "EA",
+    "design_code": "EA-17006",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "40"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "RNM",
+    "design_code": "RNM-1501",
+    "item_type": "RUG",
+    "quality": "5/5",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "135"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "SLR",
+    "design_code": "SLR-13010",
+    "item_type": "RUG",
+    "quality": "11/11",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "07",
+      "10"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TPV",
+    "design_code": "TPV-50083",
+    "item_type": "RUG",
+    "quality": "Tufted HD",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "25"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "EPRRM",
+    "design_code": "EPRRM-7034",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "11",
+      "10",
+      "14",
+      "18",
+      "08",
+      "28"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TNR",
+    "design_code": "TNR-3220",
+    "item_type": "RUG",
+    "quality": "Tufted HD",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "111"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "JBR",
+    "design_code": "JBR-7009",
+    "item_type": "RUG",
+    "quality": "9/9",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "11",
+      "10"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "SPL",
+    "design_code": "SPL-853",
+    "item_type": "RUG",
+    "quality": "11/11",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "10",
+      "71"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "RSL",
+    "design_code": "RSL-7001",
+    "item_type": "RUG",
+    "quality": "5/5",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "145"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "YSP",
+    "design_code": "YSP-803",
+    "item_type": "RUG",
+    "quality": "100 LINE",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "48"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TNV",
+    "design_code": "TNV-387",
+    "item_type": "RUG",
+    "quality": "Tuf Pure Viscose",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "25"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "HPB",
+    "design_code": "HPB-13001",
+    "item_type": "RUG",
+    "quality": "Handloom Jacquard",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "30",
+      "103"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "SRBM",
+    "design_code": "SRBM-701",
+    "item_type": "RUG",
+    "quality": "11/11",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "52"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "UNR",
+    "design_code": "UNR-7001",
+    "item_type": "RUG",
+    "quality": "3/20",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "154"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "SLA",
+    "design_code": "SLA-523",
+    "item_type": "RUG",
+    "quality": "11/11",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "10",
+      "71"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "AAA",
+    "design_code": "AAA-507",
+    "item_type": "RUG",
+    "quality": "80 LINE",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "22",
+      "27"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "JC",
+    "design_code": "JC-933",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "02",
+      "11"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LV",
+    "design_code": "LV-06",
+    "item_type": "RUG",
+    "quality": "3/20",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "10",
+      "11",
+      "41"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "HPL",
+    "design_code": "HPL-13001",
+    "item_type": "RUG",
+    "quality": "Handloom Double Back",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "160",
+      "42",
+      "116"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "QNQ",
+    "design_code": "QNQ-7119",
+    "item_type": "RUG",
+    "quality": "14/14",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "08",
+      "84"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TLR",
+    "design_code": "TLR-7002",
+    "item_type": "RUG",
+    "quality": "Tufted",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "65"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "SE",
+    "design_code": "SE-50357",
+    "item_type": "RUG",
+    "quality": "11/11",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "10",
+      "33"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LUR",
+    "design_code": "LUR-815",
+    "item_type": "RUG",
+    "quality": "11/11",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "10",
+      "11",
+      "52",
+      "84",
+      "71"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "EPR",
+    "design_code": "EPR-17006",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "11",
+      "10"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LCAL",
+    "design_code": "LCAL-1066",
+    "item_type": "RUG",
+    "quality": "4/25",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "96"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "ESK",
+    "design_code": "ESK-17001",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "30",
+      "11",
+      "52",
+      "10"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "DWL",
+    "design_code": "DWL-02",
+    "item_type": "RUG",
+    "quality": "Woolen Dhurrie",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "24"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "YYY",
+    "design_code": "YYY-1115",
+    "item_type": "RUG",
+    "quality": "100 LINE",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "47",
+      "54",
+      "56"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "GSI",
+    "design_code": "GSI-17001",
+    "item_type": "RUG",
+    "quality": "6/5",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "23"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "OM",
+    "design_code": "OM-04",
+    "item_type": "RUG",
+    "quality": "10/14",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "01"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LA",
+    "design_code": "LA-1728",
+    "item_type": "RUG",
+    "quality": "50 LINE",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "123"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "PKHM",
+    "design_code": "PKHM-129",
+    "item_type": "RUG",
+    "quality": "Jute Sumak",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "77",
+      "85"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LCA",
+    "design_code": "LCA-17003",
+    "item_type": "RUG",
+    "quality": "4/25",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "176",
+      "96"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "NC",
+    "design_code": "NC-88",
+    "item_type": "RUG",
+    "quality": "10/10",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "04"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "DQ",
+    "design_code": "DQ-14",
+    "item_type": "RUG",
+    "quality": "Dhurrie",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "90",
+      "91"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "DPA",
+    "design_code": "DPA-523",
+    "item_type": "RUG",
+    "quality": "Dhurrie",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "69"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "YRH",
+    "design_code": "YRH-1102",
+    "item_type": "RUG",
+    "quality": "100 LINE",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "10",
+      "56"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TQR",
+    "design_code": "TQR-7505",
+    "item_type": "RUG",
+    "quality": "Tuf Viscose Mix",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "72",
+      "25",
+      "13"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "JBRM",
+    "design_code": "JBRM-1302",
+    "item_type": "RUG",
+    "quality": "9/9",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "10"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "CHRM",
+    "design_code": "CHRM-58",
+    "item_type": "RUG",
+    "quality": "14/14",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "08"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LU",
+    "design_code": "LU-9034",
+    "item_type": "RUG",
+    "quality": "6/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "30",
+      "52",
+      "83",
+      "82",
+      "11"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "ZNB",
+    "design_code": "ZNB-03",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "10",
+      "68"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "QRA",
+    "design_code": "QRA-111",
+    "item_type": "RUG",
+    "quality": "14/14",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "80",
+      "84"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "ZWL",
+    "design_code": "ZWL-101",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "61"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "ELA",
+    "design_code": "ELA-7035",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "16",
+      "03"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "UPR",
+    "design_code": "UPR-7130",
+    "item_type": "RUG",
+    "quality": "3/20",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "41"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "DRJ",
+    "design_code": "DRJ-24",
+    "item_type": "RUG",
+    "quality": "14/14",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "03",
+      "95"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "PX",
+    "design_code": "PX-4145",
+    "item_type": "RUG",
+    "quality": "Jute Sumak",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "85"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "ZBL",
+    "design_code": "ZBL-7004",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "61",
+      "68"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TNQ",
+    "design_code": "TNQ-50072",
+    "item_type": "RUG",
+    "quality": "Tufted HD",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "25",
+      "14",
+      "36",
+      "13",
+      "111"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "PKWL",
+    "design_code": "PKWL-17021",
+    "item_type": "RUG",
+    "quality": "5/22",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "18",
+      "23"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "PWR",
+    "design_code": "PWR-2000",
+    "item_type": "RUG",
+    "quality": "Handloom Double Back",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "92"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LKWL",
+    "design_code": "LKWL-7138",
+    "item_type": "RUG",
+    "quality": "4/22",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "23"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "RA",
+    "design_code": "RA-7007",
+    "item_type": "RUG",
+    "quality": "5/5",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "119",
+      "113"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "HLS",
+    "design_code": "HLS-506",
+    "item_type": "RUG",
+    "quality": "Handloom",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "79"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "MAKT",
+    "design_code": "MAKT-7003",
+    "item_type": "RUG",
+    "quality": "Sumak",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "13"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LSEA",
+    "design_code": "LSEA-7005",
+    "item_type": "RUG",
+    "quality": "4/25",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "40"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "QRS",
+    "design_code": "QRS-7026",
+    "item_type": "RUG",
+    "quality": "14/14",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "50",
+      "84"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "BMS",
+    "design_code": "BMS-7012",
+    "item_type": "RUG",
+    "quality": "120 LINE",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "48",
+      "64"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "GRT",
+    "design_code": "GRT-109",
+    "item_type": "RUG",
+    "quality": "10/14",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "01"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "ESKRM",
+    "design_code": "ESKRM-9004",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "11",
+      "30"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "SPS",
+    "design_code": "SPS-13001",
+    "item_type": "RUG",
+    "quality": "11/11",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "07"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "EMS",
+    "design_code": "EMS-624",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "30",
+      "11"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TAC",
+    "design_code": "TAC-9001",
+    "item_type": "RUG",
+    "quality": "Tufted HD",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "18"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LSL",
+    "design_code": "LSL-8601",
+    "item_type": "RUG",
+    "quality": "14/14",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "84"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "HWS",
+    "design_code": "HWS-7003",
+    "item_type": "RUG",
+    "quality": "Handloom Double Back",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "92",
+      "84",
+      "14"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LSB",
+    "design_code": "LSB-8804",
+    "item_type": "RUG",
+    "quality": "11/11",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "10",
+      "11",
+      "52"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "YRS",
+    "design_code": "YRS-7004",
+    "item_type": "RUG",
+    "quality": "100 LINE",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "10"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TLT",
+    "design_code": "TLT-5007",
+    "item_type": "RUG",
+    "quality": "TUF NOR",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "18"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "QM",
+    "design_code": "QM-7065",
+    "item_type": "RUG",
+    "quality": "14/14",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "08",
+      "84"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "CWR",
+    "design_code": "CWR-518",
+    "item_type": "RUG",
+    "quality": "10/14",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "10",
+      "40"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "ER",
+    "design_code": "ER-3089",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "108"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LSK",
+    "design_code": "LSK-132",
+    "item_type": "RUG",
+    "quality": "6/6",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "09",
+      "43"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "UN",
+    "design_code": "UN-7001",
+    "item_type": "RUG",
+    "quality": "3/16",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "111"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "NMS",
+    "design_code": "NMS-13002",
+    "item_type": "RUG",
+    "quality": "10/10",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "07",
+      "10"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TSR",
+    "design_code": "TSR-402",
+    "item_type": "RUG",
+    "quality": "Tuf Viscose Mix",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "96",
+      "25",
+      "13",
+      "18",
+      "36"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "JPL",
+    "design_code": "JPL-2001",
+    "item_type": "RUG",
+    "quality": "9/9",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "82",
+      "81"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "ASL",
+    "design_code": "ASL-13001",
+    "item_type": "RUG",
+    "quality": "14/14",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "84"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "HMV",
+    "design_code": "HMV-7001",
+    "item_type": "RUG",
+    "quality": "Handloom",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "25",
+      "65"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "EPRM",
+    "design_code": "EPRM-612",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "11"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "NKR",
+    "design_code": "NKR-7503",
+    "item_type": "RUG",
+    "quality": "10/10",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "10"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "ESRM",
+    "design_code": "ESRM-9012",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "30",
+      "11",
+      "158",
+      "157",
+      "10",
+      "08",
+      "52",
+      "63",
+      "40"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LLV",
+    "design_code": "LLV-3088",
+    "item_type": "RUG",
+    "quality": "6/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "102",
+      "61",
+      "101"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "RGS",
+    "design_code": "RGS-7002",
+    "item_type": "RUG",
+    "quality": "5/5",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "23"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "ESH",
+    "design_code": "ESH-13001",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "40",
+      "106"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LSW",
+    "design_code": "LSW-04",
+    "item_type": "RUG",
+    "quality": "6/6",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "97"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "EPB",
+    "design_code": "EPB-634",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "52",
+      "30"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "ESKM",
+    "design_code": "ESKM-9014",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "30",
+      "11",
+      "10",
+      "52",
+      "157"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "SHA",
+    "design_code": "SHA-7002",
+    "item_type": "RUG",
+    "quality": "11/11",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "46",
+      "81"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "HLV",
+    "design_code": "HLV-901",
+    "item_type": "RUG",
+    "quality": "Handloom Viscose",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "79",
+      "37"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "BT",
+    "design_code": "BT-928",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "11"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "EN",
+    "design_code": "EN-9017",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "11",
+      "34",
+      "10",
+      "07"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "ANS",
+    "design_code": "ANS-105",
+    "item_type": "RUG",
+    "quality": "50 LINE",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "76"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "JWS",
+    "design_code": "JWS-7001",
+    "item_type": "RUG",
+    "quality": "9/9",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "82",
+      "81"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "MK",
+    "design_code": "MK-91",
+    "item_type": "RUG",
+    "quality": "10/10",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "04"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "GS",
+    "design_code": "GS-17008",
+    "item_type": "RUG",
+    "quality": "6/5",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "23"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "SRB",
+    "design_code": "SRB-70218",
+    "item_type": "RUG",
+    "quality": "11/11",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "10",
+      "52"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "PRT",
+    "design_code": "PRT-208",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "20"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "QNRM",
+    "design_code": "QNRM-902",
+    "item_type": "RUG",
+    "quality": "14/14",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "08",
+      "84"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "GSB",
+    "design_code": "GSB-1507",
+    "item_type": "RUG",
+    "quality": "6/5",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "103",
+      "23"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TUF",
+    "design_code": "TUF-504",
+    "item_type": "RUG",
+    "quality": "TUF TW",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "14"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "YMS",
+    "design_code": "YMS-7010",
+    "item_type": "RUG",
+    "quality": "100 LINE",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "47",
+      "48",
+      "07",
+      "10"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "SPR",
+    "design_code": "SPR-13002",
+    "item_type": "RUG",
+    "quality": "11/11",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "10"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "NHL",
+    "design_code": "NHL-54",
+    "item_type": "RUG",
+    "quality": "10/10",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "04"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TAR",
+    "design_code": "TAR-7065",
+    "item_type": "RUG",
+    "quality": "Tufted",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "05"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LES",
+    "design_code": "LES-9223",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "157",
+      "08",
+      "30",
+      "11",
+      "10",
+      "52",
+      "99",
+      "36",
+      "74",
+      "63",
+      "86",
+      "43"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LBT",
+    "design_code": "LBT-13",
+    "item_type": "RUG",
+    "quality": "6/6",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "09"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TWV",
+    "design_code": "TWV-2397",
+    "item_type": "RUG",
+    "quality": "Tuf Viscose Mix",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "17"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LEV",
+    "design_code": "LEV-8404",
+    "item_type": "RUG",
+    "quality": "6/6",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "43",
+      "44",
+      "86",
+      "157"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LUV",
+    "design_code": "LUV-8601",
+    "item_type": "RUG",
+    "quality": "11/11",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "07",
+      "84",
+      "71",
+      "11"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "HLA",
+    "design_code": "HLA-09",
+    "item_type": "RUG",
+    "quality": "Handloom",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "36"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "HPJ",
+    "design_code": "HPJ-13007",
+    "item_type": "RUG",
+    "quality": "Handloom Jacquard",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "104"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "JPR",
+    "design_code": "JPR-1010",
+    "item_type": "RUG",
+    "quality": "10/14",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "07",
+      "10"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "KKK",
+    "design_code": "KKK-48",
+    "item_type": "RUG",
+    "quality": "60 LINE",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "23"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "JNQ",
+    "design_code": "JNQ-3003",
+    "item_type": "RUG",
+    "quality": "9/9",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "147",
+      "106",
+      "03"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "YNB",
+    "design_code": "YNB-11",
+    "item_type": "RUG",
+    "quality": "90 LINE",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "30",
+      "98"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "NKRT",
+    "design_code": "NKRT-253",
+    "item_type": "RUG",
+    "quality": "10/10",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "10"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TNC",
+    "design_code": "TNC-50088",
+    "item_type": "RUG",
+    "quality": "Tufted HD",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "14"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TAQ",
+    "design_code": "TAQ-50064",
+    "item_type": "RUG",
+    "quality": "Tuf Viscose Mix",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "25",
+      "18",
+      "13"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "ESKN",
+    "design_code": "ESKN-9014",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "30",
+      "86",
+      "11",
+      "63",
+      "10",
+      "52"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "BBB",
+    "design_code": "BBB-7001",
+    "item_type": "RUG",
+    "quality": "120 LINE",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "64",
+      "56"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "NRA",
+    "design_code": "NRA-7001",
+    "item_type": "RUG",
+    "quality": "10/10",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "07",
+      "04"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "ENM",
+    "design_code": "ENM-9005",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "40"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "HWJ",
+    "design_code": "HWJ-05",
+    "item_type": "RUG",
+    "quality": "Handloom Double Back",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "36",
+      "104"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LPS",
+    "design_code": "LPS-6704",
+    "item_type": "RUG",
+    "quality": "9/9",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "106",
+      "71",
+      "16"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LUB",
+    "design_code": "LUB-8618",
+    "item_type": "RUG",
+    "quality": "9/9",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "11"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "PSH",
+    "design_code": "PSH-615",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "20"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "CTC",
+    "design_code": "CTC-02",
+    "item_type": "RUG",
+    "quality": "10/14",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "15",
+      "01"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TAHN",
+    "design_code": "TAHN-7092",
+    "item_type": "RUG",
+    "quality": "Tufted Ultra HD",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "101"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "JV",
+    "design_code": "JV-83",
+    "item_type": "RUG",
+    "quality": "10/14",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "01"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "DPH",
+    "design_code": "DPH-2389",
+    "item_type": "RUG",
+    "quality": "Polyster Dhurrie",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "42"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LEZ",
+    "design_code": "LEZ-16",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "30"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "UNM",
+    "design_code": "UNM-1501",
+    "item_type": "RUG",
+    "quality": "3/16",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "117"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "HLR",
+    "design_code": "HLR-506",
+    "item_type": "RUG",
+    "quality": "Handloom Double Back",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "79"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "K",
+    "design_code": "K-1524",
+    "item_type": "RUG",
+    "quality": "14/14",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "08"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "WIM",
+    "design_code": "WIM-2004",
+    "item_type": "RUG",
+    "quality": "6/6",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "178"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TRC",
+    "design_code": "TRC-7501",
+    "item_type": "RUG",
+    "quality": "TUF NOR",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "72"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LEW",
+    "design_code": "LEW-9390",
+    "item_type": "RUG",
+    "quality": "6/6",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "08",
+      "86",
+      "11",
+      "30",
+      "18",
+      "134",
+      "63",
+      "41",
+      "157",
+      "36",
+      "14",
+      "101",
+      "10",
+      "73",
+      "74",
+      "122",
+      "158",
+      "23"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "EBSH",
+    "design_code": "EBSH-7064",
+    "item_type": "RUG",
+    "quality": "8/8",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "16",
+      "03",
+      "147",
+      "106",
+      "108",
+      "10D",
+      "131",
+      "40",
+      "81"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "LRS",
+    "design_code": "LRS-7003",
+    "item_type": "RUG",
+    "quality": "6/6",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "44",
+      "106D"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "YPV",
+    "design_code": "YPV-805",
+    "item_type": "RUG",
+    "quality": "100 LINE",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "56"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "AWL",
+    "design_code": "AWL-151",
+    "item_type": "RUG",
+    "quality": "50 LINE",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "35"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "MA",
+    "design_code": "MA-63125",
+    "item_type": "RUG",
+    "quality": "10/10",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "04"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "FPR",
+    "design_code": "FPR-224",
+    "item_type": "RUG",
+    "quality": "10/14",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "10"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "RE",
+    "design_code": "RE-7211",
+    "item_type": "RUG",
+    "quality": "5/16",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "40",
+      "123"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "HWR",
+    "design_code": "HWR-2000",
+    "item_type": "RUG",
+    "quality": "Handloom Double Back",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "92"
+    ],
+    "remark": "Done"
+  },
+  {
+    "design_prefix": "TOP",
+    "design_code": "TOP-170241",
+    "item_type": "RUG",
+    "quality": "Tufted Ultra HD",
+    "weaving_technique": "",
+    "approved_yarn_codes": [
+      "14",
+      "25",
+      "152"
+    ],
+    "remark": "Done"
+  }
+]

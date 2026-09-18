@@ -1,0 +1,77 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+
+@source "../../../packages/ui-kit/src";
+
+.bg-app {
+  background-color: var(--background);
+}
+.bg-surface {
+  background-color: var(--surface, #ffffff);
+}
+
+@theme {
+  --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+:root {
+  --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --jaipur-maroon: #8B1E1E;
+  --jaipur-gold: #C5A059;
+  --card-bg: #ffffff;
+  --border-color: #e2e8f0;
+}
+
+.dark {
+  --background: #090d16;
+  --foreground: #f1f5f9;
+  --jaipur-maroon: #A62828;
+  --jaipur-gold: #E5BE6C;
+  --card-bg: #111827;
+  --border-color: #1f2937;
+}
+
+html,
+body,
+button,
+input,
+select,
+textarea,
+table,
+th,
+td,
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  min-height: 100vh;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.4);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.6);
+}
