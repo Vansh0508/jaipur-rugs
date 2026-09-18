@@ -53,6 +53,21 @@ const BATCH_SIZE = 500;
 // row here too), so the existing dedup-by-item_no in processBatch below still applies.
 const NAV_VIEW = "[NAV-002-Rug List - Main]";
 
+// Real dispatch + tracking data — from two DIFFERENT NAV reports NAV_VIEW doesn't cover
+// at all: a dispatched rug just silently disappears from NAV_VIEW, with no "Dispatched"
+// status text anywhere in it. Confirmed live, 2026-09-15, investigating a real
+// merchant-reported discrepancy — see ERP_AND_EXTERNAL_REQUESTS.md request #9. Both
+// keyed on Item No_ (this schema's real unique key — see ORDERS' own header comment;
+// OTN No_ is NOT guaranteed unique) — confirmed live that both reports carry it in the
+// exact same format as orders.item_no (e.g. "RUG1231676").
+//
+// Both source reports only retain a rolling window (confirmed live: NAV-011 ~30 days,
+// the tracking view ~3 months) — see syncDispatchStatus()/syncTrackingInfo()'s own
+// comments for why that means "never clear a value once set here."
+const NAV011_VIEW = "[NAV-011- Posted Whse Shipment Packing List]";
+const AWB_TRACKING_VIEW = "[View-0462-Sales_Inv_With_AWB_Tracking_And_Bale_Wise_Details]";
+const SHIPPING_AGENT_TABLE = "[JRCPL Live$Shipping Agent]";
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!supabaseUrl || !serviceRoleKey) {
@@ -240,6 +255,182 @@ function mapErpRowToOrder(row, stageId) {
   };
 }
 
+/** Real dispatch status, from a completely different NAV report than NAV_VIEW (see the
+ * constants' comment above for why). Only ever UPDATES an existing `orders` row matched
+ * by item_no — deliberately does NOT insert a new row for an item_no NAV-011 mentions
+ * but Supabase has never seen at all (this happens — see request #9). Backfilling a
+ * never-synced order from scratch is a bigger, separate decision than "show dispatched
+ * status for orders Atlas already knows about", which is what was actually asked for.
+ *
+ * Only touches items whose `dispatched_at` is CURRENTLY null — once set, it's never
+ * overwritten (NAV-011 only retains ~30 days; an item aging out of a later pull must
+ * not undo this), and re-writing an unchanged value on every run would just be wasted
+ * work. This also doubles as "is this a real transition" for the stage-event insert
+ * below, the same way the main sync loop's own previous/mapped comparison does. */
+async function syncDispatchStatus(pool, dispatchedStageId) {
+  if (!dispatchedStageId) {
+    console.warn('[orders-sync] WARNING: no "dispatched" stage found — skipping dispatch-status sync. Run db/orders/029_dispatch_tracking.sql first.');
+    return { updated: 0, stageEventsInserted: 0 };
+  }
+
+  const result = await pool.request().query(`
+    SELECT [Item No_], CONVERT(varchar(10), [Posting Date], 23) AS [Posting Date], [Sales Shipment No]
+    FROM ${NAV011_VIEW}
+  `);
+
+  // Same "last occurrence in feed order wins" dedup as processBatch — a shipment can
+  // carry more than one line for the same item in rare correction/reissue cases.
+  const byItemNo = new Map();
+  for (const row of result.recordset) {
+    const itemNo = str(row, "Item No_");
+    if (!itemNo) continue;
+    const postingDate = dateOnly(row, "Posting Date");
+    if (!postingDate) continue; // no real date — treat like any other unparseable date here
+    byItemNo.set(itemNo, { itemNo, postingDate, shipmentNo: str(row, "Sales Shipment No") });
+  }
+  console.log(`[orders-sync] NAV-011: ${result.recordset.length} rows -> ${byItemNo.size} distinct dispatched items`);
+
+  const itemNos = [...byItemNo.keys()];
+  let updated = 0;
+  let stageEventsInserted = 0;
+
+  for (let i = 0; i < itemNos.length; i += BATCH_SIZE) {
+    const batchItemNos = itemNos.slice(i, i + BATCH_SIZE);
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from("orders")
+      .select("id, item_no, otn_no, dispatched_at")
+      .in("item_no", batchItemNos);
+    if (existingError) {
+      console.error(`[orders-sync] dispatch-status lookup batch failed: ${existingError.message}`);
+      continue;
+    }
+
+    const toUpdate = (existing ?? []).filter((o) => !o.dispatched_at);
+    if (!toUpdate.length) continue;
+
+    // otn_no must be included even though this is really an update, not an insert —
+    // Supabase's upsert still builds a real `INSERT ... ON CONFLICT (item_no) DO
+    // UPDATE`, and Postgres validates the row's NOT NULL constraints (otn_no has no
+    // default) before it even gets to resolving the conflict, regardless of which
+    // branch actually runs. Hit live, 2026-09-16: every one of these upserts failed
+    // with "null value in column otn_no" until this was added — same otn_no already on
+    // the row, just re-stating it so the constraint is satisfied.
+    const upsertRows = toUpdate.map((o) => {
+      const info = byItemNo.get(o.item_no);
+      return {
+        item_no: o.item_no,
+        otn_no: o.otn_no,
+        dispatched_at: info.postingDate,
+        sales_shipment_no: info.shipmentNo,
+        stage_id: dispatchedStageId,
+      };
+    });
+    const { error: upsertError } = await supabaseAdmin.from("orders").upsert(upsertRows, { onConflict: "item_no" });
+    if (upsertError) {
+      console.error(`[orders-sync] dispatch-status upsert batch failed: ${upsertError.message}`);
+      continue;
+    }
+    updated += upsertRows.length;
+
+    const eventsToInsert = toUpdate.map((o) => ({
+      order_id: o.id,
+      stage_id: dispatchedStageId,
+      entered_at: new Date(byItemNo.get(o.item_no).postingDate).toISOString(),
+      source: "erp_sync",
+    }));
+    const { error: eventsError } = await supabaseAdmin
+      .from("order_stage_events")
+      .upsert(eventsToInsert, { onConflict: "order_id,stage_id,entered_at", ignoreDuplicates: true });
+    if (eventsError) {
+      console.error(`[orders-sync] dispatch-status stage-events batch failed: ${eventsError.message}`);
+    } else {
+      stageEventsInserted += eventsToInsert.length;
+    }
+  }
+
+  return { updated, stageEventsInserted };
+}
+
+/** Real courier/AWB tracking numbers, from yet another NAV report (View-0462) — has no
+ * OTN No_ or Sales Order No_/Customer PO No_ column at all, only Item No_ (this
+ * schema's real unique key, same as syncDispatchStatus above) and a raw
+ * Shipping Agent Code, which gets resolved to a real name here (e.g. "MH-004" ->
+ * "BLUE DART EXPRESS LIMITED") via NAV's own agent master table — the UI should never
+ * need to know that mapping itself.
+ *
+ * Confirmed live, 2026-09-15: only ~5-9% of shipment lines ever get a real tracking
+ * number (most real moves are a domestic warehouse transfer via a regional transporter
+ * or company vehicle, which never generates one) — null here is very often the honest,
+ * permanent answer, not missing data. Only rows WITH a real tracking number are even
+ * queried; same "only touch if currently null, never overwrite" rule as dispatch status
+ * above, for the same reason (this view only retains ~3 months). */
+async function syncTrackingInfo(pool) {
+  const agentRows = await pool.request().query(`SELECT [Code], [Name] FROM ${SHIPPING_AGENT_TABLE}`);
+  const agentNameByCode = new Map(agentRows.recordset.map((r) => [str(r, "Code"), str(r, "Name")]));
+
+  const result = await pool.request().query(`
+    SELECT [ItemCode], [TrackingNo], [Shipping Agent Code], [EWB No]
+    FROM ${AWB_TRACKING_VIEW}
+    WHERE [TrackingNo] IS NOT NULL AND LTRIM(RTRIM([TrackingNo])) <> ''
+  `);
+
+  const byItemNo = new Map();
+  for (const row of result.recordset) {
+    const itemNo = str(row, "ItemCode");
+    const trackingNo = str(row, "TrackingNo");
+    if (!itemNo || !trackingNo) continue;
+    const agentCode = str(row, "Shipping Agent Code");
+    byItemNo.set(itemNo, {
+      itemNo,
+      trackingNo,
+      agentCode,
+      agentName: agentCode ? agentNameByCode.get(agentCode) ?? agentCode : null,
+      ewbNo: str(row, "EWB No"),
+    });
+  }
+  console.log(`[orders-sync] AWB tracking: ${result.recordset.length} rows -> ${byItemNo.size} distinct items with a real tracking number`);
+
+  const itemNos = [...byItemNo.keys()];
+  let updated = 0;
+
+  for (let i = 0; i < itemNos.length; i += BATCH_SIZE) {
+    const batchItemNos = itemNos.slice(i, i + BATCH_SIZE);
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from("orders")
+      .select("item_no, otn_no, tracking_no")
+      .in("item_no", batchItemNos);
+    if (existingError) {
+      console.error(`[orders-sync] tracking-info lookup batch failed: ${existingError.message}`);
+      continue;
+    }
+
+    const toUpdate = (existing ?? []).filter((o) => !o.tracking_no);
+    if (!toUpdate.length) continue;
+    // otn_no included for the same reason syncDispatchStatus's own upsert needs it —
+    // see that function's comment.
+
+    const upsertRows = toUpdate.map((o) => {
+      const info = byItemNo.get(o.item_no);
+      return {
+        item_no: o.item_no,
+        otn_no: o.otn_no,
+        tracking_no: info.trackingNo,
+        shipping_agent_code: info.agentCode,
+        shipping_agent_name: info.agentName,
+        ewb_no: info.ewbNo,
+      };
+    });
+    const { error: upsertError } = await supabaseAdmin.from("orders").upsert(upsertRows, { onConflict: "item_no" });
+    if (upsertError) {
+      console.error(`[orders-sync] tracking-info upsert batch failed: ${upsertError.message}`);
+      continue;
+    }
+    updated += upsertRows.length;
+  }
+
+  return { updated };
+}
+
 async function processBatch(batch, stageState, counters, errors, batchIndex) {
   if (!batch.length) return;
   const label = batchIndex;
@@ -332,6 +523,7 @@ async function main() {
   if (stagesError) throw stagesError;
   const stageByCode = new Map(stages.map((s) => [s.code, s.id]));
   const otherStageId = stageByCode.get("other");
+  const dispatchedStageId = stageByCode.get("dispatched");
 
   const { data: statusMap, error: statusMapError } = await supabaseAdmin
     .from("status_stage_map")
@@ -400,9 +592,29 @@ async function main() {
   }
   await processBatch(pendingBatch, stageState, counters, errors, batchIndex++);
 
+  // Real dispatch status + tracking, from two different NAV reports NAV_VIEW doesn't
+  // cover at all — deliberately run AFTER the main loop above, not before or in
+  // parallel: this must have final say on stage_id for a dispatched item. A dispatched
+  // rug has almost always already vanished from NAV_VIEW by the time this runs, but in
+  // the rare case it briefly still appears there too, the main loop's own resolveStageId
+  // result for it must not win. See ERP_AND_EXTERNAL_REQUESTS.md request #9.
+  console.log(`[orders-sync] connecting to NAV MSSQL again (${NAV011_VIEW} / ${AWB_TRACKING_VIEW}) ...`);
+  const dispatchPool = await connectWithEncryptionFallback();
+  let dispatchResult = { updated: 0, stageEventsInserted: 0 };
+  let trackingResult = { updated: 0 };
+  try {
+    dispatchResult = await syncDispatchStatus(dispatchPool, dispatchedStageId);
+    trackingResult = await syncTrackingInfo(dispatchPool);
+  } catch (err) {
+    errors.push(`dispatch/tracking sync: ${err instanceof Error ? err.message : err}`);
+  } finally {
+    await dispatchPool.close();
+  }
+
   const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
   console.log(
-    `[orders-sync] done in ${seconds}s — totalRows=${rows.length} upserted=${counters.upserted} stageEventsInserted=${counters.stageEventsInserted} errors=${errors.length}`,
+    `[orders-sync] done in ${seconds}s — totalRows=${rows.length} upserted=${counters.upserted} stageEventsInserted=${counters.stageEventsInserted} ` +
+      `dispatchUpdated=${dispatchResult.updated} dispatchStageEvents=${dispatchResult.stageEventsInserted} trackingUpdated=${trackingResult.updated} errors=${errors.length}`,
   );
   if (errors.length) {
     console.error("[orders-sync] errors:", errors.slice(0, 20));

@@ -21,7 +21,7 @@ import { parseCodeList } from "@/lib/parseCodeList";
 // already-existing employee-signup function in a real form.
 //
 // Department picker added 2026-09-05 — self-service, no admin step needed for any of
-// these: Sales reveals the sales-code field (unchanged, see
+// these: Sales reveals the sales-code field (see
 // db/orders/010_salesperson_codes_self_service.sql — there's no reliable way to derive
 // a name<->code mapping from the ERP feed, so a person types in their own already-known
 // code); Management/Production instead call join-department, which grants blanket
@@ -37,6 +37,14 @@ import { parseCodeList } from "@/lib/parseCodeList";
 // join-department's comment), so it reveals BOTH the sales-code field and a
 // customer-code field: a Back Ops person may know either kind of code (or both), and
 // each is added via its own self-service function.
+//
+// Sales also gained the customer-code field (2026-09-11, direct request) — a Sales
+// signup is often a territory head/B2B salesperson ("merchant" in this business's own
+// vocabulary, requireAtlasStaffAccess.ts's comment) who has customer codes as well as
+// or instead of a sales code. This does NOT make "sales" self-service-joinable as a
+// department (still deliberately blocked in join-department — that would grant
+// blanket view-all); it only lets a Sales signup add merchant_customer_codes rows the
+// same way Back Ops already can, via addOwnCustomerCodes.
 type SignupDepartment = "" | SelfServiceDepartmentCode | "sales";
 
 const DEPARTMENT_OPTIONS = [
@@ -80,22 +88,35 @@ export function SignupForm() {
       }
 
       // Best-effort from here on — the account already exists and is signed in, so a
-      // failure in either of these shouldn't undo the sign-up; worst case, they add the
-      // same thing later from /my-access instead.
+      // failure in either of these shouldn't undo the sign-up. It used to fail
+      // completely silently (swallowed catch, straight to /orders) — fixed 2026-09-15
+      // after that left someone unable to tell why their account looked empty (Pranjal
+      // Jain's account: a customer-code save failed with no error shown anywhere).
+      // Failures are now collected and surfaced via a redirect to /my-access instead,
+      // which tells the person exactly what didn't save and lets them retry it there.
+      const failedSteps: string[] = [];
       if (department === "sales") {
         const codes = parseCodeList(salespersonCodesRaw);
         if (codes.length) {
           try {
             await addOwnSalespersonCodes(supabase, codes);
           } catch {
-            // swallowed deliberately — see comment above.
+            failedSteps.push("sales code");
+          }
+        }
+        const customerCodes = parseCodeList(customerCodesRaw);
+        if (customerCodes.length) {
+          try {
+            await addOwnCustomerCodes(supabase, customerCodes);
+          } catch {
+            failedSteps.push("customer code");
           }
         }
       } else if (department === "management" || department === "production") {
         try {
           await joinOwnDepartment(supabase, department);
         } catch {
-          // swallowed deliberately — see comment above.
+          failedSteps.push("department");
         }
       } else if (department === "backops") {
         // Joining the department itself grants no order visibility (see
@@ -104,14 +125,14 @@ export function SignupForm() {
         try {
           await joinOwnDepartment(supabase, department);
         } catch {
-          // swallowed deliberately — see comment above.
+          failedSteps.push("department");
         }
         const salesCodes = parseCodeList(salespersonCodesRaw);
         if (salesCodes.length) {
           try {
             await addOwnSalespersonCodes(supabase, salesCodes);
           } catch {
-            // swallowed deliberately — see comment above.
+            failedSteps.push("sales code");
           }
         }
         const customerCodes = parseCodeList(customerCodesRaw);
@@ -119,16 +140,21 @@ export function SignupForm() {
           try {
             await addOwnCustomerCodes(supabase, customerCodes);
           } catch {
-            // swallowed deliberately — see comment above.
+            failedSteps.push("customer code");
           }
         }
       }
 
-      // proxy.ts re-verifies Atlas authorization on the very next request and bounces
-      // to the Hub launcher if this brand-new account has no reason to be in Atlas yet
-      // (no department/salesperson-code/customer-code grant) — expected for anyone who
-      // picked nothing and hasn't been granted access yet.
-      router.push("/orders");
+      if (failedSteps.length) {
+        const qs = new URLSearchParams({ signupIssues: Array.from(new Set(failedSteps)).join(",") });
+        router.push(`/my-access?${qs.toString()}`);
+      } else {
+        // proxy.ts re-verifies Atlas authorization on the very next request and bounces
+        // to the Hub launcher if this brand-new account has no reason to be in Atlas yet
+        // (no department/salesperson-code/customer-code grant) — expected for anyone who
+        // picked nothing and hasn't been granted access yet.
+        router.push("/orders");
+      }
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create this account.");
@@ -150,13 +176,25 @@ export function SignupForm() {
         fullWidth
       />
       {department === "sales" ? (
-        <TextField
-          label="Your sales code(s)"
-          placeholder="e.g. SALES-0039 — or paste a whole list"
-          value={salespersonCodesRaw}
-          onChange={setSalespersonCodesRaw}
-          fullWidth
-        />
+        <>
+          <TextField
+            label="Your sales code(s)"
+            placeholder="e.g. SALES-0039 — or paste a whole list"
+            value={salespersonCodesRaw}
+            onChange={setSalespersonCodesRaw}
+            fullWidth
+          />
+          <TextField
+            label="Your customer code(s) (optional)"
+            placeholder="e.g. 34836 — or paste a whole list"
+            value={customerCodesRaw}
+            onChange={setCustomerCodesRaw}
+            fullWidth
+          />
+          <p className="text-xs text-muted">
+            Add customer codes too if you&apos;re a territory head/B2B salesperson working specific accounts.
+          </p>
+        </>
       ) : null}
       {department === "backops" ? (
         <>

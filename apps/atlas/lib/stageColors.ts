@@ -12,6 +12,7 @@ export const STAGE_COLORS: Record<string, string> = {
   purchase: "bg-purple-500",
   finish: "bg-amber-500",
   consignee: "bg-cyan-600",
+  dispatched: "bg-indigo-500",
   delivered: "bg-success",
   rejected: "bg-danger",
   other: "bg-neutral-300",

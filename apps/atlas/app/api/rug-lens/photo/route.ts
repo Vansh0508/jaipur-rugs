@@ -21,6 +21,18 @@ export const runtime = "nodejs"; // needs real filesystem access — must not ru
 const PHOTO_FOLDER = process.env.RUG_LENS_PHOTO_FOLDER || String.raw`\\Jvault\Photo Folder\Head Shot`;
 const RECURSIVE = process.env.RUG_LENS_PHOTO_FOLDER_RECURSIVE !== "false"; // matches jaipur_image_tool.py's own default (recursive=True)
 
+// Fallback root, tried only when Head Shot has no match — direct feedback, 2026-09-11:
+// not every design has a proper headshot on file, but something matching might exist
+// in one of the share's other category folders (Room Scene, Custom Photo Folder,
+// Floor shot, ...). Defaults to PHOTO_FOLDER's own parent directory — the broader
+// "Photo Folder" share root Head Shot itself lives under — so this works out of the box
+// without a second env var in the common case; override RUG_LENS_PHOTO_FALLBACK_FOLDER
+// only if the fallback root should be something other than Head Shot's parent. Always
+// scanned recursively (it has to search across whatever category folders exist, unlike
+// the primary folder where recursion is merely optional) and only on a primary miss,
+// since it's necessarily a much bigger, slower scan than Head Shot alone.
+const FALLBACK_PHOTO_FOLDER = process.env.RUG_LENS_PHOTO_FALLBACK_FOLDER || path.dirname(PHOTO_FOLDER);
+
 const CONTENT_TYPES: Record<string, string> = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -49,7 +61,18 @@ export async function GET(request: Request) {
 
   try {
     const files = await getPhotoFolderListing(PHOTO_FOLDER, RECURSIVE);
-    const match = findBestMatch(files, design, gr, br);
+    let match = findBestMatch(files, design, gr, br);
+
+    if (!match && FALLBACK_PHOTO_FOLDER && FALLBACK_PHOTO_FOLDER !== PHOTO_FOLDER) {
+      try {
+        const fallbackFiles = await getPhotoFolderListing(FALLBACK_PHOTO_FOLDER, true);
+        match = findBestMatch(fallbackFiles, design, gr, br);
+      } catch {
+        // Fallback root unreachable/unreadable this time — fine, just means no
+        // fallback available; the primary lookup above already ran its own course.
+      }
+    }
+
     if (!match) return new Response(null, { status: 404 });
 
     const info = await stat(match);

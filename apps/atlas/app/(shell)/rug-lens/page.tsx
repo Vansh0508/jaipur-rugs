@@ -1,6 +1,6 @@
 import {
   listOpenStock,
-  listRugLensLocations,
+  listRugLensFacets,
   DEFAULT_PAGE_SIZE,
   type RugLensFilters,
   type RugLensItemType,
@@ -31,40 +31,48 @@ function toArray(value: string | string[] | undefined): string[] {
 export default async function RugLensPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
   const supabase = await getServerSupabaseClient();
-  const access = await requireRugLensAccess(supabase);
-
-  if (!access.hasRugLensAccess) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-        <h1 className="text-xl font-semibold text-foreground">RugLens is restricted</h1>
-        <p className="max-w-md text-sm text-muted">
-          This view is currently limited to Sales and Back Ops. If you need access, ask whoever manages Atlas department
-          access to add you to one of those departments.
-        </p>
-      </div>
-    );
-  }
+  // Open to everyone with general Atlas access, 2026-09-16 — see
+  // requireRugLensAccess.ts's header comment for the full history. Still called (not
+  // just requireAtlasStaffAccess directly) so a future narrowing has one real place to
+  // change, and so this page keeps doing the same defensive re-check every other Atlas
+  // page does (AGENTS.md Section 5) rather than trusting a shared session alone.
+  await requireRugLensAccess(supabase);
 
   const pageSize = Number(toSingle(params.pageSize)) || DEFAULT_PAGE_SIZE;
   const page = Math.max(1, Number(toSingle(params.page)) || 1);
 
   const itemType = toSingle(params.itemType) as RugLensItemType | undefined;
+  const search = toSingle(params.q);
+  const includeHeldOrAssigned = toSingle(params.availability) === "all";
 
   const filters: RugLensFilters = {
     location: toArray(params.location),
+    quality: toArray(params.quality),
+    size: toArray(params.size),
+    customerCode: toArray(params.customerCode),
     itemType,
+    search,
+    includeHeldOrAssigned,
     page,
     pageSize,
   };
 
-  const [stages, locationOptions, { rows, totalCount }] = await Promise.all([
+  const [stages, facets, { rows, totalCount }] = await Promise.all([
     listStages(supabase),
-    listRugLensLocations(supabase),
+    listRugLensFacets(supabase, filters),
     listOpenStock(supabase, filters),
   ]);
+  const { locations: locationOptions, qualities: qualityOptions, sizes: sizeOptions, customerCodes: customerCodeOptions } = facets;
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const hasAnyFilter = toArray(params.location).length > 0 || Boolean(itemType);
+  const hasAnyFilter =
+    toArray(params.location).length > 0 ||
+    toArray(params.quality).length > 0 ||
+    toArray(params.size).length > 0 ||
+    toArray(params.customerCode).length > 0 ||
+    Boolean(itemType) ||
+    Boolean(search) ||
+    includeHeldOrAssigned;
   const from = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, totalCount);
 
@@ -85,15 +93,33 @@ export default async function RugLensPage({ searchParams }: { searchParams: Prom
     <div className="flex h-full flex-col gap-4 overflow-hidden">
       <RugLensFilterPanel
         locationOptions={locationOptions}
+        qualityOptions={qualityOptions}
+        sizeOptions={sizeOptions}
+        customerCodeOptions={customerCodeOptions}
         hasAnyFilter={hasAnyFilter}
-        values={{ location: toArray(params.location), itemType }}
+        values={{
+          q: search ?? "",
+          location: toArray(params.location),
+          quality: toArray(params.quality),
+          size: toArray(params.size),
+          customerCode: toArray(params.customerCode),
+          itemType,
+          // Was dropped from this object in an earlier edit (page.tsx's facets
+          // refactor) — restored: without it, the Availability toggle's visual state
+          // never reflected an already-applied ?availability=all on page load/refresh,
+          // even though the actual filtering (includeHeldOrAssigned above) still
+          // worked correctly. Purely a display bug, not a data-correctness one, but a
+          // confusing one — fixed while touching this file for the Size filter.
+          availability: toSingle(params.availability),
+        }}
       />
 
       <div className="flex shrink-0 items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">RugLens</h1>
           <p className="text-sm text-muted">
-            Open stock &amp; samples — no Customer PO, not on hold. Showing {from}-{to} of {totalCount}
+            Open stock &amp; samples — final locations only (warehouse/showroom/store), no Customer PO, not on hold. Showing{" "}
+            {from}-{to} of {totalCount}
             {hasAnyFilter ? " (filtered)" : ""}
           </p>
         </div>

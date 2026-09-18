@@ -57,6 +57,11 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | `20260907161313` | `shehbaaz_email` | orders | `db/orders/016_shehbaaz_email.sql` |
 | `20260910054158` | `seed_backops_department` | orders | *(applied via `execute_sql`/`apply_migration` before this row's repo file existed — see 017 below)* |
 | `20260910060119` | `backops_department_self_service` | orders | `db/orders/017_backops_department_self_service.sql` |
+| (2026-09-11) | `orders_perf_facets_and_stats_rpcs` | orders | `db/orders/018_perf_facets_and_stats_rpcs.sql` |
+| (2026-09-11) | `customer_codes_add_conflict_fix` | orders | `db/orders/019_customer_codes_add_conflict_fix.sql` |
+| (2026-09-11) | `rug_lens_facets_cross_filter` | orders | `db/orders/020_rug_lens_facets_cross_filter.sql` |
+| — (written, NOT applied, deliberately) | `nav_full_field_expansion` | orders | `db/orders/021_nav_full_field_expansion.sql` |
+| (2026-09-12) | `column_requests` + `column_requests_resolved_by_index` | orders | `db/orders/022_column_requests.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
@@ -359,6 +364,80 @@ tables. `003_orders_sync_cron.sql`'s scheduled job is applied but fails closed (
 the `orders-sync` Edge Function is deployed and the `orders_sync_secret` Vault entry is
 created — neither done yet, see "Still pending" below.
 
+**Orders module — dispatch status + shipment tracking (2026-09-15, applied —
+`db/orders/029_dispatch_tracking.sql`):** real "Dispatched" stage + courier tracking
+info, closing a genuine gap found investigating a merchant-reported rug-count
+discrepancy (see `ERP_AND_EXTERNAL_REQUESTS.md` request #9 for the full story — a
+dispatched rug just silently disappears from `NAV-002-Rug List - Main`, the view
+`orders-sync.mjs` otherwise reads from, with no "Dispatched" status text anywhere in
+it; the real fact only exists in two entirely different NAV reports).
+
+New `dispatched` stage (`is_terminal = true`, deliberately not reusing the existing
+`delivered` stage — checked first, it had zero raw_status mappings, i.e. unused, but
+"delivered" means the customer actually received it, a later and distinct real-world
+milestone). Six new nullable `orders` columns: `dispatched_at`, `sales_shipment_no`
+(from `NAV-011- Posted Whse Shipment Packing List`, keyed on Item No_ — this schema's
+real unique key, not OTN No_, which isn't guaranteed unique), and `tracking_no` /
+`shipping_agent_code` / `shipping_agent_name` / `ewb_no` (from a separate AWB-tracking
+NAV view, `View-0462-Sales_Inv_With_AWB_Tracking_And_Bale_Wise_Details`, also keyed on
+Item No_ — `shipping_agent_name` resolved from NAV's own `JRCPL Live$Shipping Agent`
+master table at sync time, e.g. "MH-004" -> "BLUE DART EXPRESS LIMITED", confirmed live
+rather than assumed from the raw code).
+
+Both new sync passes (`orders-sync.mjs`'s `syncDispatchStatus`/`syncTrackingInfo`, run
+after the main sync loop so they have final say on `stage_id`) only ever UPDATE an
+existing `orders` row — they deliberately do not insert a new row for an item either
+source NAV report mentions that Supabase has never synced via `NAV-002` at all (this
+really happens, see request #9's finding of 9 such rugs) — backfilling a never-synced
+order is a bigger, separate decision than showing dispatch status for orders Atlas
+already knows about. Both passes also only ever touch a field while it's still null —
+never cleared once set — because both source NAV reports only retain a rolling window
+(confirmed live: NAV-011 ~30 days, the tracking view ~3 months); an item aging out of a
+later pull must not be read as "undo the dispatch."
+
+`is_terminal = true` means this "just works" with `private.orders_on_time_status()`
+(024_on_time_status_view.sql) and `orders-delay-alerts.mjs`'s terminal-stage exclusion —
+both already treat any terminal stage as on-track/not-alertable, zero code changes
+needed in either. Advisor-clean after applying (checked — only the pre-existing
+project-wide `auth_leaked_password_protection` WARN, unrelated).
+
+**Also found, not yet understood, flagged separately**: a `nav011_pull_requests` table
+(shipment_id, warehouse_no, status, claimed_at, result jsonb, error, requested_by,
+requested_at, completed_at — looks like an async request-queue design, maybe for an
+on-demand per-shipment NAV-011 lookup) exists live on this project but has **zero
+references anywhere in git history** — `git log`/`git fetch` confirmed no unpulled
+commits contain it. Someone applied it directly without ever committing a migration
+file for it, a real violation of this same file's own "every migration that lands must
+be recorded here" rule. Not used by the feature above (which reads NAV-011 directly, in
+bulk, on the same schedule as everything else) — flagged for Ayaan/Vansh to explain or
+clean up, not touched or built on top of by this pass.
+
+**Orders module — filter-aware summary totals for /orders (2026-09-17, applied —
+`db/orders/032_orders_filtered_summary_rpc.sql`):** one new read-only function,
+`public.orders_filtered_summary(...)`, backing a new summary panel above the Orders
+table — total pieces and square feet (`std_cubage`) over the FULL filtered set, split by
+`computed_on_time_status` (Delayed / Late / On track / No target date), plus a per-stage
+breakdown. Direct request from the production team's UAT walkthrough the same morning:
+explicitly *not* another column — a rollup that follows whatever filters are on, so
+nobody exports to Excel to sum square feet by hand. Aggregated in Postgres for the same
+reason as `018`: /orders is paginated server-side, so summing the rows on screen would
+be wrong for any filter matching more than one page. Its 22 parameters mirror
+`applyOrderFilters()` branch for branch (the same TS<->SQL duplication `018`/`024`
+already carry; `getOrdersSummary()` in `apps/atlas/lib/queries/orders.ts` is the only
+caller and owns the mapping — a new filter needs a parameter here AND a line there, and
+the panel's total disagreeing with the table's count is the tell). `security invoker`,
+reading through `orders_with_on_time_status` (`024`), so `orders_select` RLS scopes it
+identically to the table beneath it and its Delayed/Late split is the exact same status
+each row's badge shows. Dry-run as a plain query against live data before applying:
+unfiltered total matched a direct `count(*)` exactly (13,983 non-stock rows), ~280ms
+for the full aggregate including the view's two per-row `private.*` calls. Applied via
+`apply_migration` from this session; advisors clean afterwards (security: only the
+pre-existing project-wide `auth_leaked_password_protection` WARN; performance: only
+pre-existing INFO notices, none touching this function). Frontend gate: the panel is
+fetched and rendered only for production-department members — not admins either, asked
+explicitly — direct request at approval time, "this view should be visible only to
+production team."
+
 ## Pre-existing history on this project (context, not part of this module's schema)
 
 This project was not a clean slate. Its migration history (`supabase_migrations.schema_migrations`)
@@ -382,6 +461,343 @@ forward, per the user's explicit call — #3's design is superseded, not merged.
 here only so a future reader of the Supabase migration history isn't confused about what
 `drop_rd_webapp_schema_for_foundation_rebuild` or `create_team_members_foundation_schema`
 were, since neither corresponds to anything in this repo.
+
+**Dashboard/Orders/RugLens performance fix — written, NOT yet applied (2026-09-11,
+`018_perf_facets_and_stats_rpcs.sql`).** Ayaan reported the app feeling slow switching
+between Dashboard/Orders/RugLens and applying filters. Confirmed live via `execute_sql`/
+`EXPLAIN ANALYZE` (read-only, no writes) against the real data (46,234 rows, 13,633
+non-stock): `listOrderFacets`, `listAllOrdersForStats`
+(`apps/atlas/lib/queries/orders.ts`) and `listRugLensFacetValues`
+(`apps/atlas/lib/queries/rugLens.ts`) each paged through EVERY matching row in
+sequential 1000-row round trips (PostgREST's per-request cap) and deduped/aggregated in
+JS, on every single page load — ~14 round trips for Orders' facets, ~14 more for the
+Dashboard's stats, ~33 for RugLens' facets. `018` adds three plain SQL functions
+(`orders_list_facets`, `orders_dashboard_stats`, `rug_lens_facets`) that do that same
+work in Postgres in one round trip instead — all SECURITY INVOKER (the default), so the
+existing `orders_select` RLS policy still scopes them exactly as it does any other query.
+Measured live: ~150ms / ~100-1400ms / ~570ms respectively, replacing what were multi-
+second sequential round trips.
+
+**Applied 2026-09-11**, after first being blocked by this environment's own permission
+system on the first attempt (a live-production-database write needs Ayaan's explicit
+go-ahead — asked directly, confirmed, then applied) and Ayaan asking two direct follow-up
+questions first (answered inline in that session, not repeated here): whether a
+code-only "fetch the same pages in parallel instead of one-by-one" alternative could
+avoid a database change at all (yes, but slower and heavier than pushing the work into
+Postgres — he chose the SQL-function approach), and whether adding these functions could
+affect other apps sharing this same Supabase project (confirmed directly: no existing
+function had these names before this migration, all three only ever read `orders`, none
+can write anything, and the same RLS policy still gates them for every caller regardless
+of which app they normally use).
+
+Verified live immediately after applying: `get_advisors` (security + performance) shows
+no new findings beyond the pre-existing ones already on record; `orders_dashboard_stats()`
+returns `{total: 13633, distinct_sales_orders: 3786, delayed_count: 9444, counts_by_stage:
+{...7 stages...}}`; `orders_list_facets()` returns 165 distinct qualities / 7,488 designs /
+130 merchants; `rug_lens_facets(false)` returns 23 locations / 178 qualities — all sane
+numbers, all returned in one round trip.
+
+The three application-code query functions (`listOrderFacets`/`getDashboardStats`/
+`listRugLensFacets`) and the three pages that call them (`dashboard`, `orders`,
+`rug-lens`) were updated to call these RPCs by name — confirmed compiling clean via
+`pnpm --filter @jaipur-rugs/atlas type-check` and a full `pnpm --filter @jaipur-rugs/atlas
+build`. `packages/supabase-client/src/types.ts`'s `Functions` block was hand-updated to
+add these three (same "hand-authored, not yet regenerated" exception already flagged at
+that file's own header for this module).
+
+**Update, same day: deployed to the office server.** Ayaan asked for the office server
+(`192.168.0.18`) specifically, not the VPS. Committed + pushed to
+`atlas-workflow-and-deploy` (only `listOrderFacets`/`getDashboardStats`, the Dashboard
+page, `types.ts`, this ledger, and `018` itself — deliberately NOT `lib/queries/rugLens.ts`
+or the RugLens pages, since those had independently moved on under a parallel session,
+see below), then on the server: `git pull` (clean fast-forward), `pnpm run build`
+(succeeded), `pm2 restart atlas`. Verified after restart: `pm2 logs atlas` showed no new
+errors (the log file's last-modified timestamp was 4 hours stale, i.e. nothing new had
+been written to it since well before this restart), and a plain `curl` against `/`,
+`/orders`, `/dashboard`, `/rug-lens` all returned `307` (the documented healthy
+login-redirect response). VPS (`atlas.jaipurrugsai.cloud`) deliberately left untouched.
+
+**RugLens facets, part 2 (2026-09-11, `020_rug_lens_facets_cross_filter.sql`) — the
+RugLens speed-up completed.** While wiring `018`'s `rug_lens_facets(boolean)` into
+`lib/queries/rugLens.ts`, this session discovered that a parallel session had, hours
+earlier, already tried almost the same thing, independently, on the same file: shipped
+code calling that exact RPC before `018` had actually been applied, which broke every
+real `/rug-lens` page load in production (`PGRST202`) until reverted the same day — see
+that revert's own incident note (still readable in `lib/queries/rugLens.ts`'s git
+history) and the fact `018`'s row above was initially marked "written, NOT yet applied"
+for exactly this reason. That revert also added a real feature on top while fixing the
+outage: RugLens' Location/Quality/Size filters now cross-narrow each other (picking one
+shrinks what the other two can even offer), which the original single-argument
+`rug_lens_facets(boolean)` never supported — reintroducing it as-is would have silently
+regressed that feature, so this session deliberately left `rugLens.ts` on the safe,
+reverted, non-RPC implementation and did NOT touch it in the `018` commit.
+
+The revert's incident note set two explicit preconditions for trying an RPC here again:
+confirmed live in `pg_proc`, and Ayaan's explicit sign-off. Both are true now — `018` was
+verified live earlier the same day, and Ayaan directly asked, in this same session, to
+speed RugLens up too. `020` therefore drops the old, by-then-unused
+`rug_lens_facets(boolean)` and replaces it with a 6-argument version
+(`p_location`/`p_quality`/`p_size`/`p_item_type`/`p_search`/`p_include_held_or_assigned`)
+that matches `applyRugLensFilters`/`listRugLensFacets`'s cross-filtering exactly: a `base`
+CTE applies every condition shared by all three facets once, and each output array
+(locations/qualities/sizes) is scoped by the OTHER two array filters only, never its own
+— mirroring the app code so the two can't drift apart. SECURITY INVOKER (the default,
+same as `018`'s three functions), so RLS is unaffected.
+
+Verified live, twice, before touching the app code: a dry-run of the query body against
+real data (23 locations / 177 qualities / 1,434 sizes with no filters — within normal
+data-drift of `018`'s original same-day count of 178 qualities, not a logic error), and a
+real cross-filter test (narrowing by one actual Quality value correctly shrank Locations
+23→15 and Sizes 1,434→44, while the Qualities list itself stayed the full 177-value set —
+confirming a facet never hides its own current selection's siblings, only reacts to the
+other two). `get_advisors` clean (only the pre-existing, unrelated
+`auth_leaked_password_protection` WARN). `listRugLensFacets` was then rewritten to call
+this RPC in one round trip instead of three parallel paginated passes;
+`packages/supabase-client/src/types.ts`'s `Functions` entry for `rug_lens_facets` was
+updated to the new signature. Confirmed compiling clean via type-check and a full
+production build before committing.
+
+**NAV field expansion → column-request workflow (2026-09-12).** Direct request: "ITS
+200+ COLOUMNS" (a real reference spreadsheet, `NAV FORMAT.XLSX`, listing 202 NAV
+fields). Verified before writing anything: diffed those 202 against the 42 fields
+`orders-sync.mjs` already pulls, then confirmed the remaining 160 against the LIVE
+`NAV-002-Rug List - Main` view's real `INFORMATION_SCHEMA.COLUMNS` (read-only, from the
+office server — the only machine with a route to it) rather than trusting the
+spreadsheet's spelling — 225 real columns exist there today; 158 of the 160 matched
+exactly (the other 2 don't exist in this view under that name), plus 22 more real
+columns turned up that weren't even in the spreadsheet. `021_nav_full_field_expansion.sql`
+captures all 180 verified fields as a ready-to-use migration — **written, deliberately
+NOT applied**: Ayaan chose a request-based model instead ("no load in the server and
+database instead only that column will be added which are required and requested by the
+user"), so `022_column_requests.sql` (applied, advisor-clean — see below) adds a small
+`orders_column_requests` table instead. An employee requests one specific field (browsed
+from the full 180-field catalog, `apps/atlas/lib/requestableNavFields.ts`, via
+`RequestColumnMenu.tsx`'s "Request a column" list next to the Orders table); the request
+lands there for Ayaan to review on `/my-access` (admin-only, gated on the same
+`orders.read.all` `requireAtlasStaffAccess.ts` already checks); only approved fields
+actually get added — one small follow-up migration + one `orders-sync.mjs` field at a
+time, copying that field's already-verified name/type straight out of `021`'s reference
+rather than re-investigating it. Resolving a request (marking it added/declined) is a
+plain admin action for now, not a second Edge Function/UI writer — v1 keeps that side
+manual on purpose. New Edge Function `orders-request-column` (verify_jwt: true, same
+"service-role client + `requested_by` always the CALLER'S OWN employee_id" pattern as
+`salesperson-codes-add`), deployed and smoke-tested (no Authorization header → 401, the
+expected rejection). `get_advisors` clean after `022` beyond the one pre-existing,
+unrelated `auth_leaked_password_protection` WARN — the migration's own `unindexed_foreign_keys`
+INFO finding (`resolved_by`) was fixed same-session with a follow-up index, not deferred.
+`packages/supabase-client/src/types.ts` was also fully regenerated in this pass — its
+header had said since 2026-08-19 that several orders-module tables were "hand-authored,
+pending a migration that hasn't landed yet," which was already stale (that migration
+landed long ago); this regeneration both adds real types for `orders_column_requests`
+and finally corrects that stale note. Confirmed compiling clean across all four
+consuming apps (atlas, hub, admin/feedback-app, admin/internal-portal) before treating
+the regeneration as done, per AGENTS.md Section 4's "a shared package change... don't
+land it without checking what else it touched."
+
+**Branch divergence discovered and reconciled, `atlas-workflow-and-deploy` retired in
+favor of `main` (2026-09-14).** While about to deploy the column-request work above,
+Ayaan asked to check changes Vansh had made — turned out `main` and
+`atlas-workflow-and-deploy` had silently diverged on 2026-09-10 (`91b5fe7`, their last
+common ancestor) and never been reconciled: `main` gained Vansh's Orders UI redesign
+(`c4ceb7b` — view tabs, filters moved into the table, a settings dropdown with Columns/
+Filters/Row Height submenus, row height options, copy-OTN, a date-range picker; new
+deps `@gravity-ui/icons` + `@internationalized/date`), while `atlas-workflow-and-deploy`
+independently gained everything through `022` above. Neither branch had both. The
+working directory switching branches mid-session also `git stash`'d uncommitted work in
+progress at the time — nothing was actually lost, just needed recovering, all confirmed
+present before continuing.
+
+Reconciled by hand rather than trusting a mechanical `git merge` on `OrdersTable.tsx`
+(rewritten heavily on both sides): took Vansh's version as the structural base, then
+re-applied the column/data work on top of it — the full reordered/expanded column list,
+`columnOrder` state, a search box + reorder buttons added to his "Hide Columns"
+submenu, and "Request a Column" added as a fourth submenu alongside his existing three,
+rather than as a separate button. `ColumnSettingsMenu.tsx`/`RequestColumnMenu.tsx`
+(this session's earlier standalone versions) and `OrdersFilterPanel.tsx` (superseded by
+filters-in-table) were all deleted as orphaned once their logic moved elsewhere and
+confirmed nothing still imported them. Also fixed while reviewing: a leftover Chinese
+character ("至", should read "to") in the new date-range picker's separator. Flagged to
+Ayaan but deliberately not touched: the new icon library dependency reverses a
+previously-recorded deliberate "no icon library" decision (`apps/atlas/components/shell/icons.tsx`'s
+own prior comment) — AGENTS.md Section 1 territory, his call to make with Vansh, not
+mine to override either way. Verified with a clean type-check and full production build
+after every resolution step. Merged into `main` (fast-forward, since
+`atlas-workflow-and-deploy` was reconciled first) and pushed both branches, now
+pointing at the same commit (`d7c0b8c`).
+
+**Working branch retired in favor of `main`, direct decision, same day.** Ayaan then
+asked to make `main` the one shared working branch going forward ("so that we can work
+combinedly" with Vansh) rather than maintaining two — done: local checkout switched to
+`main`, and (a second direct instruction) the office server's deploy checkout switched
+too (`git checkout main`, tracking `origin/main`), so `git pull` there now follows
+`main` instead of `atlas-workflow-and-deploy`. Caught and fixed while deploying: Vansh's
+commit had added `@internationalized/date` to `apps/atlas/package.json` but the
+`pnpm-lock.yaml` update never got committed alongside it — invisible locally (a loose
+`pnpm install`/`next build` resolves it from an already-hoisted copy without complaint)
+but `pnpm install --frozen-lockfile` (what this office deploy, and presumably any
+Docker-based CI-style install, actually uses) failed outright with
+`ERR_PNPM_OUTDATED_LOCKFILE`. Fixed by regenerating the lockfile properly (both on the
+office server and locally, to keep them identical) and committing the 3-line fix.
+`deploy/atlas/office-deploy.md` updated to say `main`, not `atlas-workflow-and-deploy` —
+see that file for the current deploy instructions; don't trust a cached mental model of
+which branch is live there without checking `git branch -vv` on the box itself first.
+The VPS (`deploy-atlas.bat`) was not touched by this rename — it builds from whatever's
+on the local disk of whoever runs it, not from a git pull, so it has no branch to be
+wrong about; it just needs `main` checked out locally (or the equivalent working tree)
+next time someone runs it, same as any other local build.
+
+**Per-account view preferences + real column-request approval — written, NOT yet
+applied/deployed (2026-09-14, `023_user_view_preferences_and_request_approval.sql`).**
+Three direct follow-ups on the same day's earlier column-request work: (1) "lock the
+user's view acc to their user id... from any system" — Orders view preferences (shown
+columns/order/hidden filters/row height) move off browser localStorage onto a real
+per-employee table (`user_orders_view_preferences`, RLS-scoped SELECT, written to
+through a new self-service Edge Function `orders-save-view-preferences`); (2) "admin
+will approve it" — `column_request_status` gains `'approved'` as its own status,
+distinct from `'added'` (approving is a real decision recorded immediately via a new
+admin-only Edge Function `orders-resolve-column-request`; actually making the field
+exist is still a real migration + `orders-sync.mjs` update + deploy, not something a
+click safely automates for a live sync — same reasoning `022`'s own header already
+gives); (3) "request... from a search and dropdown option" on `/my-access` specifically
+— `RequestColumnForm.tsx` moved the request UI off `OrdersTable.tsx`'s settings
+dropdown onto that page. A fourth ask the same message, drag-to-reorder columns, was
+added as native HTML5 drag-and-drop alongside (not replacing) the existing up/down
+buttons.
+
+**Blocked mid-session**: the Supabase MCP connection dropped partway through this
+session (visible as a tool-availability change, not an error from any specific call) —
+neither `apply_migration` nor `deploy_edge_function` has been reachable since, so `023`
+is unapplied and both new Edge Functions are undeployed as of this entry.
+`packages/supabase-client/src/types.ts` hand-authors `user_orders_view_preferences`
+and the `'approved'` enum value in the meantime (flagged explicitly at that file's own
+header, same pattern already used once before in this ledger for exactly this
+situation) — regenerate and replace once `023` actually lands. Confirmed compiling
+clean (type-check + full build, all four consuming apps) regardless, so this is
+ready to activate the moment the connection comes back: apply `023`, deploy both
+functions, done — no further code changes needed at that point.
+
+**Orders tab bar relabeled, "Late" tab deliberately left disabled pending a SQL port
+(2026-09-14/15, `024_on_time_status_view.sql`).** Direct request: replace the top tab
+bar (All Orders/Delayed/On Hold/Quick Ship) with All Orders/Late/Delayed/On
+Track/Due in 7 days. On Hold and Quick Ship weren't dropped, just demoted to the filter
+bar below (unchanged filters, just no longer a top-level tab). Delayed and Due in 7
+days are unchanged under the hood (`delayStatus=late`/`soon` — plain
+`revised_ex_factory_date` comparisons); On Track is a new, simple date-window
+`delayStatus` value ("not late, not due soon," a missing date counts as on_track too) —
+neither needed a migration.
+
+"Late" is different in kind, not just degree: confirmed directly (asked explicitly
+whether it should just mean the same thing as "Delayed" — no, it's the real
+pace-projection warning this app's own "On Time" column already computes per row, from
+a real 2026-09-07 production conversation: "flag it as Late not delayed"). Computing
+that correctly across the full 13,685+-row dataset (not just whichever page happens to
+be loaded) means porting `apps/atlas/lib/stageTat.ts`'s `stageStandard`/
+`loomStandardDays`/`maxDimensionFt` + `lib/tat.ts`'s `onTimeStatus` into Postgres —
+`024` does that: `private.zero_priority_knotted_rate` (a real reference table for the
+per-quality knot rate lookup — the exact thing `stageTat.ts`'s own header comment said
+this data should eventually become), three `private` helper functions, and a
+`security_invoker` view, `orders_with_on_time_status`, exposing `orders`'s columns plus
+`computed_stage_standard_days`/`computed_on_time_status`. **Written, NOT applied** (same
+blocked Supabase connection as `023` above) **and, even once applied, the frontend
+"Late" tab must NOT be wired to it until
+`apps/atlas/scripts/validate-on-time-status-port.mjs` has actually been run and passed**
+— it re-implements the exact same TS logic in the script itself and diffs it against
+the SQL view's output for every real order, not a sample; zero mismatches is the bar. A
+regex/lookup-table port like this is exactly the kind of change that can look correct
+under code review and still be subtly wrong on real data (an ERP quality/size string
+this app hasn't seen a clean example of yet, a POSIX-vs-JS regex edge case, etc.) —
+this is a live TAT tool 124 people use for real decisions, so "written carefully" isn't
+being treated as equivalent to "verified," and the tab stays visibly disabled with an
+explanatory tooltip in the meantime rather than silently wrong or silently missing.
+
+**`023` and `024` applied 2026-09-15**, via the other Supabase-connected session
+(handed the exact SQL/function file paths + project id, applied verbatim, nothing else
+touched — confirmed by its own report back). Both Edge Functions
+(`orders-save-view-preferences`, `orders-resolve-column-request`) deployed and
+confirmed `ACTIVE`. Advisors clean for `023`. `024` surfaced one real WARN
+(`function_search_path_mutable` on all 4 new `private` functions) — same finding, same
+fix, as `007_hub_advisor_fixes.sql`/`008_driver_code_helper_fixes.sql` before it.
+
+Running `validate-on-time-status-port.mjs` (from this session, via SSH to the office
+server — it holds the real `SUPABASE_SERVICE_ROLE_KEY`, the other session's own local
+`.env.local` didn't) caught a second, more important problem before either the WARN or
+this ledger entry existed: nobody could query `orders_with_on_time_status` at all —
+`permission denied for schema private` (`42501`), even for `service_role`. A view's own
+SELECT-list function calls need the querying role to hold real `EXECUTE` on them
+(unlike an RLS policy predicate's function calls) — `private` schema functions get none
+by default, which is the whole point of that schema, but it meant the view was
+unusable as built. `025_on_time_status_fixes.sql` grants exactly the `EXECUTE` (and
+`USAGE ON SCHEMA private`) those 4 functions need, plus the `search_path` fix — written,
+not yet applied. Once it lands, `validate-on-time-status-port.mjs` needs a clean run
+before the frontend "Late" tab gets wired up — still the actual bar, not "025 applied."
+
+**`025` applied 2026-09-15** (via the other session again — advisors confirmed the
+`function_search_path_mutable` WARN gone, nothing new). Re-running
+`validate-on-time-status-port.mjs` got further but hit a second, different permission
+gap: `permission denied for table zero_priority_knotted_rate` — `loom_standard_days()`
+reads that table directly, and same reasoning as `025`, a plain reference table grants
+nothing to anyone but its owner by default. `026_on_time_status_table_grant.sql`
+(`grant select ... to authenticated, service_role`) fixed it — Postgres's own error
+message named the exact fix needed.
+
+**`026` applied 2026-09-15. Third re-run of the validation script actually executed
+(no more permission errors) and found a REAL correctness bug** — not a permissions gap
+this time. `computed_stage_standard_days` matched the TypeScript on every single row
+checked (confirming the `stageStandard`/`loomStandardDays`/`maxDimensionFt` port is
+correct), but `computed_on_time_status` disagreed on a large fraction of rows, in two
+consistent, explainable directions: an order due exactly today came back
+`js=delayed`/`sql=late`, and an order due in the next few days sometimes came back
+`js=late`/`sql=on_track`. Root cause: `lib/tat.ts`'s `onTimeStatus()` compares real
+instants (`Date.now()` vs. `new Date("yyyy-mm-dd").getTime()`, always midnight UTC of
+that date) — `024`'s SQL instead compared plain `date` values, a whole day "behind" at
+the boundary, since at any point after midnight UTC on the due date (i.e. essentially
+always, during normal daytime hours) JS has already crossed that instant and calls it
+delayed, while `current_date > v_target` is still false when the two dates are equal.
+`027_on_time_status_timestamp_fix.sql` replaces the date-only comparison with real
+`timestamptz` arithmetic, explicitly anchored to UTC (`AT TIME ZONE 'UTC'`, not trusting
+the session timezone to already be UTC) — written, not yet applied. Re-run the
+validation script again once it lands; a second full pass with zero mismatches is still
+the bar, not just "the obvious two are fixed" — a regex/date port producing two
+distinct, explainable-in-hindsight bugs on the first real run is exactly why this
+process insisted on checking every real order rather than a sample or a code read.
+
+**`027` applied 2026-09-15 — and the advisor check (run after every migration this
+session, no exceptions) caught a regression from it immediately.** `function_search_path_mutable`
+came back, this time only for `private.orders_on_time_status`: `create or replace
+function` does NOT preserve a prior `alter function ... set search_path`, so `027`'s
+replace (needed to fix the timestamp bug) silently dropped `025`'s pinning on that one
+function. `028_on_time_status_search_path_regression.sql` re-pins it — a real,
+worth-remembering gotcha for any future `create or replace function` on an
+already-pinned function in this project, not just this one. Advisors otherwise
+unchanged both times (the two pre-existing, unrelated findings only). Written, not yet
+applied; the validation script re-run is still the actual thing that decides whether
+the frontend "Late" tab gets enabled, not any individual advisor check on its own.
+
+**`028` applied 2026-09-15, advisors confirmed back to baseline. Validation script
+re-run: PASS — 0 mismatches across 13,739 real orders.** That's the actual bar this
+whole `024`-`028` sequence was built around, not any individual migration landing —
+"Late" wired up the same day: `listOrders()` now queries `orders_with_on_time_status`
+instead of the bare `orders` table (same RLS via `security_invoker`, plus the two
+computed columns), a new `onTimeStatus` filter dimension (deliberately separate from the
+existing date-only `delayStatus` one — "Late" and "Delayed" are genuinely different
+things here, not two names for the same filter), and the tab bar's "Late" button went
+from a disabled placeholder to a real one. Sanity-checked against live counts before
+calling it done: 706 orders (of ~13,573 non-stock, non-terminal) currently show "late" —
+not past due yet, off-pace given their stage's TAT standard; 9,674 "delayed", 3,176
+"on_track", 17 "unknown". Confirmed compiling clean (type-check + full build), deployed
+to the office server, verified healthy (307 on `/` and `/orders`, clean logs beyond the
+routine, pre-existing, unrelated auth-refresh-token noise every Supabase Auth app gets
+from expired browser sessions).
+
+The whole `023`-`028` sequence is worth reading end to end for anyone touching this
+pattern again: two permission gaps (`EXECUTE` on the `private` functions, `SELECT` on
+the reference table — neither is granted by default, and neither shows up until
+something outside the function owner actually tries to query through the view), one
+real correctness bug (date vs. timestamp comparison, exactly the kind of boundary error
+that reads fine on inspection and is wrong against real data), and one regression
+(`CREATE OR REPLACE FUNCTION` silently drops a prior `ALTER FUNCTION ... SET`) — four
+distinct problems, caught in order, only because `validate-on-time-status-port.mjs` and
+`get_advisors` were run after every single migration rather than once at the end.
 
 ## Still pending
 
@@ -537,8 +953,9 @@ people. Two changes, both live:
 
 **Not done in this pass, flagged for whoever owns the actual Atlas frontend** (its source
 lives at `G:\Automation\MonoRepo\jaipur-rugs\`, github.com/Vansh0508/jaipur-rugs,
-branch `atlas-workflow-and-deploy` — same repo as this worktree, just possibly a
-different checkout/session): the "my access" page still needs a **Customer code(s)**
+branch `main` as of 2026-09-14 — see this file's own later entry on the
+`atlas-workflow-and-deploy` -> `main` branch reconciliation; same repo as this worktree,
+just possibly a different checkout/session): the "my access" page still needs a **Customer code(s)**
 input wired to `customer-codes-add`, distinct from the existing **Salesperson code(s)**
 field wired to `salesperson-codes-add` — right now nothing in the frontend calls the new
 function yet. Also requested but out of reach from a database-only session: trimming the

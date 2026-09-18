@@ -711,6 +711,48 @@ export async function addOwnCustomerCodes(supabase: SupabaseClient, codes: strin
   return data;
 }
 
+interface RemoveOwnSalespersonCodeResponse {
+  employeeId: string;
+  removed: string;
+}
+
+/**
+ * Invokes `salesperson-codes-remove` — the undo counterpart to addOwnSalespersonCodes.
+ * Self-service, always the CALLER'S OWN account. Added 2026-09-15 alongside
+ * customer-codes-remove: until then, a code added by mistake (e.g. someone else's,
+ * pasted in as a workaround) could never be taken back off an account.
+ */
+export async function removeOwnSalespersonCode(supabase: SupabaseClient, code: string) {
+  const { data, error } = await supabase.functions.invoke<RemoveOwnSalespersonCodeResponse>(
+    "salesperson-codes-remove",
+    { body: { code } },
+  );
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+interface RemoveOwnCustomerCodeResponse {
+  employeeId: string;
+  removed: string;
+}
+
+/**
+ * Invokes `customer-codes-remove` — the undo counterpart to addOwnCustomerCodes. Same
+ * posture: self-service, always the CALLER'S OWN account, effective immediately.
+ */
+export async function removeOwnCustomerCode(supabase: SupabaseClient, code: string) {
+  const { data, error } = await supabase.functions.invoke<RemoveOwnCustomerCodeResponse>(
+    "customer-codes-remove",
+    { body: { code } },
+  );
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
 export type SelfServiceDepartmentCode = "management" | "production" | "backops";
 
 interface JoinDepartmentResponse {
@@ -734,6 +776,88 @@ export async function joinOwnDepartment(supabase: SupabaseClient, departmentCode
   const { data, error } = await supabase.functions.invoke<JoinDepartmentResponse>("join-department", {
     body: { departmentCode },
   });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+interface RequestOrdersColumnResponse {
+  id: string;
+  /** True if this exact person already had a pending request for this exact field —
+   * the function dedupes rather than creating a second row every time the "Request a
+   * column" list is reopened. */
+  alreadyRequested: boolean;
+}
+
+/**
+ * Invokes `orders-request-column` — self-service, always the CALLER'S OWN account. Logs
+ * a request for one specific NAV field (from the full catalog in
+ * apps/atlas/lib/requestableNavFields.ts) that isn't in Atlas's `orders` table yet, for
+ * Ayaan to review and, if approved, actually add. Direct decision, 2026-09-12: rather
+ * than add all ~180 candidate NAV fields up front (more load on orders-sync.mjs's every-
+ * 30-minute pull for fields most people never look at), only fields someone actually
+ * asks for get added, one at a time — see db/orders/022_column_requests.sql.
+ */
+export async function requestOrdersColumn(supabase: SupabaseClient, navFieldName: string, notes?: string) {
+  const { data, error } = await supabase.functions.invoke<RequestOrdersColumnResponse>("orders-request-column", {
+    body: { navFieldName, notes },
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface ResolveColumnRequestInput {
+  requestId: string;
+  decision: "approved" | "declined";
+  notes?: string;
+}
+
+interface ResolveColumnRequestResponse {
+  requestId: string;
+  status: "approved" | "declined";
+}
+
+/**
+ * Invokes `orders-resolve-column-request` — admin-only (orders.read.all). Records the
+ * decision immediately; 'approved' is NOT the same as the field actually existing yet —
+ * see that function's own comment for why making it real still needs a real migration +
+ * orders-sync.mjs update, not something this call does on its own.
+ */
+export async function resolveColumnRequest(supabase: SupabaseClient, input: ResolveColumnRequestInput) {
+  const { data, error } = await supabase.functions.invoke<ResolveColumnRequestResponse>(
+    "orders-resolve-column-request",
+    { body: input },
+  );
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface OrdersViewPreferencesInput {
+  hiddenColumns?: string[];
+  columnOrder?: string[];
+  hiddenFilters?: string[];
+  rowHeight?: "compact" | "normal" | "comfortable";
+}
+
+/**
+ * Invokes `orders-save-view-preferences` — self-service, always the CALLER'S OWN
+ * account, takes effect immediately (no approval step, this is UI preference not order
+ * data). Only the fields present in `input` are changed; omitted ones keep whatever's
+ * already stored. Direct request, 2026-09-14: "lock the user's view acc to their user
+ * id... from any system" — replaces the localStorage-only version
+ * (useLocalPreference) with one that actually follows the account across devices — see
+ * db/orders/023_user_view_preferences_and_request_approval.sql.
+ */
+export async function saveOrdersViewPreferences(supabase: SupabaseClient, input: OrdersViewPreferencesInput) {
+  const { data, error } = await supabase.functions.invoke<{ employeeId: string }>(
+    "orders-save-view-preferences",
+    { body: input },
+  );
   if (error || !data) {
     throw new Error(await extractErrorMessage(error));
   }

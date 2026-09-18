@@ -1,6 +1,5 @@
 import { getServerSupabaseClient } from "@/lib/supabaseClient.server";
-import { listAllOrdersForStats, listStages } from "@/lib/queries/orders";
-import { onTimeStatus } from "@/lib/tat";
+import { getDashboardStats, listStages } from "@/lib/queries/orders";
 import { DashboardStat } from "@/components/DashboardStat";
 import { StageChip } from "@/components/StageChip";
 import Link from "next/link";
@@ -10,41 +9,27 @@ import Link from "next/link";
 // delayed count (the on-time signal the build prompt calls the whole point of this
 // rebuild), and a per-stage breakdown. Resist adding more here than that.
 //
-// Uses listAllOrdersForStats(), not listOrders() with a limit — a "total" that's
-// silently capped at some arbitrary row count isn't a total. See that function's
-// comment (confirmed live 2026-09-02: this page showed "1000" against a real
-// 14,214-row table before the fix). listAllOrdersForStats() also excludes the 5
-// internal stock/inventory customer codes now (STOCK_CUSTOMER_CODES) — confirmed live
-// 2026-09-03 that 24.5% of the previous 14,214 total were stock rows, not real orders.
+// Uses getDashboardStats(), not listOrders() with a limit — a "total" that's silently
+// capped at some arbitrary row count isn't a total. See that function's comment
+// (confirmed live 2026-09-02: this page showed "1000" against a real 14,214-row table
+// before that was first fixed). getDashboardStats() also excludes the 5 internal
+// stock/inventory customer codes (STOCK_CUSTOMER_CODES) — confirmed live 2026-09-03 that
+// 24.5% of the previous 14,214 total were stock rows, not real orders.
 //
 // Two separate counts are shown, not one — "rug lines" (one row per item, the level
 // stage-tracking actually happens at) and "sales orders" (one Sales Order can contain
 // several rugs). Confirmed live 2026-09-03: those 14,214 rows resolved to only 3,757
 // distinct Sales Order Nos, so a single "Orders in view" number was quietly answering
 // two different questions depending on who read it.
+//
+// getDashboardStats() itself now aggregates in Postgres in one round trip (see
+// db/orders/018_perf_facets_and_stats_rpcs.sql and that function's own comment) instead
+// of this page pulling every real order into Node to filter/reduce by hand — confirmed
+// live via EXPLAIN ANALYZE that the old per-row JS approach was the single biggest
+// reason this page felt slow (~14 sequential round trips at today's ~13.6k-row scale).
 export default async function DashboardPage() {
   const supabase = await getServerSupabaseClient();
-  const [orders, stages] = await Promise.all([listAllOrdersForStats(supabase), listStages(supabase)]);
-
-  const stageById = new Map(stages.map((s) => [s.id, s]));
-  const delayedCount = orders.filter((o) => {
-    const stage = o.stage_id ? stageById.get(o.stage_id) : undefined;
-    // stageStandardDays passed as null — listAllOrdersForStats only selects a narrow
-    // column set for the dashboard's stat aggregates, not the full order (quality, size,
-    // etc.) stageStandard() needs, so the new predictive "late" state never applies here
-    // (guarded off by that null); this preserves the exact same literal "already past
-    // Rev Ex Factory" count this dashboard metric always showed. Full computation runs
-    // in OrdersTable.tsx and the order detail page instead.
-    return onTimeStatus(o.promised_delivery_date, o.revised_ex_factory_date, stage?.is_terminal ?? false, null) === "delayed";
-  }).length;
-
-  const distinctSalesOrders = new Set(orders.map((o) => o.sales_order_no).filter(Boolean)).size;
-
-  const countByStage = new Map<string, number>();
-  for (const order of orders) {
-    if (!order.stage_id) continue;
-    countByStage.set(order.stage_id, (countByStage.get(order.stage_id) ?? 0) + 1);
-  }
+  const [stats, stages] = await Promise.all([getDashboardStats(supabase), listStages(supabase)]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -54,10 +39,10 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <DashboardStat label="Rug lines in view" value={orders.length} />
-        <DashboardStat label="Distinct sales orders" value={distinctSalesOrders} />
-        <DashboardStat label="Delayed" value={delayedCount} />
-        <DashboardStat label="On track" value={orders.length - delayedCount} />
+        <DashboardStat label="Rug lines in view" value={stats.total} />
+        <DashboardStat label="Distinct sales orders" value={stats.distinctSalesOrders} />
+        <DashboardStat label="Delayed" value={stats.delayedCount} />
+        <DashboardStat label="On track" value={stats.total - stats.delayedCount} />
       </div>
 
       <div>
@@ -70,7 +55,7 @@ export default async function DashboardPage() {
               className="flex items-center gap-2 rounded-xl border-2 border-border px-4 py-3 hover:bg-surface-secondary"
             >
               <StageChip code={stage.code} label={stage.display_name} />
-              <span className="text-sm font-medium text-foreground">{countByStage.get(stage.id) ?? 0}</span>
+              <span className="text-sm font-medium text-foreground">{stats.countsByStage[stage.id] ?? 0}</span>
             </Link>
           ))}
         </div>

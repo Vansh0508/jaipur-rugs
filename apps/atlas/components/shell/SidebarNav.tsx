@@ -42,10 +42,9 @@ export function SidebarNav({
     { href: "/dashboard", label: "Dashboard", icon: DashboardIcon },
     { href: "/orders", label: "Orders", icon: OrdersIcon },
     { href: "/alerts", label: "Alerts", icon: AlertsIcon },
-    // Shown to everyone with general Atlas access, same as Orders/Alerts — actual
-    // access (Sales/Back Ops/admin, see requireRugLensAccess.ts) is gated by the page
-    // itself, which shows a plain "restricted" notice rather than hiding the link
-    // entirely (this component only knows `isAdmin`, not department grants).
+    // Shown to everyone with general Atlas access, same as Orders/Alerts — RugLens
+    // itself is open to everyone too now (see requireRugLensAccess.ts's header comment,
+    // 2026-09-16), so this link no longer needs any department-specific gating.
     { href: "/rug-lens", label: "RugLens", icon: RugLensIcon },
     ...(isAdmin ? [{ href: "/merchants", label: "Merchants", icon: MerchantsIcon }] : []),
     { href: "/my-access", label: "My access", icon: AccessIcon },

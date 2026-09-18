@@ -291,7 +291,7 @@ export function HeroDateRangePicker({
           <DateField.Input slot="start">
             {(segment) => <DateField.Segment segment={segment} className="text-xs" />}
           </DateField.Input>
-          <DateRangePicker.RangeSeparator className="px-1 text-xs text-muted">至</DateRangePicker.RangeSeparator>
+          <DateRangePicker.RangeSeparator className="px-1 text-xs text-muted">to</DateRangePicker.RangeSeparator>
           <DateField.Input slot="end">
             {(segment) => <DateField.Segment segment={segment} className="text-xs" />}
           </DateField.Input>

@@ -11,6 +11,8 @@ export type OrderRow = Tables<"orders">;
 export type StageRow = Tables<"stages">;
 export type StageEventRow = Tables<"order_stage_events">;
 export type ShippingDetailRow = Tables<"shipping_details">;
+export type ColumnRequestRow = Tables<"orders_column_requests">;
+export type ViewPreferencesRow = Tables<"user_orders_view_preferences">;
 
 /** These 5 customer codes are internal warehouse stock/inventory, not real customer
  * orders — the same 5 the pre-Atlas tool (ai.jaipurrugs.com/track-jr-order/) already
@@ -43,7 +45,7 @@ export const DEFAULT_PAGE_SIZE = 20;
 
 export type ConstructionType = "knotted" | "tufted" | "handloom" | "other" | "swatch";
 export type AgingBucket = "0-7" | "8-15" | "16-30" | "30+";
-export type DelayStatusFilter = "late" | "soon" | "late_or_soon";
+export type DelayStatusFilter = "late" | "soon" | "late_or_soon" | "on_track";
 export type YesNo = "yes" | "no";
 
 export interface OrderFilters {
@@ -77,10 +79,25 @@ export interface OrderFilters {
   /** Computed against revised_ex_factory_date, not promised_delivery_date — confirmed
    * against the live feed that promised_delivery_date is essentially always blank (see
    * the live-preview prototype's own finding, same ERP feed); revised_ex_factory_date is
-   * the real signal every delay computation in this app already uses. "Late"/"soon" are
-   * meaningless once an order has reached a terminal stage, so those are excluded too —
-   * requires `terminalStageIds` (compute once from listStages() and pass through). */
+   * the real signal every delay computation in this app already uses. "late"/"soon"/
+   * "on_track" are meaningless once an order has reached a terminal stage, so those are
+   * excluded too — requires `terminalStageIds` (compute once from listStages() and pass
+   * through). Added 2026-09-14, alongside the Orders top tab bar: "on_track" — the one
+   * value that ISN'T about a date being unfavorable, so terminal orders stay excluded
+   * for consistency but a missing date doesn't. Deliberately NOT the same "on time"
+   * concept the per-row badge column computes (that one also factors in the stage TAT
+   * standard's pace projection, "Late" vs "Delayed" — see lib/tat.ts's onTimeStatus);
+   * this is a simpler pure date-window bucket, safe to compute as a plain SQL filter. */
   delayStatus?: DelayStatusFilter;
+  /** Filters on orders_with_on_time_status's computed_on_time_status column — the REAL
+   * pace-aware on-time status (see that comment above delayStatus for the distinction).
+   * Currently only "late" is actually surfaced by the UI (the top tab bar's "Late"
+   * tab); the type stays the full set on purpose so "delayed"/"on_track" are available
+   * without another migration if a future tab wants them. No terminalStageIds handling
+   * needed here — computed_on_time_status already returns 'on_track' unconditionally
+   * for a terminal-stage order (matching onTimeStatus()'s own short-circuit), so a
+   * "late" filter can never match one in the first place. */
+  onTimeStatus?: "on_track" | "late" | "delayed" | "unknown";
   terminalStageIds?: string[];
   /** Date range on revised_ex_factory_date (yyyy-mm-dd strings). */
   dueFrom?: string;
@@ -115,7 +132,82 @@ export interface OrderListResult {
   totalCount: number;
 }
 
-const SWATCH_MAX_SQFT = 4;
+/** Rebuilds a real `OrderFilters` from OrdersTable's own `values` prop (the shape
+ * orders/page.tsx already passes down, itself built from the URL's searchParams) — the
+ * one other place this exact field-by-field mapping happens is that page's own
+ * searchParams -> OrderFilters conversion; this is the reverse direction (already-
+ * resolved values -> OrderFilters), needed so a CLIENT component can re-run the same
+ * query with a different limit/sort than what the server originally fetched.
+ *
+ * Added 2026-09-17, direct request: "select and copy" (and Export to Excel) only ever
+ * grabbed however many rows the on-screen page happened to hold — 20, 50, whatever the
+ * page-size setting was — with no way to grab more of the whole filtered set without
+ * changing the actual on-screen pagination. This is what lets OrdersTable.tsx fetch a
+ * chosen quantity (or "all") of the CURRENTLY filtered rows, from the browser, entirely
+ * independent of the page-size setting still driving what's actually on screen. */
+export function buildOrderFiltersFromValues(
+  values: {
+    q: string;
+    stageId: string[];
+    customerNo: string[];
+    merchantName: string[];
+    orderWiseMerchant: string[];
+    followUpPerson: string[];
+    customerPoNo: string[];
+    quality: string[];
+    design: string[];
+    size: string[];
+    productionOrderStatus: string[];
+    priority: string[];
+    aging?: string;
+    onHold?: string;
+    quickShip?: string;
+    delayStatus?: string;
+    onTimeStatus?: string;
+    ctype?: string;
+    dueFrom?: string;
+    dueTo?: string;
+  },
+  extra: {
+    terminalStageIds: string[];
+    sortBy?: SortableColumn;
+    sortDir?: "asc" | "desc";
+    limit: number;
+  },
+): OrderFilters {
+  return {
+    search: values.q || undefined,
+    stageId: values.stageId,
+    customerNo: values.customerNo,
+    merchantName: values.merchantName,
+    orderWiseMerchant: values.orderWiseMerchant,
+    followUpPerson: values.followUpPerson,
+    customerPoNo: values.customerPoNo,
+    quality: values.quality,
+    design: values.design,
+    size: values.size,
+    productionOrderStatus: values.productionOrderStatus,
+    priority: values.priority,
+    aging: values.aging as AgingBucket | undefined,
+    onHold: values.onHold as YesNo | undefined,
+    quickShip: values.quickShip as YesNo | undefined,
+    delayStatus: values.delayStatus as DelayStatusFilter | undefined,
+    onTimeStatus: values.onTimeStatus as OrderFilters["onTimeStatus"],
+    terminalStageIds: extra.terminalStageIds,
+    dueFrom: values.dueFrom,
+    dueTo: values.dueTo,
+    ctype: values.ctype as ConstructionType | undefined,
+    sortBy: extra.sortBy,
+    sortDir: extra.sortDir,
+    limit: extra.limit,
+  };
+}
+
+// Exported — lib/queries/rugLens.ts reuses this exact threshold for its own
+// Sample/Rug classification (std_cubage-based, not the serial-number-prefix rule it
+// used at first), so the two "what counts as a swatch" definitions in this app can't
+// quietly drift apart.
+export const SWATCH_MAX_SQFT = 4;
 
 /** Every column the Orders table lets someone sort by — a fixed whitelist mapping a
  * plain user-facing key to the real DB column, so a request can never sort by an
@@ -123,11 +215,16 @@ const SWATCH_MAX_SQFT = 4;
  * stages.display_order didn't actually work in practice (confirmed live 2026-09-05) and
  * was removed rather than left silently broken — worth revisiting for real later.
  * Stage Standard (TAT) and On-Time also aren't here — both are computed, not stored
- * anywhere to sort by — see OrdersTable.tsx's client-side computedSort instead. */
+ * anywhere to sort by — see OrdersTable.tsx's client-side computedSort instead. Same
+ * reason Delay (Orig. Ex-Factory) and Total Days aren't here either — both computed
+ * client-side from original_ex_factory_date/sales_order_date, which already are
+ * sortable in their own right (originalExFactory/salesOrderDate below). */
 export const SORTABLE_COLUMNS = {
   otn: "otn_no",
   merchant: "merchant_name",
   customerPo: "customer_po_no",
+  salesOrderNo: "sales_order_no",
+  salesCode: "salesperson_code",
   salesPerson: "order_wise_merchant",
   design: "design",
   quality: "quality",
@@ -135,6 +232,7 @@ export const SORTABLE_COLUMNS = {
   construction: "construction",
   pendingDays: "current_status_pending_days",
   originalExFactory: "original_ex_factory_date",
+  originalExIndia: "original_ex_india_date",
   salesOrderDate: "sales_order_date",
   revisedExFactory: "revised_ex_factory_date",
   revisedExIndia: "revised_ex_india_date",
@@ -142,6 +240,40 @@ export const SORTABLE_COLUMNS = {
   // followUpPerson deliberately absent — the Orders table displays a *computed* value
   // (lib/followUpPerson.ts), not the raw orders.follow_up_person column, so sorting by
   // that raw field would silently not match what's shown. Same reasoning as Stage.
+
+  // Everything below added 2026-09-12 — the full rug/order field set, made available
+  // (mostly default-hidden) so each user can add whichever columns match how THEY read
+  // this table, per direct request. All real DB columns, so all sortable, same as every
+  // other field above.
+  itemDescription: "item_description",
+  serialNo: "serial_no",
+  shape: "shape",
+  grColorName: "gr_color_name",
+  brColorName: "br_color_name",
+  sizeCm: "size_cm",
+  stdCubage: "std_cubage",
+  pileFibre: "pile_fibre",
+  pileHeight: "pile_height",
+  backing: "backing",
+  authorization: "authorization",
+  hsnSacNo: "hsn_sac_no",
+  usItemCode: "us_item_code",
+  indiaCollection: "india_collection",
+  matchingCode: "matching_code",
+  promisedDeliveryDate: "promised_delivery_date",
+  expectedReadyDate: "expected_ready_date",
+  onHold: "on_hold",
+  quickShip: "quick_ship",
+  orderPriority: "order_priority",
+  productionOrderNo: "production_order_no",
+  productionOrderStatus: "production_order_status",
+  projectCoordinator: "project_coordinator",
+  customerServiceZone: "customer_service_zone",
+  salesLineNo: "sales_line_no",
+  remark: "remark",
+  warehouseShipmentCreated: "warehouse_shipment_created",
+  erpSyncedAt: "erp_synced_at",
+  currentStatusErp: "raw_current_status",
 } as const;
 export type SortableColumn = keyof typeof SORTABLE_COLUMNS;
 
@@ -184,7 +316,14 @@ function applyConstructionTypeFilter(query: any, ctype: ConstructionType) {
  * construction-type applied as their respective conditions. Kept as one function so the
  * facets query and the list query can never quietly drift out of sync with each other. */
 function applyOrderFilters(supabase: SupabaseClient, filters: OrderFilters) {
-  let query = supabase.from("orders").select("*", { count: "exact" });
+  // orders_with_on_time_status, not the bare orders table — same columns plus two
+  // computed ones (computed_stage_standard_days/computed_on_time_status), a
+  // security_invoker view so orders_select's RLS still scopes every row identically.
+  // Added 2026-09-15 for the "Late" tab's onTimeStatus filter below — see
+  // db/orders/024_on_time_status_view.sql (ported from lib/stageTat.ts/lib/tat.ts,
+  // validated row-for-row against every real order via
+  // scripts/validate-on-time-status-port.mjs before this was wired up).
+  let query = supabase.from("orders_with_on_time_status").select("*", { count: "exact" });
 
   if (!filters.includeStock) query = query.not("customer_no", "in", `(${STOCK_CUSTOMER_CODES.join(",")})`);
 
@@ -240,12 +379,24 @@ function applyOrderFilters(supabase: SupabaseClient, filters: OrderFilters) {
   if (filters.delayStatus) {
     const today = new Date().toISOString().slice(0, 10);
     const in7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    query = query.not("revised_ex_factory_date", "is", null);
     if (filters.terminalStageIds?.length) query = query.not("stage_id", "in", `(${filters.terminalStageIds.join(",")})`);
-    if (filters.delayStatus === "late") query = query.lt("revised_ex_factory_date", today);
-    else if (filters.delayStatus === "soon") query = query.gte("revised_ex_factory_date", today).lte("revised_ex_factory_date", in7Days);
-    else query = query.lte("revised_ex_factory_date", in7Days); // late_or_soon: <= today+7 covers both
+    if (filters.delayStatus === "late") query = query.not("revised_ex_factory_date", "is", null).lt("revised_ex_factory_date", today);
+    else if (filters.delayStatus === "soon") {
+      query = query.not("revised_ex_factory_date", "is", null).gte("revised_ex_factory_date", today).lte("revised_ex_factory_date", in7Days);
+    } else if (filters.delayStatus === "on_track") {
+      // Deliberately simpler than the "On Time" column's own on_track state (which also
+      // weighs the stage-TAT-standard pace projection, not just the raw date) — this tab
+      // is a pure date-window bucket: not already past due, and not due within the next
+      // 7 days either. A missing revised_ex_factory_date counts as on_track too (nothing
+      // known to be at risk), unlike the other three branches, which all require a real
+      // date to compare against.
+      query = query.or(`revised_ex_factory_date.is.null,revised_ex_factory_date.gt.${in7Days}`);
+    } else {
+      query = query.not("revised_ex_factory_date", "is", null).lte("revised_ex_factory_date", in7Days); // late_or_soon: <= today+7 covers both
+    }
   }
+
+  if (filters.onTimeStatus) query = query.eq("computed_on_time_status", filters.onTimeStatus);
 
   if (filters.dueFrom) query = query.gte("revised_ex_factory_date", filters.dueFrom);
   if (filters.dueTo) query = query.lte("revised_ex_factory_date", filters.dueTo);
@@ -317,105 +468,217 @@ export interface OrderFacets {
   priority: string[];
 }
 
-const FACET_COLUMNS = [
-  ["customer_no", "customerNo"],
-  ["merchant_name", "merchantName"],
-  ["order_wise_merchant", "orderWiseMerchant"],
-  ["follow_up_person", "followUpPerson"],
-  ["customer_po_no", "customerPoNo"],
-  ["quality", "quality"],
-  ["design", "design"],
-  ["size", "size"],
-  ["production_order_status", "productionOrderStatus"],
-  ["order_priority", "priority"],
-] as const;
+/** Sorts a facet's distinct values the same way this page always has (locale-aware,
+ * numeric strings ordered numerically) — the actual dedup now happens in Postgres (see
+ * below), this is just presentation. */
+function sortFacetValues(values: string[] | null | undefined): string[] {
+  return [...(values ?? [])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
 
 /** Distinct real values for every multi-select filter above, so the Orders page can
  * offer real options instead of a free-text guess — the same role the old tool's
- * `/api/facets` endpoint played. One paginated pass over every real customer order
- * (stock excluded), pulling only these 10 narrow columns, deduping in JS — same pattern
- * as listAllOrdersForStats, and for the same reason: PostgREST caps a single request at
- * 1000 rows, and there's no cheap SQL-side "distinct across many columns at once"
- * available without a bespoke RPC. Fine at today's scale (~10k real orders / a dozen
- * requests); revisit with a real SQL aggregate if that grows an order of magnitude. */
+ * `/api/facets` endpoint played. Computed by `orders_list_facets()` (see
+ * db/orders/018_perf_facets_and_stats_rpcs.sql) — a single round trip, Postgres does the
+ * dedup itself, rather than this function paging through every real customer order in
+ * JS a page at a time (~14 sequential round trips at today's ~13.6k-row scale; confirmed
+ * live via EXPLAIN ANALYZE this used to be the biggest single reason /orders felt slow).
+ * That SQL function is SECURITY INVOKER (the default), so the same `orders_select` RLS
+ * policy still scopes the rows this aggregates over — a salesperson/merchant-scoped
+ * caller still only ever sees facet values drawn from orders they could already see. */
+/** Shape of `orders_list_facets()`'s single row — `supabase` here is deliberately a
+ * plain, un-generic'd SupabaseClient (see this file's header comment), so `.rpc()`
+ * can't infer this from the Database type the way a `SupabaseClient<Database>` caller
+ * would; cast explicitly instead, same as every other query in this file does for its
+ * own return shape (e.g. `as DashboardStatsRow[]` before this refactor). */
+interface OrdersListFacetsRow {
+  customer_no: string[] | null;
+  merchant_name: string[] | null;
+  order_wise_merchant: string[] | null;
+  follow_up_person: string[] | null;
+  customer_po_no: string[] | null;
+  quality: string[] | null;
+  design: string[] | null;
+  size: string[] | null;
+  production_order_status: string[] | null;
+  priority: string[] | null;
+}
+
 export async function listOrderFacets(supabase: SupabaseClient): Promise<OrderFacets> {
-  const columns = FACET_COLUMNS.map(([col]) => col).join(", ");
-  const sets = Object.fromEntries(FACET_COLUMNS.map(([, key]) => [key, new Set<string>()])) as Record<
-    keyof OrderFacets,
-    Set<string>
-  >;
-
-  const PAGE_SIZE = 1000;
-  let from = 0;
-  while (true) {
-    const { data, error } = await supabase
-      .from("orders")
-      .select(columns)
-      .not("customer_no", "in", `(${STOCK_CUSTOMER_CODES.join(",")})`)
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) throw error;
-    for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
-      for (const [col, key] of FACET_COLUMNS) {
-        const value = row[col];
-        if (value !== null && value !== undefined && String(value).trim().length) {
-          sets[key].add(String(value).trim());
-        }
-      }
-    }
-    if (!data || data.length < PAGE_SIZE) break;
-    from += PAGE_SIZE;
-  }
-
-  const result = {} as OrderFacets;
-  for (const [, key] of FACET_COLUMNS) {
-    result[key as keyof OrderFacets] = [...sets[key]].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  }
-  return result;
+  const { data, error } = await supabase.rpc("orders_list_facets").single();
+  if (error) throw error;
+  const row = data as OrdersListFacetsRow | null;
+  return {
+    customerNo: sortFacetValues(row?.customer_no),
+    merchantName: sortFacetValues(row?.merchant_name),
+    orderWiseMerchant: sortFacetValues(row?.order_wise_merchant),
+    followUpPerson: sortFacetValues(row?.follow_up_person),
+    customerPoNo: sortFacetValues(row?.customer_po_no),
+    quality: sortFacetValues(row?.quality),
+    design: sortFacetValues(row?.design),
+    size: sortFacetValues(row?.size),
+    productionOrderStatus: sortFacetValues(row?.production_order_status),
+    priority: sortFacetValues(row?.priority),
+  };
 }
 
-export interface DashboardStatsRow {
-  id: string;
-  stage_id: string | null;
-  promised_delivery_date: string | null;
-  revised_ex_factory_date: string | null;
-  /** One Sales Order can (and very often does) span several rows here — one per rug/
-   * item line, since that's the level stage-tracking actually happens at. Needed so the
-   * dashboard can report "how many real orders" separately from "how many rug lines"
-   * instead of conflating the two under one "Orders in view" number — confirmed live
-   * 2026-09-03: 14,214 rows resolved to only 3,757 distinct Sales Order Nos. */
-  sales_order_no: string | null;
+export interface DashboardStats {
+  /** Rug lines in view — one row per item, the level stage-tracking actually happens
+   * at (see distinctSalesOrders' own doc for why that's not the same as "orders"). */
+  total: number;
+  /** One Sales Order can (and very often does) span several rug lines — confirmed live
+   * 2026-09-03: 14,214 rows then resolved to only 3,757 distinct Sales Order Nos, so a
+   * single "Orders in view" number was quietly answering two different questions
+   * depending on who read it. */
+  distinctSalesOrders: number;
+  delayedCount: number;
+  /** stage_id -> count, for the "by stage" tiles. */
+  countsByStage: Record<string, number>;
 }
 
-/** Every real customer order the caller can see (stock/inventory codes excluded, see
- * STOCK_CUSTOMER_CODES), but only the columns the dashboard's aggregate stats actually
- * need — and paginated via .range(), not a single limit(). Confirmed live 2026-09-02:
- * PostgREST caps any single request at 1000 rows no matter what limit() asks for, so
- * the dashboard's earlier listOrders({ limit: 2000 }) was silently truncated to the
- * 1000 most-recently-updated orders and showing that as the total against a real
- * 14,214-row table — wrong, not just incomplete. Ordered by `id` (stable primary key),
- * not `updated_at`, so a page boundary can't skip/duplicate a row that happens to get
- * touched by the ERP sync between page fetches.
+/** Dashboard's four stat tiles + per-stage breakdown, computed by
+ * `orders_dashboard_stats()` (see db/orders/018_perf_facets_and_stats_rpcs.sql) — one
+ * round trip, aggregated in Postgres — rather than this function pulling every real
+ * customer order's id/stage/dates into Node to filter/reduce/Set-dedupe by hand.
+ * Confirmed live via EXPLAIN ANALYZE: the old approach paged through ~13.6k rows in
+ * sequential 1000-row round trips (PostgREST's per-request cap) on every single
+ * Dashboard load — the single biggest reason that page felt slow. That SQL function is
+ * SECURITY INVOKER (the default), so `orders_select`'s RLS policy still scopes what it
+ * aggregates over, same as every other query in this app.
  *
- * Fine at today's scale (a dozen or so requests per dashboard load). If order volume
- * grows another order of magnitude, this should become a real server-side aggregate
- * (a SQL view/RPC doing count/group by) instead of pulling every row to count in JS. */
-export async function listAllOrdersForStats(supabase: SupabaseClient): Promise<DashboardStatsRow[]> {
-  const PAGE_SIZE = 1000;
-  const rows: DashboardStatsRow[] = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await supabase
-      .from("orders")
-      .select("id, stage_id, promised_delivery_date, revised_ex_factory_date, sales_order_no")
-      .not("customer_no", "in", `(${STOCK_CUSTOMER_CODES.join(",")})`)
-      .order("id", { ascending: true })
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) throw error;
-    rows.push(...((data ?? []) as DashboardStatsRow[]));
-    if (!data || data.length < PAGE_SIZE) break;
-    from += PAGE_SIZE;
+ * delayed_count mirrors lib/tat.ts's onTimeStatus() for the specific case this page has
+ * always used it in (stageStandardDays always null here — see this page's own comment,
+ * unchanged by this refactor) — see that SQL function's comment for the exact mapping;
+ * if onTimeStatus() itself changes, that SQL must be updated to match. */
+/** Shape of `orders_dashboard_stats()`'s single row — see OrdersListFacetsRow's comment
+ * above for why this is cast explicitly rather than inferred. */
+interface OrdersDashboardStatsRow {
+  total: number;
+  distinct_sales_orders: number;
+  delayed_count: number;
+  counts_by_stage: Record<string, number> | null;
+}
+
+export async function getDashboardStats(supabase: SupabaseClient): Promise<DashboardStats> {
+  const { data, error } = await supabase.rpc("orders_dashboard_stats").single();
+  if (error) throw error;
+  const row = data as OrdersDashboardStatsRow | null;
+  return {
+    total: Number(row?.total ?? 0),
+    distinctSalesOrders: Number(row?.distinct_sales_orders ?? 0),
+    delayedCount: Number(row?.delayed_count ?? 0),
+    countsByStage: row?.counts_by_stage ?? {},
+  };
+}
+
+export type OnTimeStatus = NonNullable<OrderFilters["onTimeStatus"]>;
+
+export interface OrdersSummaryBucket {
+  count: number;
+  /** Sum of std_cubage (square feet) — null cubage counts as 0 but still counts a piece. */
+  sqft: number;
+}
+
+export interface OrdersSummaryStage extends OrdersSummaryBucket {
+  delayedCount: number;
+  delayedSqft: number;
+  lateCount: number;
+  lateSqft: number;
+  onTrackCount: number;
+  onTrackSqft: number;
+}
+
+/** Filter-aware totals for the Orders page's summary panel — every number here is over
+ * the FULL filtered set (not the visible page), computed by `orders_filtered_summary()`
+ * (db/orders/032_orders_filtered_summary_rpc.sql). Requested by the production team at
+ * the 2026-09-17 UAT walkthrough: not another column, a rollup that follows the filters
+ * ("this customer has X sq ft delayed in pre-loom") so nobody has to export and sum. */
+export interface OrdersSummary {
+  totalCount: number;
+  totalSqft: number;
+  /** Keyed by the same computed_on_time_status the per-row On Time badge shows. */
+  byStatus: Record<OnTimeStatus, OrdersSummaryBucket>;
+  /** stage_id -> totals; only stages with at least one matching row are present. */
+  byStage: Record<string, OrdersSummaryStage>;
+}
+
+interface OrdersFilteredSummaryRow {
+  total_count: number | string;
+  total_sqft: number | string;
+  by_status: Record<string, { count?: number | string; sqft?: number | string }> | null;
+  by_stage: Record<string, Record<string, number | string | undefined>> | null;
+}
+
+function listOrNull(value: string | string[] | undefined): string[] | null {
+  const list = toList(value);
+  return list.length ? list : null;
+}
+
+const EMPTY_BUCKET: OrdersSummaryBucket = { count: 0, sqft: 0 };
+
+/** The SQL function's parameters mirror applyOrderFilters() branch for branch — this is
+ * the one place OrderFilters is translated into those arguments, so a new filter added
+ * to applyOrderFilters needs a matching parameter in 032 AND a line here, or the panel's
+ * totals will quietly stop matching the table (totalCount here vs. listOrders' count is
+ * the tell). Pagination/sort fields are irrelevant to an aggregate and ignored. */
+export async function getOrdersSummary(supabase: SupabaseClient, filters: OrderFilters = {}): Promise<OrdersSummary> {
+  const priorities = toList(filters.priority).map(Number).filter((n) => !Number.isNaN(n));
+  const { data, error } = await supabase
+    .rpc("orders_filtered_summary", {
+      p_include_stock: Boolean(filters.includeStock),
+      p_stage_ids: listOrNull(filters.stageId),
+      p_customer_nos: listOrNull(filters.customerNo),
+      p_merchant_names: listOrNull(filters.merchantName),
+      p_order_wise_merchants: listOrNull(filters.orderWiseMerchant),
+      p_follow_up_people: listOrNull(filters.followUpPerson),
+      p_customer_po_nos: listOrNull(filters.customerPoNo),
+      p_qualities: listOrNull(filters.quality),
+      p_designs: listOrNull(filters.design),
+      p_sizes: listOrNull(filters.size),
+      p_production_order_statuses: listOrNull(filters.productionOrderStatus),
+      p_priorities: priorities.length ? priorities : null,
+      p_aging: filters.aging ?? null,
+      p_on_hold: filters.onHold ?? null,
+      p_quick_ship: filters.quickShip ?? null,
+      p_delay_status: filters.delayStatus ?? null,
+      p_terminal_stage_ids: filters.terminalStageIds?.length ? filters.terminalStageIds : null,
+      p_on_time_status: filters.onTimeStatus ?? null,
+      p_due_from: filters.dueFrom || null,
+      p_due_to: filters.dueTo || null,
+      p_ctype: filters.ctype ?? null,
+      p_search: filters.search || null,
+    })
+    .single();
+  if (error) throw error;
+  const row = data as OrdersFilteredSummaryRow | null;
+
+  const bucket = (raw: { count?: number | string; sqft?: number | string } | undefined): OrdersSummaryBucket =>
+    raw ? { count: Number(raw.count ?? 0), sqft: Number(raw.sqft ?? 0) } : EMPTY_BUCKET;
+
+  const byStage: Record<string, OrdersSummaryStage> = {};
+  for (const [stageId, v] of Object.entries(row?.by_stage ?? {})) {
+    byStage[stageId] = {
+      count: Number(v.count ?? 0),
+      sqft: Number(v.sqft ?? 0),
+      delayedCount: Number(v.delayed_count ?? 0),
+      delayedSqft: Number(v.delayed_sqft ?? 0),
+      lateCount: Number(v.late_count ?? 0),
+      lateSqft: Number(v.late_sqft ?? 0),
+      onTrackCount: Number(v.on_track_count ?? 0),
+      onTrackSqft: Number(v.on_track_sqft ?? 0),
+    };
   }
-  return rows;
+
+  return {
+    totalCount: Number(row?.total_count ?? 0),
+    totalSqft: Number(row?.total_sqft ?? 0),
+    byStatus: {
+      on_track: bucket(row?.by_status?.on_track),
+      late: bucket(row?.by_status?.late),
+      delayed: bucket(row?.by_status?.delayed),
+      unknown: bucket(row?.by_status?.unknown),
+    },
+    byStage,
+  };
 }
 
 export async function getOrder(supabase: SupabaseClient, orderId: string): Promise<OrderRow | null> {
@@ -451,6 +714,74 @@ export async function getShippingDetail(
  * only, NOT the automated delay-alert routing table (that's a separate, still-unbuilt
  * thing — see ERP_AND_EXTERNAL_REQUESTS.md request #5). A name with no entry here just
  * means no confirmed email was found in the company directory — never guessed. */
+export interface ColumnRequestWithRequester extends ColumnRequestRow {
+  requester_name: string | null;
+}
+
+/** Shared by listPendingColumnRequests/listApprovedColumnRequests below — one query
+ * shape, filtered by status, so the two lists can't quietly drift out of sync with each
+ * other. Admin-only in practice (orders_column_requests_select's RLS already scopes a
+ * non-admin caller to only their own requests, so this would just come back empty/
+ * partial for them; the /my-access page only renders these sections when
+ * access.isAdmin is true, matching that). Joined to employees for a display name — same
+ * nested-select pattern requireAtlasStaffAccess.ts already uses for
+ * department_access_grants -> departments.
+ *
+ * The embed is disambiguated to the `requested_by` FK explicitly (rather than a bare
+ * `employees(full_name)`) because `orders_column_requests` has TWO foreign keys into
+ * `employees` (`requested_by` and `resolved_by`, see db/orders/022_column_requests.sql)
+ * — a bare embed is genuinely ambiguous to PostgREST, which fails the whole query with
+ * PGRST201 ("more than one relationship was found") rather than guessing. Confirmed
+ * live 2026-09-16: this broke /my-access outright for every admin (the only place this
+ * function is called) until fixed here — `employees!orders_column_requests_requested_by_fkey`
+ * is the constraint name Postgres auto-generated for that column's inline `references`
+ * clause (no explicit name was given in 022), confirmed against the live error's own
+ * `hint` field before using it. */
+async function listColumnRequestsByStatus(
+  supabase: SupabaseClient,
+  status: "pending" | "approved" | "declined" | "added",
+): Promise<ColumnRequestWithRequester[]> {
+  const { data, error } = await supabase
+    .from("orders_column_requests")
+    .select("*, employees!orders_column_requests_requested_by_fkey(full_name)")
+    .eq("status", status)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row) => {
+    const { employees, ...rest } = row as ColumnRequestRow & { employees: { full_name: string } | null };
+    return { ...rest, requester_name: employees?.full_name ?? null };
+  });
+}
+
+/** Requests still awaiting an admin decision (see db/orders/023's "approved" status) —
+ * see OrdersTable.tsx's "Request a Column" submenu for where a request comes from and
+ * /my-access's admin section for where it's approved/declined. */
+export async function listPendingColumnRequests(supabase: SupabaseClient): Promise<ColumnRequestWithRequester[]> {
+  return listColumnRequestsByStatus(supabase, "pending");
+}
+
+/** Requests an admin has approved but that aren't actually live yet — approving is a
+ * real decision, recorded immediately; making the field real still needs a schema
+ * migration + an orders-sync.mjs update + a deploy (see 022's header), so this is the
+ * queue of "yes, build this next," distinct from both "pending" (undecided) and "added"
+ * (already done, no longer worth listing here). */
+export async function listApprovedColumnRequests(supabase: SupabaseClient): Promise<ColumnRequestWithRequester[]> {
+  return listColumnRequestsByStatus(supabase, "approved");
+}
+
+/** The caller's own Orders table view preferences (shown columns, their order, hidden
+ * filters, row height) — see db/orders/023_user_view_preferences_and_request_approval.sql
+ * and orders-save-view-preferences. RLS already scopes this to the caller's own row, so
+ * no employeeId parameter is needed; null means the account has never saved a
+ * preference yet (a brand-new user, or one who's only ever used the old
+ * localStorage-only version) — callers should fall back to this app's own defaults in
+ * that case, not treat it as an error. */
+export async function getMyOrdersViewPreferences(supabase: SupabaseClient): Promise<ViewPreferencesRow | null> {
+  const { data, error } = await supabase.from("user_orders_view_preferences").select("*").maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 export async function listFollowUpPersonEmails(supabase: SupabaseClient): Promise<Record<string, string>> {
   const { data, error } = await supabase.from("follow_up_person_directory").select("name, email");
   if (error) throw error;

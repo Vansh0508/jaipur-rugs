@@ -3,6 +3,8 @@ import {
   listOrderFacets,
   listStages,
   listFollowUpPersonEmails,
+  getMyOrdersViewPreferences,
+  getOrdersSummary,
   DEFAULT_PAGE_SIZE,
   type OrderFilters,
   type AgingBucket,
@@ -11,17 +13,19 @@ import {
   type SortableColumn,
 } from "@/lib/queries/orders";
 import { getServerSupabaseClient } from "@/lib/supabaseClient.server";
+import { requireAtlasStaffAccess } from "@/lib/auth/requireAtlasStaffAccess";
 import { OrdersTable } from "@/components/OrdersTable";
+import { OrdersSummaryPanel } from "@/components/OrdersSummaryPanel";
 import { ExportOrdersButton } from "@/components/ExportOrdersButton";
 import { StageChip } from "@/components/StageChip";
 
 // Plain GET-based filters (?stageId=&q=&...) rather than client-side state — a
 // shareable URL for "show me Loom stage" is worth more here than avoiding a full-page
 // navigation, and RLS is already doing the real, security-relevant filtering server-side
-// regardless. The actual filter bar lives in OrdersFilterPanel, rendered directly above
-// the table (moved off the sidebar, 2026-09-10 — see that component's comment) — this
-// page only computes the values it needs (facets, current selections, results,
-// pagination, sort links).
+// regardless. The filter bar itself lives inside OrdersTable now (moved off a separate
+// OrdersFilterPanel and into the table's own controls row, 2026-09-14 — that component
+// is retired, deleted the same day it became unused) — this page only computes the
+// values it needs (facets, current selections, results, pagination, sort links).
 //
 // Full filter set ported from the pre-Atlas tool (ai.jaipurrugs.com/track-jr-order/) and
 // its live-preview successor, confirmed 2026-09-05 via a feature-by-feature comparison —
@@ -42,11 +46,18 @@ function toArray(value: string | string[] | undefined): string[] {
 export default async function OrdersPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const params = await searchParams;
   const supabase = await getServerSupabaseClient();
-  const [stages, facets, followUpPersonEmails] = await Promise.all([
+  const [stages, facets, followUpPersonEmails, viewPreferences, access] = await Promise.all([
     listStages(supabase),
     listOrderFacets(supabase),
     listFollowUpPersonEmails(supabase),
+    getMyOrdersViewPreferences(supabase),
+    requireAtlasStaffAccess(supabase),
   ]);
+  // The summary panel is strictly production-only — direct request when it was approved
+  // for the live DB (2026-09-17): "this view should be visible only to production team,"
+  // and, asked explicitly, NOT admins either. Everyone else skips the aggregate query
+  // entirely, not just the rendering.
+  const showSummary = access.departmentCodes.includes("production");
   const terminalStageIds = stages.filter((s) => s.is_terminal).map((s) => s.id);
 
   const pageSize = Number(toSingle(params.pageSize)) || DEFAULT_PAGE_SIZE;
@@ -71,6 +82,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
     onHold: toSingle(params.onHold) as "yes" | "no" | undefined,
     quickShip: toSingle(params.quickShip) as "yes" | "no" | undefined,
     delayStatus: toSingle(params.delayStatus) as DelayStatusFilter | undefined,
+    onTimeStatus: toSingle(params.onTimeStatus) as OrderFilters["onTimeStatus"],
     terminalStageIds,
     dueFrom: toSingle(params.dueFrom),
     dueTo: toSingle(params.dueTo),
@@ -81,7 +93,12 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
     sortDir,
   };
 
-  const { rows: orders, totalCount } = await listOrders(supabase, filters);
+  // The summary is a separate aggregate over the same filters (not a sum of this page's
+  // rows — see getOrdersSummary), so the two run side by side rather than back to back.
+  const [{ rows: orders, totalCount }, summary] = await Promise.all([
+    listOrders(supabase, filters),
+    showSummary ? getOrdersSummary(supabase, filters) : Promise.resolve(null),
+  ]);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const hasAnyFilter = Object.entries(params).some(
     ([k, v]) => !["page", "pageSize", "sortBy", "sortDir"].includes(k) && v,
@@ -109,6 +126,8 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
         <ExportOrdersButton rows={orders} stages={stages} />
       </div>
 
+      {summary ? <OrdersSummaryPanel summary={summary} stages={stages} /> : null}
+
       <div className="min-h-0 flex-1">
         <OrdersTable
           rows={orders}
@@ -131,12 +150,14 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
             onHold: toSingle(params.onHold),
             quickShip: toSingle(params.quickShip),
             delayStatus: toSingle(params.delayStatus),
+            onTimeStatus: toSingle(params.onTimeStatus),
             ctype: toSingle(params.ctype),
             dueFrom: toSingle(params.dueFrom),
             dueTo: toSingle(params.dueTo),
           }}
           hasAnyFilter={hasAnyFilter}
           followUpPersonEmails={followUpPersonEmails}
+          initialViewPreferences={viewPreferences}
           totalCount={totalCount}
           page={page}
           pageSize={pageSize}

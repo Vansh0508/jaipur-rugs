@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { Key, Selection } from "@heroui/react";
 import { Table, Modal, Checkbox } from "@jaipur-rugs/ui-kit";
 import { displayDate } from "@/lib/displayDate";
@@ -12,42 +12,22 @@ import { SelectionActionBar } from "./SelectionActionBar";
 import type { RugLensRow } from "@/lib/queries/rugLens";
 import type { StageRow } from "@/lib/queries/orders";
 
-// Same select-rows-and-copy pattern as OrdersTable.tsx, reusing its exact clipboard
-// format (see lib/clipboardCopy.ts) — confirmed directly, 2026-09-10: Ayaan wants the
-// SAME columns/paste-into-Excel-or-email format the Orders tracker's copy feature
-// already produces, not a different one just for RugLens.
+// Copy-to-clipboard originally mirrored the Orders tracker's own (much wider) column
+// set, per Ayaan's first ask ("same format Atlas tracking already uses") — corrected
+// 2026-09-10 per direct follow-up feedback: RugLens's copy output should only carry
+// RugLens's OWN columns (Design/GR/BR/Quality/Size/Location/etc.), not Orders-only
+// fields like OTN No_, Sales Order No_, Shape, Construction, Std Cubage, Current
+// Status, Stage, Days in Stage, or the three date columns. "Same format" meant the
+// paste-into-Excel-or-email MECHANICS (tab-separated + real HTML table — see
+// lib/clipboardCopy.ts), not literally the same column list.
 //
-// Rewritten onto Hero UI's native Table selection + column-visibility, same day, same
-// reasoning as OrdersTable.tsx — Rug Lens keeps its fixed sort order/page size (a
-// deliberate scope decision, not an oversight): only the selection/visual mechanics
-// changed, not what's fetched or in what order.
-const RUG_TRACKING_HEADERS = [
-  "OTN No_", "Item No_", "Sales Order No_", "Customer No_", "Quality", "Design",
-  "GR Color Name", "BR Color Name", "Shape", "Size", "Construction", "Serial No_",
-  "Std Cubage", "Current Status", "Stage", "Days in Stage", "Original Ex Factory",
-  "Sales Order Date", "Rev Ex-Factory",
-  // RugLens-specific extra columns, added at the end per direct feedback, 2026-09-10 —
-  // these deliberately duplicate Customer No_ (already above, matching Orders' format)
-  // and add the two filter conditions themselves, so a copied row visibly shows WHICH
-  // of the 5 stock codes it is and confirms it's actually PO/hold-blank, not just
-  // relying on "it passed the filter." "Hold Remarks" is really `on_hold`'s raw value —
-  // see lib/queries/rugLens.ts's header comment: there's no separate remarks field in
-  // the data model, so this will read blank/"0"/"No" for every row here by
-  // construction (the filter already excludes anything else) — that's expected, not a
-  // bug, not a sign the column is broken.
-  "Customer Code", "Hold Remarks", "Customer PO",
-];
-
-function clipboardCells(o: RugLensRow, stageById: Map<string, StageRow>): (string | number | null)[] {
-  const stage = o.stage_id ? stageById.get(o.stage_id) : undefined;
-  return [
-    o.otn_no, o.item_no, o.sales_order_no, o.customer_no, o.quality, o.design,
-    o.gr_color_name, o.br_color_name, o.shape, o.size, o.construction, o.serial_no,
-    o.std_cubage, o.raw_current_status, stage?.display_name ?? "",
-    o.current_status_pending_days,
-    displayDate(o.original_ex_factory_date), displayDate(o.sales_order_date), displayDate(o.revised_ex_factory_date),
-    o.customer_no, o.on_hold, o.customer_po_no,
-  ];
+// Reuses exportCells (below, already RugLens-specific, built for the Excel-export
+// feature added the same day) as the one column definition for BOTH Copy and Export,
+// rather than keeping two separate lists that could quietly drift apart.
+function clipboardRows(rows: RugLensRow[], stageNameById: Map<string, string>): { headers: string[]; cells: (string | number | null)[][] } {
+  const objects = rows.map((r) => exportCells(r, stageNameById));
+  const headers = Object.keys(objects[0] ?? {});
+  return { headers, cells: objects.map((obj) => headers.map((h) => obj[h as keyof typeof obj] ?? null)) };
 }
 
 function exportCells(o: RugLensRow, stageNameById: Map<string, string>) {
@@ -84,8 +64,20 @@ function photoUrl(design: string, gr: string | null, br: string | null): string 
  * the only side that can actually reach the J-Vault share) and this just requests it.
  * A row with no matching photo (or the route being unreachable, e.g. from the public
  * deployment — see that route's header comment) shows a plain placeholder rather than
- * a broken-image icon, via onError. Clicking it opens the same image full-size — see
- * the lightbox at the bottom of RugLensTable, added per direct feedback, 2026-09-10. */
+ * a broken-image icon, via onError.
+ *
+ * Wrapped in a real <button>, not a bare clickable <img> — same reasoning as the Design
+ * cell's own button: Hero UI's Table treats a row click as "toggle this row's
+ * selection" (selectionBehavior="toggle") UNLESS the click lands on something it
+ * recognizes as its own interactive control, which a plain <img> isn't. Direct
+ * feedback, 2026-09-11: clicking just the photo was also selecting the row — this is
+ * the fix, not a workaround; the button's own onClick still does its job (open the
+ * lightbox) without needing to fight the row's press handling via stopPropagation.
+ *
+ * Hovering shows a larger preview in a `position: fixed` panel (escapes the table's own
+ * scroll-container clipping, unlike a CSS-only scale-up would) — added same feedback
+ * round ("it should enlarge when hover over pic"). Clicking still opens the full
+ * lightbox (see RugLensTable's Modal) for a proper, un-cropped, closable view. */
 function PhotoCell({
   design,
   gr,
@@ -98,19 +90,45 @@ function PhotoCell({
   onOpen: () => void;
 }) {
   const [failed, setFailed] = useState(false);
+  const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
   if (!design || failed) {
     return <div className="flex h-16 w-14 shrink-0 items-center justify-center rounded border-2 border-dashed border-border text-[10px] text-muted">No photo</div>;
   }
+
+  const url = photoUrl(design, gr, br);
+  const alt = `${design} ${gr ?? ""} ${br ?? ""}`.trim();
+
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- server-only route, not a
-    // static/optimizable asset next/image can handle.
-    <img
-      src={photoUrl(design, gr, br)}
-      alt={`${design} ${gr ?? ""} ${br ?? ""}`.trim()}
-      className="h-16 w-14 shrink-0 cursor-zoom-in rounded border-2 border-border object-cover transition hover:opacity-80"
-      onError={() => setFailed(true)}
-      onClick={onOpen}
-    />
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        className="block h-16 w-14 shrink-0 cursor-zoom-in"
+        onMouseEnter={() => setHoverRect(buttonRef.current?.getBoundingClientRect() ?? null)}
+        onMouseLeave={() => setHoverRect(null)}
+        onClick={onOpen}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element -- server-only route,
+            not a static/optimizable asset next/image can handle. */}
+        <img
+          src={url}
+          alt={alt}
+          className="h-16 w-14 rounded border-2 border-border object-cover transition hover:opacity-80"
+          onError={() => setFailed(true)}
+        />
+      </button>
+      {hoverRect ? (
+        <div
+          className="pointer-events-none fixed z-50 rounded-lg border-2 border-border bg-surface p-1 shadow-lg"
+          style={{ left: hoverRect.right + 8, top: Math.max(8, hoverRect.top - 80) }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element -- same route as above. */}
+          <img src={url} alt={alt} className="h-56 w-48 rounded object-cover" />
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -133,10 +151,43 @@ const ALL_COLUMNS: (ColumnDef & { defaultWidth: number; minWidth: number })[] = 
 ];
 
 export function RugLensTable({ rows, stages }: { rows: RugLensRow[]; stages: StageRow[] }) {
-  const stageById = useMemo(() => new Map(stages.map((s) => [s.id, s])), [stages]);
   const stageNameById = useMemo(() => new Map(stages.map((s) => [s.id, s.display_name])), [stages]);
 
-  const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set<Key>());
+  // Selection is a POOL of full row objects, not just ids — direct feedback,
+  // 2026-09-11: "after I complete selecting with multiple filters, I want to then
+  // combine and either copy or export to excel." Changing a filter re-fetches `rows`
+  // from the server entirely (a new result set replacing the old one), so an id-only
+  // Set<Key> would lose track of anything selected under a PREVIOUS filter the moment
+  // it's no longer part of the current `rows` — this component instance itself does
+  // persist across a filter change (same route, just new searchParams, confirmed live
+  // while fixing the filter-bar race the same day), only its `rows` prop swaps out.
+  // Keeping the actual row objects here means a selection made under Location=Sadwa
+  // survives switching to Quality=X and adding more, so Copy/Export at the end covers
+  // everything picked across every filter combination visited, not just the last one.
+  const [pool, setPool] = useState<Map<string, RugLensRow>>(new Map());
+  // What Table.Content is told is "selected" — restricted to rows actually in the
+  // current `rows` (it has no way to render a check mark for a row it isn't showing).
+  const selectedKeys = useMemo<Selection>(() => {
+    const keys = new Set<Key>();
+    for (const row of rows) if (pool.has(row.id)) keys.add(row.id);
+    return keys;
+  }, [rows, pool]);
+
+  function handleSelectionChange(keys: Selection) {
+    const nextVisibleIds = keys === "all" ? new Set(rows.map((r) => r.id)) : new Set([...keys].map(String));
+    setPool((prev) => {
+      const next = new Map(prev);
+      // Only reconcile rows the user could actually see/toggle just now — anything
+      // selected earlier under a different filter (not in `rows` right now) is
+      // untouched, by construction, since this loop never visits it.
+      for (const row of rows) {
+        if (nextVisibleIds.has(row.id)) next.set(row.id, row);
+        else next.delete(row.id);
+      }
+      return next;
+    });
+  }
+
   const [hiddenColumns, setHiddenColumns] = useLocalPreference<string[]>("atlas:rugLens:columns", []);
   const hidden = useMemo(() => new Set(hiddenColumns), [hiddenColumns]);
   const visibleColumns = useMemo(() => ALL_COLUMNS.filter((c) => !hidden.has(c.id)), [hidden]);
@@ -144,17 +195,16 @@ export function RugLensTable({ rows, stages }: { rows: RugLensRow[]; stages: Sta
   // row itself (not just the thumbnail) also opens it, per direct feedback, 2026-09-10.
   const [enlarged, setEnlarged] = useState<RugLensRow | null>(null);
 
-  const selectedCount = selectedKeys === "all" ? rows.length : selectedKeys.size;
+  const selectedCount = pool.size;
   function selectedRows(): RugLensRow[] {
-    if (selectedKeys === "all") return rows;
-    return rows.filter((r) => (selectedKeys as Set<Key>).has(r.id));
+    return [...pool.values()];
   }
 
   async function handleCopySelected(): Promise<boolean> {
     const selected = selectedRows();
     if (!selected.length) return false;
-    const cells = selected.map((r) => clipboardCells(r, stageById));
-    return copyToClipboard(buildClipboardText(RUG_TRACKING_HEADERS, cells), buildClipboardHtml(RUG_TRACKING_HEADERS, cells));
+    const { headers, cells } = clipboardRows(selected, stageNameById);
+    return copyToClipboard(buildClipboardText(headers, cells), buildClipboardHtml(headers, cells));
   }
 
   function handleExportSelected() {
@@ -185,7 +235,7 @@ export function RugLensTable({ rows, stages }: { rows: RugLensRow[]; stages: Sta
               selectionMode="multiple"
               selectionBehavior="toggle"
               selectedKeys={selectedKeys}
-              onSelectionChange={setSelectedKeys}
+              onSelectionChange={handleSelectionChange}
             >
               <Table.Header className="sticky top-0 z-10 bg-surface-secondary text-xs uppercase text-muted">
                 <Table.Column id="select" defaultWidth={44} minWidth={44}>
@@ -256,7 +306,7 @@ export function RugLensTable({ rows, stages }: { rows: RugLensRow[]; stages: Sta
           count={selectedCount}
           onCopy={handleCopySelected}
           onExport={handleExportSelected}
-          onClear={() => setSelectedKeys(new Set())}
+          onClear={() => setPool(new Map())}
         />
       </div>
 

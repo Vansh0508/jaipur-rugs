@@ -12,8 +12,16 @@ comment), so get this one right before testing that feature.
   does NOT build the app; something has to run the build separately before restarting.
 - **Working directory**: `/home/idmt/apps/jaipur-rugs/apps/atlas` — inside a real git
   checkout of this same repo at `/home/idmt/apps/jaipur-rugs`
-  (`git@github.com:Vansh0508/jaipur-rugs.git`, branch `atlas-workflow-and-deploy`).
+  (`git@github.com:Vansh0508/jaipur-rugs.git`, branch `main`).
 - **SSH user**: `idmt`.
+
+**Branch changed 2026-09-14** (direct decision — "deploy also from main"): this
+checkout tracked `atlas-workflow-and-deploy` up to commit `d7c0b8c`, the point where
+that branch and `main` were deliberately reconciled into one (see `db/MIGRATIONS.md`'s
+entry on the branch-divergence merge) so Ayaan and Vansh could develop on one shared
+branch instead of two silently drifting apart. The checkout here was switched to `main`
+the same day (`git fetch && git checkout main`) — do not assume `atlas-workflow-and-deploy`
+is still what's live here without checking `git branch -vv` first.
 
 ## Deploying an update
 

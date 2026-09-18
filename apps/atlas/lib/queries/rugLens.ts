@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Tables } from "@jaipur-rugs/supabase-client";
-import { STOCK_CUSTOMER_CODES, toList } from "./orders";
+import { STOCK_CUSTOMER_CODES, SWATCH_MAX_SQFT, toList } from "./orders";
 
 // RugLens — "what open-stock samples/rugs do we actually have, and where, and what do
 // they look like." Built 2026-09-10 from a direct Ayaan voice note: Atlas's `orders`
@@ -21,6 +21,40 @@ import { STOCK_CUSTOMER_CODES, toList } from "./orders";
 // implemented as "on_hold blank," the closest real field, using the exact same
 // yes/no truthy rule the Orders page's own On Hold filter already uses so the two
 // never quietly disagree about what "on hold" means.
+//
+// That "available" condition is the DEFAULT view, not an absolute — direct feedback,
+// 2026-09-11: sometimes someone deliberately wants to check what's on hold or already
+// has a Customer PO too, just not have that mixed into the everyday view by default.
+// See RugLensFilters.includeHeldOrAssigned below.
+
+// Final-location classification — direct feedback, 2026-09-11: "keep the final
+// location only such as stores, showroom, finished locations, warehouse. Not like
+// unfinished, consignee, repair, rejected, inspection, and more such locations."
+// current_location is free text straight from the NAV sync (see
+// db/orders/013_nav_direct_fields.sql) — no controlled vocabulary — so this is a
+// keyword classification, checked directly against the real live distinct values
+// (not guessed): an INCLUDE set (broad, catches most of the real "final" locations)
+// combined with an EXCLUDE set that overrides it. The exclude set is load-bearing, not
+// decorative — checked live: "godown" alone as an include keyword (to catch "Palana
+// Godown") also matched "Surana Unfinished Godown" and "Sadwa Godown (Recd frm
+// Repair)", both clearly NOT final locations, until the matching exclude keywords
+// ("unfinished", "repair") were added to override it. Include-keywords alone are not
+// reliable here; exclude always wins.
+const FINAL_LOCATION_INCLUDE_KEYWORDS = ["warehouse", "showroom", "store", "whse", "godown", "branch", "finished"];
+const FINAL_LOCATION_EXCLUDE_KEYWORDS = [
+  "unfinished", "consignee", "repair", "reject", "inspection", "return", "rework",
+  "production", "dyeing", "washing", "packing", "rafoo", "thukai", "finishing",
+];
+// Real location names, confirmed directly with Ayaan, 2026-09-11 — don't match any
+// include keyword above but are genuine final locations (branch/office addresses with
+// no distinguishing common word): "Jaipur Rugs Co. Ltd. (Empire Complex, Mumbai)"
+// (1,077 stock rows — by far the largest of the three), "Jaipur Rugs - Koregaon Park,
+// PUNE" (352), "JRCPL Raipur, CG" (303).
+const FINAL_LOCATION_EXACT_INCLUDES = [
+  "Jaipur Rugs Co. Ltd. (Empire Complex, Mumbai)",
+  "Jaipur Rugs - Koregaon Park, PUNE",
+  "JRCPL Raipur, CG",
+];
 
 export type RugLensRow = Tables<"orders">;
 
@@ -32,11 +66,31 @@ export interface RugLensFilters {
    * of the given ones. Free text sourced straight from the NAV sync (current_location),
    * not a controlled vocabulary — see listRugLensLocations for the real distinct list. */
   location?: string | string[];
-  /** Confirmed directly, 2026-09-10: a Serial No_ starting with "SS" is a sample, not a
-   * full rug — see applyRugLensFilters' itemType handling for the exact SQL (has to
-   * handle NULL serials explicitly, or they'd silently vanish from BOTH options under
-   * SQL's normal null-is-neither-true-nor-false comparison rules). */
+  /** Exact multi-select, same semantics as location above. */
+  quality?: string | string[];
+  /** Exact multi-select, same semantics as location above. */
+  size?: string | string[];
+  /** Exact multi-select over the 5 STOCK_CUSTOMER_CODES themselves — same semantics as
+   * location above. Direct request, 2026-09-17. */
+  customerCode?: string | string[];
+  /** Corrected 2026-09-11, direct feedback: originally a Serial No_ prefix rule ("SS" =
+   * sample) — now the same std_cubage-based "swatch" size classification Orders' own
+   * Construction filter already uses (see SWATCH_MAX_SQFT and applyRugLensFilters'
+   * itemType handling below), so RugLens and Orders can't disagree about what counts
+   * as a sample. */
   itemType?: RugLensItemType;
+  /** Free-text search across every column RugLens actually shows (Design, GR/BR Color,
+   * Quality, Size, Location, Item No., Serial No., Customer Code, Customer PO, Hold
+   * Remarks) — a row matches if ANY of them contains the term, case-insensitive. Same
+   * broad-OR-across-fields approach as Orders' own `search` filter. */
+  search?: string;
+  /** Opt-in escape hatch, direct feedback 2026-09-11: "give an option ... to check
+   * hold remarks or customer PO mentioned items also but not in default view." Default
+   * (false/unset) keeps the normal PO-blank/not-on-hold "available" condition; true
+   * drops both restrictions entirely, so a row that's on hold or already has a
+   * Customer PO shows up too — someone deliberately checking what's spoken for, not
+   * the everyday "what can I offer" view. */
+  includeHeldOrAssigned?: boolean;
   page?: number;
   pageSize?: number;
 }
@@ -57,31 +111,72 @@ export const DEFAULT_PAGE_SIZE = 50;
 function applyRugLensFilters(query: any, filters: RugLensFilters) {
   query = query
     .in("customer_no", STOCK_CUSTOMER_CODES)
-    // Two separate .or() calls compose as AND-of-two-OR-groups — PostgREST ANDs
-    // same-named query params together (repeated `or=` params), so this reads as
-    // "(PO is blank) AND (not on hold)," each side itself an OR across the different
-    // raw-value shapes that count as "blank"/"not set."
-    .or("customer_po_no.is.null,customer_po_no.eq.")
-    .or("on_hold.is.null,on_hold.in.(,0,No,no,NO)");
+    // Final-location baseline — see FINAL_LOCATION_* above. The include side is one
+    // .or() (composes as an AND-of-OR-group with everything else, same reasoning as
+    // the PO/hold .or() calls below); the exclude side is a plain AND per keyword
+    // (.not(), not another .or()) since every one of them must hold, not just any one.
+    .or(
+      [
+        ...FINAL_LOCATION_INCLUDE_KEYWORDS.map((kw) => `current_location.ilike.%${kw}%`),
+        ...FINAL_LOCATION_EXACT_INCLUDES.map((loc) => `current_location.eq."${loc}"`),
+      ].join(","),
+    );
+  for (const keyword of FINAL_LOCATION_EXCLUDE_KEYWORDS) {
+    query = query.not("current_location", "ilike", `%${keyword}%`);
+  }
+
+  // The "available" restriction — skipped entirely when includeHeldOrAssigned is set
+  // (see that field's doc comment). Two separate .or() calls compose as AND-of-two-OR-
+  // groups — PostgREST ANDs same-named query params together (repeated `or=` params),
+  // so this reads as "(PO is blank) AND (not on hold)," each side itself an OR across
+  // the different raw-value shapes that count as "blank"/"not set."
+  if (!filters.includeHeldOrAssigned) {
+    query = query
+      .or("customer_po_no.is.null,customer_po_no.eq.")
+      .or("on_hold.is.null,on_hold.in.(,0,No,no,NO)");
+  }
 
   const locations = toList(filters.location);
   if (locations.length) query = query.in("current_location", locations);
 
-  // "Sample" = Serial No_ starts with "SS" (case-insensitive). A NULL serial_no matches
-  // NEITHER `ilike 'SS%'` NOR `not.ilike.SS%` under normal SQL null comparison rules
-  // (both come back UNKNOWN, not true) — without the explicit `.is.null` branch on the
-  // "rug" side, a row with no serial number would silently disappear from both filter
-  // options instead of counting as "not a sample."
-  if (filters.itemType === "sample") query = query.ilike("serial_no", "SS%");
-  if (filters.itemType === "rug") query = query.or("serial_no.is.null,serial_no.not.ilike.SS%");
+  const qualities = toList(filters.quality);
+  if (qualities.length) query = query.in("quality", qualities);
+
+  const sizes = toList(filters.size);
+  if (sizes.length) query = query.in("size", sizes);
+
+  const customerCodes = toList(filters.customerCode);
+  if (customerCodes.length) query = query.in("customer_no", customerCodes);
+
+  // "Sample" = a swatch by size, not by serial number — same rule Orders' own
+  // Construction filter uses for ctype="swatch" (Std Cubage > 0 and < SWATCH_MAX_SQFT
+  // sq ft). "Rug" is everything else, including a NULL std_cubage (has to be spelled
+  // out explicitly: NULL matches neither "< 4" nor "not < 4" under SQL's normal
+  // null-is-neither-true-nor-false comparison rules, so without this branch a row with
+  // no Std Cubage would silently vanish from both filter options).
+  if (filters.itemType === "sample") query = query.gt("std_cubage", 0).lt("std_cubage", SWATCH_MAX_SQFT);
+  if (filters.itemType === "rug") query = query.or(`std_cubage.lte.0,std_cubage.gte.${SWATCH_MAX_SQFT},std_cubage.is.null`);
+
+  if (filters.search) {
+    const term = `%${filters.search}%`;
+    query = query.or(
+      [
+        "design", "gr_color_name", "br_color_name", "quality", "size", "current_location",
+        "item_no", "serial_no", "customer_no", "customer_po_no", "on_hold",
+      ]
+        .map((field) => `${field}.ilike.${term}`)
+        .join(","),
+    );
+  }
 
   return query;
 }
 
 /** RLS already scopes which rows come back (see requireRugLensAccess.ts and
- * private.can_view_order() — a Sales department grant already resolves correctly there;
- * a Back Ops grant will too as soon as that department is wired into can_view_order(),
- * not before). This just applies RugLens's own filters on top, with real pagination. */
+ * private.can_view_order() — since db/orders/030_ruglens_stock_visibility_for_
+ * everyone.sql, 2026-09-16, this resolves correctly for anyone with real Atlas access
+ * at all, not just Sales/Back Ops). This just applies RugLens's own filters on top,
+ * with real pagination. */
 export async function listOpenStock(supabase: SupabaseClient, filters: RugLensFilters = {}): Promise<RugLensListResult> {
   let query = applyRugLensFilters(supabase.from("orders").select("*", { count: "exact" }), filters).order(
     "current_location",
@@ -98,26 +193,71 @@ export async function listOpenStock(supabase: SupabaseClient, filters: RugLensFi
   return { rows: data ?? [], totalCount: count ?? 0 };
 }
 
-/** Distinct current_location values among rows that actually match the open-stock/
- * PO-blank/not-on-hold condition (not every location in the whole orders table) — so the
- * Location filter only ever offers options that would actually return something. Same
- * paginated-dedupe-in-JS approach as listOrderFacets, for the same reason (PostgREST
- * caps a single request at 1000 rows; fine at today's scale). */
-export async function listRugLensLocations(supabase: SupabaseClient): Promise<string[]> {
-  const values = new Set<string>();
-  const PAGE_SIZE = 1000;
-  let from = 0;
-  while (true) {
-    const { data, error } = await applyRugLensFilters(supabase.from("orders").select("current_location"), {}).range(
-      from,
-      from + PAGE_SIZE - 1,
-    );
-    if (error) throw error;
-    for (const row of (data ?? []) as { current_location: string | null }[]) {
-      if (row.current_location && row.current_location.trim().length) values.add(row.current_location.trim());
-    }
-    if (!data || data.length < PAGE_SIZE) break;
-    from += PAGE_SIZE;
-  }
-  return [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+export interface RugLensFacets {
+  locations: string[];
+  qualities: string[];
+  sizes: string[];
+  customerCodes: string[];
+}
+
+/** Shape of `rug_lens_facets()`'s single row — `supabase` here is a plain, un-generic'd
+ * SupabaseClient (see orders.ts's header comment), so cast explicitly rather than
+ * relying on `.rpc()` to infer it from the Database type. */
+interface RugLensFacetsRow {
+  locations: string[] | null;
+  qualities: string[] | null;
+  sizes: string[] | null;
+  customer_codes: string[] | null;
+}
+
+/** Distinct Location/Quality/Size/Customer Code values among rows that actually match
+ * the current open-stock condition — and, direct feedback 2026-09-12 (extended to
+ * Customer Code 2026-09-17), CROSS-FILTERED against each other: picking any one narrows
+ * what the other three can even be picked from. Each facet is computed with every OTHER
+ * filter applied (itemType/search/includeHeldOrAssigned always; the other three of
+ * location/quality/size/customerCode) but deliberately NOT its own current selection —
+ * a facet should never filter out values the user already picked from itself, only
+ * react to what's picked elsewhere.
+ *
+ * Computed by `rug_lens_facets()` (db/orders/020_rug_lens_facets_cross_filter.sql,
+ * extended to a 4th facet by 031_rug_lens_facets_customer_code.sql) — one round trip,
+ * Postgres computes all four cross-filtered arrays off one shared scan of `orders` —
+ * rather than four separate parallel paginated passes in JS. SECURITY INVOKER (the
+ * default), so the existing RLS still scopes what it aggregates over, same as every
+ * other query in this app.
+ *
+ * *** 2026-09-11 incident note, resolved 2026-09-11 — kept for history, not a live
+ * warning anymore: this function used to call a `rug_lens_facets()` Postgres RPC before
+ * that migration had actually been applied to the live project, and broke every real
+ * /rug-lens page load in production (PGRST202) until reverted to a plain paginated
+ * query. The two conditions that revert's note required before trying an RPC again —
+ * confirmed live in pg_proc, and Ayaan's explicit sign-off — are both satisfied as of
+ * this rewrite (018 and 020 are applied and verified; Ayaan asked directly for this).
+ * 031 (adding Customer Code) drops and recreates this function under a new 7-arg
+ * signature (Postgres treats a different argument count as a distinct overload, not a
+ * replacement) — deployed with the DB migration applied and the code below updated to
+ * match in the same push, to avoid the same class of gap that caused the original
+ * incident. ***/
+export async function listRugLensFacets(supabase: SupabaseClient, filters: RugLensFilters): Promise<RugLensFacets> {
+  const { data, error } = await supabase
+    .rpc("rug_lens_facets", {
+      p_location: toList(filters.location),
+      p_quality: toList(filters.quality),
+      p_size: toList(filters.size),
+      p_customer_code: toList(filters.customerCode),
+      p_item_type: filters.itemType ?? null,
+      p_search: filters.search ?? null,
+      p_include_held_or_assigned: filters.includeHeldOrAssigned ?? false,
+    })
+    .single();
+  if (error) throw error;
+  const row = data as RugLensFacetsRow | null;
+  const sort = (values: string[] | null | undefined) =>
+    [...(values ?? [])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  return {
+    locations: sort(row?.locations),
+    qualities: sort(row?.qualities),
+    sizes: sort(row?.sizes),
+    customerCodes: sort(row?.customer_codes),
+  };
 }
