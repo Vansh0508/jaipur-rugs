@@ -1,8 +1,9 @@
-// Self-service: at sign-up, a person picks "Management", "Production", or "Back Ops"
-// and gets a department_access_grants row on their OWN account for it — same posture as
-// salesperson-codes-add (db/orders/010, supabase/functions/salesperson-codes-add): no
-// approval step, explicit product decision (2026-09-05, backops added 2026-09-10) — but
-// always at access_level 'view' (never 'manage'/'admin') and always for the CALLER'S OWN
+// Self-service: at sign-up, a person picks "Management", "Production", "Back Ops", or
+// "Jaipur Living" and gets a department_access_grants row on their OWN account for it —
+// same posture as salesperson-codes-add (db/orders/010,
+// supabase/functions/salesperson-codes-add): no approval step, explicit product decision
+// (2026-09-05, backops added 2026-09-10, jli added 2026-09-19) — but always at
+// access_level 'view' (never 'manage'/'admin') and always for the CALLER'S OWN
 // employee_id, resolved server-side from their session, never a client-supplied id.
 //
 // "backops" is different from "management"/"production" in one important way: it is
@@ -12,6 +13,14 @@
 // their own salesperson code(s) and/or customer code(s) via salesperson-codes-add /
 // customer-codes-add to actually see anything — deliberately, so nobody is handed a
 // default bundle of codes just by picking this department.
+//
+// "jli" (Jaipur Living) is a third shape: also NOT in has_blanket_orders_access()'s list,
+// but unlike backops, joining it DOES grant real order visibility — for whichever
+// customer codes are pre-set on the department in department_customer_codes
+// (db/orders/033/034_jli_department*.sql), applied live via a join in orders_select/
+// can_view_order, not copied onto the employee's own rows. A person doesn't need to
+// know or type any code to get this — that was the explicit point of building it this
+// way rather than reusing backops' self-add model.
 //
 // "sales" is still NOT allowed here — that department code means blanket view-all, per
 // private.has_blanket_orders_access(); an individual salesperson must stay scoped to
@@ -26,7 +35,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const SELF_SERVICE_DEPARTMENT_CODES = ["management", "production", "backops"] as const;
+const SELF_SERVICE_DEPARTMENT_CODES = ["management", "production", "backops", "jli"] as const;
 type SelfServiceDepartmentCode = (typeof SELF_SERVICE_DEPARTMENT_CODES)[number];
 
 interface JoinDepartmentBody {

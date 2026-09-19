@@ -45,6 +45,12 @@ import { parseCodeList } from "@/lib/parseCodeList";
 // department (still deliberately blocked in join-department — that would grant
 // blanket view-all); it only lets a Sales signup add merchant_customer_codes rows the
 // same way Back Ops already can, via addOwnCustomerCodes.
+//
+// "Jaipur Living" added 2026-09-19, per the JLI dashboard meeting request. Joining it
+// just calls joinOwnDepartment like Management/Production — no code fields shown,
+// because unlike Back Ops, the codes aren't self-added: they're pre-set on the
+// department itself (db/orders/034_jli_department_customer_codes.sql) and apply
+// automatically to anyone who joins.
 type SignupDepartment = "" | SelfServiceDepartmentCode | "sales";
 
 const DEPARTMENT_OPTIONS = [
@@ -52,6 +58,7 @@ const DEPARTMENT_OPTIONS = [
   { id: "sales", label: "Sales" },
   { id: "production", label: "Production" },
   { id: "backops", label: "Back Ops" },
+  { id: "jli", label: "Jaipur Living" },
 ];
 
 export function SignupForm() {
@@ -112,7 +119,7 @@ export function SignupForm() {
             failedSteps.push("customer code");
           }
         }
-      } else if (department === "management" || department === "production") {
+      } else if (department === "management" || department === "production" || department === "jli") {
         try {
           await joinOwnDepartment(supabase, department);
         } catch {
