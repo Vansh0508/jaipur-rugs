@@ -1883,6 +1883,7 @@ export type Database = {
         Row: {
           column_order: Json
           employee_id: string
+          filter_order: Json
           hidden_columns: Json
           hidden_filters: Json
           row_height: string
@@ -1891,6 +1892,7 @@ export type Database = {
         Insert: {
           column_order?: Json
           employee_id: string
+          filter_order?: Json
           hidden_columns?: Json
           hidden_filters?: Json
           row_height?: string
@@ -1899,6 +1901,7 @@ export type Database = {
         Update: {
           column_order?: Json
           employee_id?: string
+          filter_order?: Json
           hidden_columns?: Json
           hidden_filters?: Json
           row_height?: string

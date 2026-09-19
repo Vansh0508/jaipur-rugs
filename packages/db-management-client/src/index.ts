@@ -845,6 +845,9 @@ export interface OrdersViewPreferencesInput {
   hiddenColumns?: string[];
   columnOrder?: string[];
   hiddenFilters?: string[];
+  /** Added 2026-09-19 (db/orders/038_filter_order.sql) — same idiom as columnOrder, for
+   * the filter bar's own drag-and-drop reordering. */
+  filterOrder?: string[];
   rowHeight?: "compact" | "normal" | "comfortable";
 }
 
