@@ -32,6 +32,17 @@ export default async function proxy(request: NextRequest): Promise<NextResponse>
     return response;
   }
 
+  // /reset-password (added 2026-09-19, forgot-password flow): a visitor arriving from
+  // the emailed recovery link IS technically authenticated the moment the page exchanges
+  // its code for a session — auth.getUser() below would succeed — but this employee
+  // lookup/authorization chain has nothing to do with "can this person set a new
+  // password," and would either force-logout them (an inactive/missing employee row) or
+  // bounce them to /orders or /my-access before they ever see the form. Exempt
+  // unconditionally, same reasoning as /signup.
+  if (request.nextUrl.pathname.startsWith("/reset-password")) {
+    return response;
+  }
+
   // /my-access is exempt from the isAuthorized redirect below (not from the session/
   // active-employee checks) — it's the one page whose whole job is letting someone with
   // NO access yet grant themselves a salesperson code, so it can't itself require access

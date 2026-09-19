@@ -4,6 +4,7 @@ import { listPendingColumnRequests, listApprovedColumnRequests } from "@/lib/que
 import { requireAtlasStaffAccess } from "@/lib/auth/requireAtlasStaffAccess";
 import { AddSalespersonCodesForm } from "@/components/AddSalespersonCodesForm";
 import { AddCustomerCodesForm } from "@/components/AddCustomerCodesForm";
+import { ChangePasswordForm } from "@/components/ChangePasswordForm";
 import { SalespersonCodesList } from "@/components/SalespersonCodesList";
 import { CustomerCodesList } from "@/components/CustomerCodesList";
 import { JoinDepartmentForm } from "@/components/JoinDepartmentForm";
@@ -127,6 +128,14 @@ export default async function MyAccessPage({
           ) : null}
         </>
       ) : null}
+
+      {/* Account security — distinct from everything above (which is all about ERP
+          data access), so kept as its own clearly separate section rather than mixed
+          into the access forms. Added 2026-09-19, direct request. */}
+      <div>
+        <h2 className="mb-3 text-sm font-semibold uppercase text-muted">Account</h2>
+        <ChangePasswordForm />
+      </div>
     </div>
   );
 }
