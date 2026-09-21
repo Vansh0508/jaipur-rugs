@@ -14,6 +14,22 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
+  // /signup: a brand-new person has no session by definition, so it needs the same
+  // unauthenticated-visitor exemption /login gets below. (Atlas shipped /signup without
+  // this and the page 307'd straight back to /login for everyone.)
+  if (request.nextUrl.pathname.startsWith("/signup")) {
+    return response;
+  }
+
+  // /reset-password: a visitor arriving from the emailed recovery link IS technically
+  // authenticated the moment the page exchanges its code for a session — getUser() below
+  // would succeed — but the active-employee check has nothing to do with "can this person
+  // set a new password", and would force-logout them (e.g. no employee row yet) before
+  // they ever see the form. Exempt unconditionally, same reasoning as /signup.
+  if (request.nextUrl.pathname.startsWith("/reset-password")) {
+    return response;
+  }
+
   const cookieAdapter: CookieAdapter = {
     get: (name) => request.cookies.get(name)?.value,
     set: (name, value, options) => response.cookies.set(name, value, options),
