@@ -17,10 +17,20 @@ import {
   X,
   LogOut,
   Tag,
+  Palette,
+  Boxes,
 } from "lucide-react";
 import { Button, Chip, Typography } from "@heroui/react";
 
-export type NavTab = "dashboard" | "benchmarks" | "discrepancies" | "orders" | "rug-boms" | "design-series";
+export type NavTab =
+  | "dashboard"
+  | "benchmarks"
+  | "discrepancies"
+  | "orders"
+  | "rug-boms"
+  | "design-series"
+  | "design-master"
+  | "bom-group-setup";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -90,6 +100,10 @@ export const AppShell: React.FC<AppShellProps> = ({
       router.push("/rug-boms");
     } else if (tab === "design-series") {
       router.push("/design-series");
+    } else if (tab === "design-master") {
+      router.push("/design-master");
+    } else if (tab === "bom-group-setup") {
+      router.push("/bom-group-setup");
     } else {
       if (onTabChange) {
         onTabChange(tab);
@@ -107,9 +121,19 @@ export const AppShell: React.FC<AppShellProps> = ({
       icon: LayoutDashboard,
     },
     {
+      id: "design-master" as NavTab,
+      label: "Design Master",
+      icon: Palette,
+    },
+    {
       id: "design-series" as NavTab,
       label: "Design Series",
       icon: Tag,
+    },
+    {
+      id: "bom-group-setup" as NavTab,
+      label: "BOM Group Setup",
+      icon: Boxes,
     },
     {
       id: "rug-boms" as NavTab,

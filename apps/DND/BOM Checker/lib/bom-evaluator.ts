@@ -1,6 +1,7 @@
 import { getMssqlPool, isMssqlConfigured } from "./mssql";
 import { mssqlCache } from "./mssql-cache";
-import { auditBomRows } from "./audit-engine";
+import { auditBomRows, extractDesignPrefix } from "./audit-engine";
+import { loadBenchmarks } from "./supabase";
 import { parseRugAreaSqFt } from "./quantity-checker";
 
 export interface RugEvaluationInput {
@@ -16,7 +17,7 @@ export interface RugEvaluationInput {
   matchingCode?: string;
 }
 
-export type BomValidityStatus = "Passed" | "Rejected" | "Unregistered";
+export type BomValidityStatus = "Passed" | "Rejected" | "Unregistered" | "Not Found";
 export type WeightAccuracyStatus = "Matched" | "Rejected" | "Not Found";
 
 export interface RugEvaluationResult {
@@ -57,10 +58,10 @@ export async function evaluateRugsBatch(
   const results: Record<string, RugEvaluationResult> = {};
   const uncachedItems: RugEvaluationInput[] = [];
 
-  // Check cache first for each item
+  // Check cache first for each item (using v2 key to ensure freshly updated rules apply)
   for (const item of items) {
     if (!item.itemNo) continue;
-    const cacheKey = `rug-eval:${item.itemNo.trim().toUpperCase()}`;
+    const cacheKey = `rug-eval:v2:${item.itemNo.trim().toUpperCase()}`;
     if (!options.bypassCache) {
       const cached = mssqlCache.get<RugEvaluationResult>(cacheKey);
       if (cached) {
@@ -77,42 +78,77 @@ export async function evaluateRugsBatch(
 
   if (!isMssqlConfigured()) {
     // Generate intelligent mock/fallback evaluations if MS SQL is not reachable
+    const benchmarksMap = await loadBenchmarks();
     for (const item of uncachedItems) {
-      const isSampleRegistered = item.itemNo.endsWith("4") || item.itemNo.endsWith("8");
+      const targetDesign = (item.design || "").trim();
+      const prefix = extractDesignPrefix(targetDesign, item.itemNo);
+      const benchmark = benchmarksMap.get(prefix.toUpperCase());
+
+      // If no BOM or item not registered
+      const hasBom = item.itemNo.endsWith("4") || item.itemNo.endsWith("8") || item.itemNo.endsWith("7") || item.itemNo.endsWith("9");
+      if (!hasBom) {
+        const evalResult: RugEvaluationResult = {
+          itemNo: item.itemNo,
+          bomValidity: {
+            status: "Not Found",
+            label: "Not Found",
+            totalLines: 0,
+            discrepanciesCount: 0,
+            details: `No active bill of materials is registered in NAV-004 for item ${item.itemNo}.`,
+            issues: [],
+          },
+          weightAccuracy: {
+            status: "Not Found",
+            label: "Not Found",
+            details: `Item has no registered BOM in NAV-004 to evaluate weight proportions.`,
+          },
+        };
+        results[item.itemNo] = evalResult;
+        continue;
+      }
+
+      if (!benchmark) {
+        const evalResult: RugEvaluationResult = {
+          itemNo: item.itemNo,
+          bomNo: `JRC/PRDBOM/MOCK-${item.itemNo}`,
+          bomValidity: {
+            status: "Unregistered",
+            label: "Unregistered",
+            totalLines: 8,
+            discrepanciesCount: 8,
+            details: `Design prefix '${prefix || "Unknown"}' is not registered or Remark is not 'Done' in benchmark master.`,
+            issues: [`Design prefix '${prefix || "Unknown"}' is unregistered in benchmark master.`],
+          },
+          weightAccuracy: {
+            status: "Not Found",
+            label: "Not Found",
+            details: `No past BOM found with identical parameters in a different size.`,
+          },
+        };
+        results[item.itemNo] = evalResult;
+        continue;
+      }
+
       const evalResult: RugEvaluationResult = {
         itemNo: item.itemNo,
-        bomValidity: isSampleRegistered
-          ? {
-              status: "Passed",
-              label: "Passed",
-              totalLines: 12,
-              discrepanciesCount: 0,
-              details: "All 12 BOM lines valid. Matches approved benchmark specs.",
-              issues: [],
-            }
-          : {
-              status: "Unregistered",
-              label: "Unregistered",
-              totalLines: 0,
-              discrepanciesCount: 0,
-              details: `No active bill of materials is registered in NAV-004 for item ${item.itemNo}.`,
-              issues: [],
-            },
-        weightAccuracy: isSampleRegistered
-          ? {
-              status: "Matched",
-              label: "Matched",
-              currentRatePsf: 0.507,
-              referenceRatePsf: 0.507,
-              referenceSize: "8X10",
-              variancePct: 0.0,
-              details: `Matched with past BOM of size 8X10: 0.5070 kg/sqft vs current 0.5070 kg/sqft (0.0% variance).`,
-            }
-          : {
-              status: "Not Found",
-              label: "Not Found",
-              details: `No past BOM found with identical parameters in a different size.`,
-            },
+        bomNo: `JRC/PRDBOM/MOCK-${item.itemNo}`,
+        bomValidity: {
+          status: "Passed",
+          label: "Passed",
+          totalLines: 12,
+          discrepanciesCount: 0,
+          details: "All 12 BOM lines valid. Matches approved benchmark specs.",
+          issues: [],
+        },
+        weightAccuracy: {
+          status: "Matched",
+          label: "Matched",
+          currentRatePsf: 0.507,
+          referenceRatePsf: 0.507,
+          referenceSize: "8X10",
+          variancePct: 0.0,
+          details: `Matched with past BOM of size 8X10: 0.5070 kg/sqft vs current 0.5070 kg/sqft (0.0% variance).`,
+        },
       };
       results[item.itemNo] = evalResult;
     }
@@ -208,17 +244,26 @@ export async function evaluateRugsBatch(
     }
 
     // 3. Evaluate each item for BOM Validity and Weight Accuracy
+    const benchmarksMap = await loadBenchmarks();
+
     for (const item of uncachedItems) {
       const key = item.itemNo.trim().toUpperCase();
       const rawLines = linesByItem.get(key) || [];
+      const currentBomNo = String(rawLines[0]?.["Production BOM No_"] || "").trim();
+      const hasActualBom =
+        rawLines.length > 0 &&
+        currentBomNo.length > 0 &&
+        currentBomNo !== "0" &&
+        currentBomNo.toLowerCase() !== "null" &&
+        currentBomNo.toLowerCase() !== "n/a";
 
-      // If no BOM lines exist in NAV-004:
-      if (rawLines.length === 0) {
+      // If no BOM lines or no valid Production BOM No exists in NAV-004:
+      if (!hasActualBom) {
         const evalResult: RugEvaluationResult = {
           itemNo: item.itemNo,
           bomValidity: {
-            status: "Unregistered",
-            label: "Unregistered",
+            status: "Not Found",
+            label: "Not Found",
             totalLines: 0,
             discrepanciesCount: 0,
             details: `No active bill of materials is registered in NAV-004 for item ${item.itemNo}.`,
@@ -231,20 +276,45 @@ export async function evaluateRugsBatch(
           },
         };
         results[item.itemNo] = evalResult;
-        mssqlCache.set(`rug-eval:${key}`, evalResult, 15 * 60 * 1000);
+        mssqlCache.set(`rug-eval:v2:${key}`, evalResult, 15 * 60 * 1000);
         continue;
+      }
+
+      // Propagate item design to rawLines if missing
+      for (const row of rawLines) {
+        if (!row["Design"] && item.design) {
+          row["Design"] = item.design;
+        }
       }
 
       // Step A: Audit BOM Validity
       const { auditedLines } = await auditBomRows(rawLines);
       const discrepancies = auditedLines.filter((l) => l.status !== "VALID");
-      const currentBomNo = String(rawLines[0]?.["Production BOM No_"] || "").trim();
+
+      const targetDesign = (item.design || rawLines[0]?.["Design"] || "").trim().toUpperCase();
+      const targetDesignPrefix = extractDesignPrefix(targetDesign, item.itemNo);
+      const isBenchmarkRegistered = Boolean(benchmarksMap.get(targetDesignPrefix.toUpperCase()));
+
+      const hasUnregisteredPrefix =
+        !isBenchmarkRegistered || auditedLines.some((l) => l.status === "UNREGISTERED_PREFIX");
 
       let bomValidityStatus: BomValidityStatus = "Passed";
       let issues: string[] = [];
       let bomValidityDetails = `All ${rawLines.length} BOM lines valid (matches approved benchmark specs and standard rules).`;
 
-      if (discrepancies.length > 0) {
+      if (hasUnregisteredPrefix) {
+        bomValidityStatus = "Unregistered";
+        issues = discrepancies.map((d) => `Line ${d.lineNo}: ${d.statusMessage}`);
+        if (issues.length === 0) {
+          issues = [
+            `Design prefix '${targetDesignPrefix || "Unknown"}' is not registered or Remark is not 'Done' in benchmark master.`,
+          ];
+        }
+        bomValidityDetails = `Design prefix '${targetDesignPrefix || "Unknown"}' is not registered or Remark is not 'Done' in benchmark master.\n• ${issues.slice(
+          0,
+          3
+        ).join("\n• ")}${issues.length > 3 ? `\n...and ${issues.length - 3} more` : ""}`;
+      } else if (discrepancies.length > 0) {
         bomValidityStatus = "Rejected";
         issues = discrepancies.map((d) => `Line ${d.lineNo}: ${d.statusMessage}`);
         bomValidityDetails = `${discrepancies.length} discrepanc${
@@ -255,7 +325,6 @@ export async function evaluateRugsBatch(
       }
 
       // Step B: Evaluate Weight Accuracy against past BOMs of different sizes
-      const targetDesign = (item.design || rawLines[0]?.["Design"] || "").trim().toUpperCase();
       const targetQuality = (item.quality || rawLines[0]?.["Quality"] || "").trim().toUpperCase();
       const targetShape = (item.shape || rawLines[0]?.["Shape"] || "").trim().toUpperCase();
       const targetGrCode = (item.grColorCode || rawLines[0]?.["Ground Color"] || "").trim().toUpperCase();
@@ -382,7 +451,7 @@ export async function evaluateRugsBatch(
       };
 
       results[item.itemNo] = evalResult;
-      mssqlCache.set(`rug-eval:${key}`, evalResult, 15 * 60 * 1000);
+      mssqlCache.set(`rug-eval:v2:${key}`, evalResult, 15 * 60 * 1000);
     }
 
     return results;

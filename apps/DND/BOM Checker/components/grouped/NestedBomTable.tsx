@@ -2,7 +2,7 @@
 
 import React from "react";
 import { AuditedBomLine } from "@/lib/audit-engine";
-import { AlertCircle, CheckCircle, Layers, FileText } from "lucide-react";
+import { AlertCircle, CheckCircle, Layers, FileText, HelpCircle } from "lucide-react";
 
 interface NestedBomTableProps {
   itemNo: string;
@@ -23,13 +23,7 @@ export function NestedBomTable({
 
   if (isLoading) {
     return (
-      <div
-        className={`rounded-xl border border-border/80 p-3 shadow-xs ${
-          parentIsGrey
-            ? "bg-white dark:bg-surface"
-            : "bg-neutral-100/70 dark:bg-neutral-900/50"
-        }`}
-      >
+      <div className="rounded-xl border border-border/80 p-3 shadow-xs bg-white dark:bg-surface">
         {/* Optimistic subheader summary */}
         <div className="flex items-center justify-between pb-2 mb-2 border-b border-border/60">
           <div className="flex items-center gap-2">
@@ -53,7 +47,7 @@ export function NestedBomTable({
         <div className="overflow-x-auto rounded-lg border border-border/60">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-border/60 bg-neutral-100/70 dark:bg-neutral-900/50 text-[10px] uppercase tracking-wider text-muted">
+              <tr className="border-b border-border/80 bg-neutral-100/90 dark:bg-neutral-900/60 [&>th]:!bg-neutral-100/90 dark:[&>th]:!bg-neutral-900/60 text-[10px] uppercase tracking-wider text-muted">
                 {isColVisible("lineNo") && <th className="py-2 px-2.5 font-semibold">Line No</th>}
                 {isColVisible("componentCode") && <th className="py-2 px-2.5 font-semibold">Raw Material / Item</th>}
                 {isColVisible("yarnCode") && <th className="py-2 px-2.5 font-semibold">Yarn Code</th>}
@@ -72,8 +66,8 @@ export function NestedBomTable({
                     key={`skeleton-${i}`}
                     className={`${
                       isEven
-                        ? "bg-white dark:bg-surface"
-                        : "bg-neutral-100/70 dark:bg-neutral-900/50"
+                        ? "bg-white dark:bg-surface [&>td]:!bg-white dark:[&>td]:!bg-surface"
+                        : "bg-neutral-100/90 dark:bg-neutral-900/60 [&>td]:!bg-neutral-100/90 dark:[&>td]:!bg-neutral-900/60"
                     }`}
                   >
                     {isColVisible("lineNo") && (
@@ -128,9 +122,7 @@ export function NestedBomTable({
 
   if (!lines || lines.length === 0) {
     return (
-      <div className={`flex flex-col items-center justify-center gap-1.5 py-6 text-center text-xs text-muted rounded-xl border border-border/80 ${
-        parentIsGrey ? "bg-white dark:bg-surface" : "bg-neutral-100/70 dark:bg-neutral-900/50"
-      }`}>
+      <div className="flex flex-col items-center justify-center gap-1.5 py-6 text-center text-xs text-muted rounded-xl border border-border/80 bg-white dark:bg-surface">
         <FileText className="h-5 w-5 text-neutral-400" />
         <p className="font-medium text-foreground">No BOM records found</p>
         <p className="text-[11px]">No active bill of materials is registered in NAV-004 for item <code className="font-mono text-foreground font-semibold">{itemNo}</code>.</p>
@@ -139,13 +131,7 @@ export function NestedBomTable({
   }
 
   return (
-    <div
-      className={`rounded-xl border border-border/80 p-3 shadow-xs ${
-        parentIsGrey
-          ? "bg-white dark:bg-surface"
-          : "bg-neutral-100/70 dark:bg-neutral-900/50"
-      }`}
-    >
+    <div className="rounded-xl border border-border/80 p-3 shadow-xs bg-white dark:bg-surface">
       {/* Subheader summary */}
       <div className="flex items-center justify-between pb-2 mb-2 border-b border-border/60">
         <div className="flex items-center gap-2">
@@ -160,7 +146,12 @@ export function NestedBomTable({
           </span>
         </div>
         <div className="flex items-center gap-2 text-[11px]">
-          {lines.some((l) => l.status !== "VALID") ? (
+          {lines.some((l) => l.status === "UNREGISTERED_PREFIX") ? (
+            <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
+              <HelpCircle className="h-3.5 w-3.5" />
+              Unregistered Prefix
+            </span>
+          ) : lines.some((l) => l.status !== "VALID") ? (
             <span className="inline-flex items-center gap-1 text-danger font-medium">
               <AlertCircle className="h-3.5 w-3.5" />
               {lines.filter((l) => l.status !== "VALID").length} Discrepanc{lines.filter((l) => l.status !== "VALID").length === 1 ? "y" : "ies"}
@@ -178,15 +169,15 @@ export function NestedBomTable({
       <div className="overflow-x-auto rounded-lg border border-border/60">
         <table className="w-full text-left text-xs">
           <thead>
-            <tr className="border-b border-border/60 bg-neutral-100/70 dark:bg-neutral-900/50 text-[10px] uppercase tracking-wider text-muted">
-              {isColVisible("lineNo") && <th className="py-2 px-2.5 font-semibold">Line No</th>}
-              {isColVisible("componentCode") && <th className="py-2 px-2.5 font-semibold">Raw Material / Item</th>}
-              {isColVisible("yarnCode") && <th className="py-2 px-2.5 font-semibold">Yarn Code</th>}
-              {isColVisible("plannedQty") && <th className="py-2 px-2.5 font-semibold text-right">Planned Qty</th>}
-              {isColVisible("stdQty") && <th className="py-2 px-2.5 font-semibold text-right">Std Qty</th>}
-              {isColVisible("stdPsf") && <th className="py-2 px-2.5 font-semibold text-right">Std PSF</th>}
-              {isColVisible("uom") && <th className="py-2 px-2.5 font-semibold">UOM</th>}
-              {isColVisible("status") && <th className="py-2 px-2.5 font-semibold">Audit Status</th>}
+            <tr className="border-b border-border/80 bg-neutral-100/90 dark:bg-neutral-900/60 [&>th]:!bg-neutral-100/90 dark:[&>th]:!bg-neutral-900/60 text-[10px] uppercase tracking-wider text-muted">
+              {isColVisible("lineNo") && <th className="py-2.5 px-2.5 font-semibold">Line No</th>}
+              {isColVisible("componentCode") && <th className="py-2.5 px-2.5 font-semibold">Raw Material / Item</th>}
+              {isColVisible("yarnCode") && <th className="py-2.5 px-2.5 font-semibold">Yarn Code</th>}
+              {isColVisible("plannedQty") && <th className="py-2.5 px-2.5 font-semibold text-right">Planned Qty</th>}
+              {isColVisible("stdQty") && <th className="py-2.5 px-2.5 font-semibold text-right">Std Qty</th>}
+              {isColVisible("stdPsf") && <th className="py-2.5 px-2.5 font-semibold text-right">Std PSF</th>}
+              {isColVisible("uom") && <th className="py-2.5 px-2.5 font-semibold">UOM</th>}
+              {isColVisible("status") && <th className="py-2.5 px-2.5 font-semibold">Audit Status</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-border/40">
@@ -198,32 +189,34 @@ export function NestedBomTable({
               return (
                 <tr
                   key={`${line.bomNo}-${line.lineNo}-${idx}`}
-                  className={`transition-colors ${
-                    isDiscrepant
-                      ? "bg-danger-50/25 dark:bg-danger-950/25"
+                  className={`transition-colors border-b border-border/30 ${
+                    line.status === "UNREGISTERED_PREFIX"
+                      ? "bg-amber-50/40 dark:bg-amber-950/20 [&>td]:!bg-amber-50/40 dark:[&>td]:!bg-amber-950/20"
+                      : isDiscrepant
+                      ? "bg-rose-50/50 dark:bg-rose-950/30 [&>td]:!bg-rose-50/50 dark:[&>td]:!bg-rose-950/30"
                       : isEven
-                      ? "bg-white dark:bg-surface"
-                      : "bg-neutral-100/70 dark:bg-neutral-900/50"
-                  } hover:bg-neutral-200/50 dark:hover:bg-neutral-800/60`}
+                      ? "bg-white dark:bg-surface [&>td]:!bg-white dark:[&>td]:!bg-surface"
+                      : "bg-neutral-100/90 dark:bg-neutral-900/60 [&>td]:!bg-neutral-100/90 dark:[&>td]:!bg-neutral-900/60"
+                  } hover:bg-neutral-200/60 dark:hover:bg-neutral-800/60 hover:[&>td]:!bg-neutral-200/60 dark:hover:[&>td]:!bg-neutral-800/60`}
                 >
                   {isColVisible("lineNo") && (
-                    <td className="py-2 px-2.5 font-mono text-muted text-[11px]">{line.lineNo}</td>
+                    <td className="py-2.5 px-2.5 font-mono text-muted text-[11px]">{line.lineNo}</td>
                   )}
                   {isColVisible("componentCode") && (
                     <td
-                      className="py-2 px-2.5 font-mono font-medium text-foreground"
+                      className="py-2.5 px-2.5 font-mono font-medium text-foreground"
                       title={line.componentDescription}
                     >
                       {line.componentCode || "-"}
                     </td>
                   )}
                   {isColVisible("yarnCode") && (
-                    <td className="py-2 px-2.5 font-mono font-semibold text-foreground">
+                    <td className="py-2.5 px-2.5 font-mono font-semibold text-foreground">
                       <span
                         className={`inline-block px-1.5 py-0.5 rounded text-[10px] ${
                           line.status === "INVALID_CODE"
                             ? "bg-danger text-white font-bold"
-                            : "bg-neutral-200 dark:bg-neutral-800 text-foreground"
+                            : "bg-surface text-foreground border border-border/80 shadow-2xs font-medium"
                         }`}
                       >
                         {yarnCode}
@@ -276,10 +269,10 @@ export function NestedBomTable({
                       )}
                       {line.status === "UNREGISTERED_PREFIX" && (
                         <span
-                          className="inline-flex items-center gap-1 rounded-full bg-purple-100 dark:bg-purple-950/50 px-2 py-0.5 text-[10px] font-medium text-purple-700 dark:text-purple-300"
+                          className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-950/50 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80"
                           title={line.statusMessage}
                         >
-                          <AlertCircle className="h-2.5 w-2.5" />
+                          <HelpCircle className="h-2.5 w-2.5" />
                           Unregistered
                         </span>
                       )}

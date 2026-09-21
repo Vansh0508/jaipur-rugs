@@ -867,7 +867,9 @@ export function GroupedOrdersBomTable({
                                               ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/80"
                                               : status === "Rejected"
                                               ? "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/80"
-                                              : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80"
+                                              : status === "Unregistered"
+                                              ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80"
+                                              : "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400 border border-neutral-200/80 dark:border-neutral-700/80"
                                           }`}
                                         >
                                           {status === "Passed" && (
@@ -878,6 +880,9 @@ export function GroupedOrdersBomTable({
                                           )}
                                           {status === "Unregistered" && (
                                             <HelpCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                                          )}
+                                          {status === "Not Found" && (
+                                            <SearchX className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400 shrink-0" />
                                           )}
                                           <span>{status}</span>
                                         </div>
@@ -890,18 +895,23 @@ export function GroupedOrdersBomTable({
                                               ? "text-emerald-400"
                                               : status === "Rejected"
                                               ? "text-rose-400"
-                                              : "text-amber-400"
+                                              : status === "Unregistered"
+                                              ? "text-amber-400"
+                                              : "text-neutral-300"
                                           }`}
                                         >
                                           {status === "Passed" && <CheckCircle2 className="w-3.5 h-3.5" />}
                                           {status === "Rejected" && <AlertCircle className="w-3.5 h-3.5" />}
                                           {status === "Unregistered" && <HelpCircle className="w-3.5 h-3.5" />}
+                                          {status === "Not Found" && <SearchX className="w-3.5 h-3.5" />}
                                           <span>
                                             {status === "Passed"
                                               ? "BOM Validated & Passed"
                                               : status === "Rejected"
                                               ? `BOM Audit Discrepancies (${discrepanciesCount})`
-                                              : "BOM Not Registered"}
+                                              : status === "Unregistered"
+                                              ? "Unregistered Design Prefix"
+                                              : "No BOM Found in NAV"}
                                           </span>
                                         </div>
                                         <div className="text-neutral-300 text-[11px] whitespace-pre-line leading-relaxed">
