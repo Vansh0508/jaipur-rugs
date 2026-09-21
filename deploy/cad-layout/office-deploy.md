@@ -5,9 +5,12 @@ follows deliberately rather than inventing a second deployment style. CAD Layout
 go to Vercel: the PDF step shells out to LibreOffice, which a serverless function can't
 host (PRD Section 4.4).
 
-**Not yet deployed as of 2026-09-21.** Everything below except the two blocked steps was
-verified live against the server on that date (SSH, versions, free port, disk); the blocked
-steps are called out as such.
+**Deployed and live 2026-09-21** at `http://192.168.0.18:3006` — PM2 process `cad-layout`,
+online, `pm2 save`d so it survives reboots. Everything below was run for real, not drafted.
+
+**One gap remains: LibreOffice isn't installed, so PDF export doesn't work yet.** The app
+degrades gracefully — PPTX still downloads and the UI reports PDF unavailable — but DnD
+asked for both formats. Installing it needs a sudo password.
 
 ## Server facts (verified 2026-09-21, not assumed)
 
@@ -22,25 +25,35 @@ steps are called out as such.
 | LibreOffice | **not installed** |
 | sudo | **requires a password** — so installing LibreOffice needs a human |
 
-## Two things block a fully-working deploy
+## Node 22 — and why PM2's `interpreter` isn't enough here
 
-1. **`git push origin main`** — the server deploys by pulling, so the commit has to be on
-   `main` first. (Commit `60e4d28` is ready locally but the push was refused by this
-   session's permission policy.)
-2. **LibreOffice** — without it there is no PDF export. The app degrades gracefully: PPTX
-   still downloads and the UI says PDF is unavailable, so it's safe to go live without it,
-   but DnD asked for both formats.
+The workspace requires Node >= 22 (`@supabase/supabase-js` engines, enforced at install
+time by `engine-strict=true`). This box's pm2 daemon runs v20, which bites twice:
 
-   ```bash
-   sudo apt-get update
-   sudo apt-get install -y libreoffice-impress fonts-crosextra-carlito fonts-liberation
-   soffice --version   # confirm
-   ```
+- `pnpm install` under v20 fails outright with `ERR_PNPM_UNSUPPORTED_ENGINE`. Install and
+  build with v22 on `PATH`.
+- PM2's `interpreter` option **does not** pin the running process here. Next's CLI is an
+  extensionless file with a `#!/usr/bin/env node` shebang, so PM2 execs it directly and the
+  shebang resolves `node` from the daemon's own PATH — v20. Overriding `env.PATH` didn't
+  help either. `ecosystem.config.cjs` therefore runs the v22 binary *as the script*, with
+  Next's CLI as an argument, driven by `PM2_NODE_INTERPRETER`.
+- **`pm2 describe` misreports this** — it echoes the configured interpreter, not the binary
+  the process actually landed on. Always confirm with
+  `ls -l /proc/$(pm2 pid cad-layout)/exe`.
 
-   The fonts matter: the templates use Tw Cen MT, Microsoft JhengHei and Arial. Carlito and
-   Liberation are the metric-compatible stand-ins. Compare one generated PDF against the
-   PowerPoint-rendered one before telling DnD it's live — substitution can shift line
-   breaks in the spec table.
+## Still outstanding: LibreOffice (no PDF until it's installed)
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libreoffice-impress fonts-crosextra-carlito fonts-liberation
+soffice --version   # confirm
+pm2 restart cad-layout
+```
+
+The fonts matter: the templates use Tw Cen MT, Microsoft JhengHei and Arial. Carlito and
+Liberation are the metric-compatible stand-ins. Compare one generated PDF against the
+PowerPoint-rendered one before telling DnD PDF is ready — substitution can shift line
+breaks in the spec table. No rebuild is needed, the app picks LibreOffice up at runtime.
 
 ## Deploy
 

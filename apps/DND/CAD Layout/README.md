@@ -8,6 +8,15 @@ design goes in as a rendered PNG with Tikni's legend strip cropped off.
 Requirements, decisions and open items live in [`PRD.md`](./PRD.md). The requirements
 meeting is in `DnD_Meeting_Transcript_2026-09-18.md`.
 
+## Live at http://192.168.0.18:3006 (office LAN) since 2026-09-21
+
+PM2 process `cad-layout` on the office server, alongside Atlas. Deploy steps, and the
+Node-22/PM2 trap that bit during the first deploy, are in
+[`deploy/cad-layout/office-deploy.md`](../../../deploy/cad-layout/office-deploy.md).
+
+**PDF export is not working there yet** — LibreOffice isn't installed on that box and
+installing it needs a sudo password. PPTX downloads fine; the UI reports PDF as unavailable.
+
 ## Status (2026-09-18)
 
 | Piece | State |
