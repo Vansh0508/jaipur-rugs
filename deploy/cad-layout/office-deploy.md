@@ -50,6 +50,8 @@ export PATH="$HOME/.nvm/versions/node/v20.20.2/bin:$PATH"   # pm2/node aren't on
 
 cd ~/apps/jaipur-rugs
 git pull
+export PM2_NODE_INTERPRETER="$HOME/.nvm/versions/node/v22.23.2/bin/node"   # workspace needs Node >= 22
+export PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH"                  # install/build under v22, not the v20 pm2 CLI uses
 pnpm install --frozen-lockfile        # needed: this app is new to the lockfile
 
 cd "apps/DND/CAD Layout"
