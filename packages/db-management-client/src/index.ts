@@ -753,7 +753,7 @@ export async function removeOwnCustomerCode(supabase: SupabaseClient, code: stri
   return data;
 }
 
-export type SelfServiceDepartmentCode = "management" | "production" | "backops";
+export type SelfServiceDepartmentCode = "management" | "production" | "backops" | "jli";
 
 interface JoinDepartmentResponse {
   employeeId: string;
@@ -762,15 +762,19 @@ interface JoinDepartmentResponse {
 
 /**
  * Invokes `join-department` — self-service, always the CALLER'S OWN account, always at
- * the lowest access level ('view'). "management", "production", and (added 2026-09-10)
- * "backops" are accepted — NOT "sales" (that department code means blanket view-all; an
- * individual salesperson must stay scoped to their own codes via addOwnSalespersonCodes
- * instead) — matching the explicit product decision, 2026-09-05: "Management, Production
- * should [see] all orders... and not [be] bind[ing] with any customer code." Unlike
- * management/production, joining "backops" grants NO order visibility by itself — it
- * only marks org placement; a Back Ops employee still needs their own sales and/or
- * customer code(s) via addOwnSalespersonCodes / addOwnCustomerCodes. NAV/QC/Shipping
- * still aren't self-service ("will come in later stage," same decision).
+ * the lowest access level ('view'). "management", "production", (added 2026-09-10)
+ * "backops", and (added 2026-09-19) "jli" are accepted — NOT "sales" (that department
+ * code means blanket view-all; an individual salesperson must stay scoped to their own
+ * codes via addOwnSalespersonCodes instead) — matching the explicit product decision,
+ * 2026-09-05: "Management, Production should [see] all orders... and not [be] bind[ing]
+ * with any customer code." Unlike management/production, joining "backops" grants NO
+ * order visibility by itself — it only marks org placement; a Back Ops employee still
+ * needs their own sales and/or customer code(s) via addOwnSalespersonCodes /
+ * addOwnCustomerCodes. "jli" (Jaipur Living) is a third shape, different from both:
+ * joining it DOES grant order visibility, but only for the codes pre-set on the
+ * department itself (db/orders/034_jli_department_customer_codes.sql), not blanket and
+ * not requiring the employee to know/enter any code of their own. NAV/QC/Shipping still
+ * aren't self-service ("will come in later stage," same decision).
  */
 export async function joinOwnDepartment(supabase: SupabaseClient, departmentCode: SelfServiceDepartmentCode) {
   const { data, error } = await supabase.functions.invoke<JoinDepartmentResponse>("join-department", {
@@ -841,6 +845,9 @@ export interface OrdersViewPreferencesInput {
   hiddenColumns?: string[];
   columnOrder?: string[];
   hiddenFilters?: string[];
+  /** Added 2026-09-19 (db/orders/038_filter_order.sql) — same idiom as columnOrder, for
+   * the filter bar's own drag-and-drop reordering. */
+  filterOrder?: string[];
   rowHeight?: "compact" | "normal" | "comfortable";
 }
 

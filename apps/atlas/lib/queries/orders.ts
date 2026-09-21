@@ -325,7 +325,12 @@ function applyOrderFilters(supabase: SupabaseClient, filters: OrderFilters) {
   // scripts/validate-on-time-status-port.mjs before this was wired up).
   let query = supabase.from("orders_with_on_time_status").select("*", { count: "exact" });
 
-  if (!filters.includeStock) query = query.not("customer_no", "in", `(${STOCK_CUSTOMER_CODES.join(",")})`);
+  // is_hidden_stock (db/orders/036) — computed per-row in the view itself: true for a
+  // STOCK_CUSTOMER_CODES row UNLESS the CALLING employee has an explicit grant for that
+  // exact customer_no (personal merchant_customer_codes, or via department_customer_codes
+  // — e.g. Jaipur Living's 0108/0322). Replaces a flat `.not("customer_no", "in", ...)`
+  // that excluded these 5 codes for absolutely everyone with no exception path.
+  if (!filters.includeStock) query = query.eq("is_hidden_stock", false);
 
   const stageIds = toList(filters.stageId);
   if (stageIds.length) query = query.in("stage_id", stageIds);

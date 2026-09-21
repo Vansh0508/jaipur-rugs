@@ -42,6 +42,10 @@ export interface AtlasStaffAccess {
   /** true if this employee has any merchant_customer_codes rows — a territory head/B2B
    * salesperson scoped to specific ERP customer codes rather than a department. */
   hasCustomerCodeGrants: boolean;
+  /** true if this employee belongs to a department that itself holds
+   * department_customer_codes rows (db/orders/034) — e.g. Jaipur Living, where the codes
+   * are pre-set on the department rather than self-added per employee like Back Ops. */
+  hasDepartmentCodeGrants: boolean;
 }
 
 export async function requireAtlasStaffAccess(
@@ -68,12 +72,19 @@ export async function requireAtlasStaffAccess(
 
   const isAdmin = await hasPermission(supabase, employee.id, employee.primary_role_id, "orders.read.all");
 
+  // Fetched unfiltered (every department grant, not just the ATLAS_DEPARTMENT_CODES
+  // ones) so the same round trip can also answer "does any department this employee
+  // belongs to hold department_customer_codes rows" below — e.g. Jaipur Living, which
+  // is deliberately NOT in ATLAS_DEPARTMENT_CODES (it's code-scoped, not blanket).
   const { data: grants } = await supabase
     .from("department_access_grants")
-    .select("departments!inner(code)")
-    .eq("employee_id", employee.id)
-    .in("departments.code", ATLAS_DEPARTMENT_CODES);
-  const departmentCodes = (grants ?? []).map((g) => (g as unknown as { departments: { code: string } }).departments.code);
+    .select("department_id, departments!inner(code)")
+    .eq("employee_id", employee.id);
+  const grantRows = (grants ?? []) as unknown as { department_id: string; departments: { code: string } }[];
+  const departmentCodes = grantRows
+    .filter((g) => (ATLAS_DEPARTMENT_CODES as readonly string[]).includes(g.departments.code))
+    .map((g) => g.departments.code);
+  const grantedDepartmentIds = grantRows.map((g) => g.department_id);
 
   const { count: salespersonCodeCount } = await supabase
     .from("employee_salesperson_codes")
@@ -87,7 +98,17 @@ export async function requireAtlasStaffAccess(
     .eq("employee_id", employee.id);
   const hasCustomerCodeGrants = Boolean(customerCodeCount);
 
-  const isAuthorized = isAdmin || departmentCodes.length > 0 || hasSalespersonCodeGrants || hasCustomerCodeGrants;
+  let hasDepartmentCodeGrants = false;
+  if (grantedDepartmentIds.length > 0) {
+    const { count: departmentCodeCount } = await supabase
+      .from("department_customer_codes")
+      .select("id", { count: "exact", head: true })
+      .in("department_id", grantedDepartmentIds);
+    hasDepartmentCodeGrants = Boolean(departmentCodeCount);
+  }
+
+  const isAuthorized =
+    isAdmin || departmentCodes.length > 0 || hasSalespersonCodeGrants || hasCustomerCodeGrants || hasDepartmentCodeGrants;
   if (!isAuthorized && !options.allowUnauthorized) {
     redirect("/my-access?welcome=1");
   }
@@ -100,6 +121,7 @@ export async function requireAtlasStaffAccess(
     departmentCodes,
     hasSalespersonCodeGrants,
     hasCustomerCodeGrants,
+    hasDepartmentCodeGrants,
   };
 }
 

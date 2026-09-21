@@ -111,6 +111,35 @@ export type Database = {
           },
         ]
       }
+      department_customer_codes: {
+        Row: {
+          created_at: string
+          customer_no: string
+          department_id: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          customer_no: string
+          department_id: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          customer_no?: string
+          department_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "department_customer_codes_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       departments: {
         Row: {
           code: string
@@ -1854,6 +1883,7 @@ export type Database = {
         Row: {
           column_order: Json
           employee_id: string
+          filter_order: Json
           hidden_columns: Json
           hidden_filters: Json
           row_height: string
@@ -1862,6 +1892,7 @@ export type Database = {
         Insert: {
           column_order?: Json
           employee_id: string
+          filter_order?: Json
           hidden_columns?: Json
           hidden_filters?: Json
           row_height?: string
@@ -1870,6 +1901,7 @@ export type Database = {
         Update: {
           column_order?: Json
           employee_id?: string
+          filter_order?: Json
           hidden_columns?: Json
           hidden_filters?: Json
           row_height?: string

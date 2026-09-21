@@ -963,3 +963,104 @@ department dashboards (open requests, delay alerts, escalation counter, live que
 order-punch/warehouse/QC/PSFT request-filing UI) back down to plain order-tracking only,
 for every department, with the rest explicitly deferred to a later phase — that's a
 frontend layout decision with no database component, so it isn't reflected here.
+
+**Jaipur Living (JLI) department + department-scoped customer codes (2026-09-17,
+`033_jli_department.sql`, `034_jli_department_customer_codes.sql`,
+`035_jli_department_customer_codes_policy_fix.sql`) — new pattern, not a copy of Back
+Ops.** Requested directly after a JLI team meeting about a dashboard for JLI order/sample
+tracking (transcript saved by Ayaan in his Rug Tracker working folder, not this repo).
+Numbering note: `033` was originally written and applied as `032_jli_department` (visible
+under that name in Supabase's own migration history) before a same-day numbering
+collision was noticed against `032_orders_filtered_summary_rpc.sql` — a *different*,
+concurrent, uncommitted session editing this exact repo checkout at the same time (see
+below). Renamed to `033` on disk; not worth re-applying under a new name in Supabase for
+a same-content insert.
+
+1. `departments` gained `Jaipur Living` / `jli` (idempotent insert). Deliberately **not**
+   added to `has_blanket_orders_access()`/`can_view_order()`'s blanket list, and **not**
+   added to `join-department`'s `SELF_SERVICE_DEPARTMENT_CODES` — same non-blanket
+   posture as Back Ops, but the membership model itself is different (next point).
+2. **New table `department_customer_codes`** (department_id, customer_no) — the actual
+   new pattern. Back Ops requires each employee to self-add their own known code(s) via
+   `salesperson-codes-add`/`customer-codes-add`; Ayaan's explicit ask this time was that
+   selecting "Jaipur Living" should surface a **pre-set list of codes automatically**,
+   department-wide, and that adding/removing a code from the department should apply
+   live to every current member — so this is a table `orders_select`/`can_view_order`
+   join through `department_access_grants`, not a one-time copy into
+   `employee_salesperson_codes`/`merchant_customer_codes` at join time. Seeded for `jli`:
+   **1081** (737 live orders), **108000** (64), **0180** (95), **0108** (3,391), **0322**
+   (2,922) — all five confirmed as real, currently-syncing `orders.customer_no` values,
+   both against live data and against the raw NAV-002 Rug List Main.xlsx export Ayaan
+   shared directly (a first pass on this same request had wrongly reported most of these
+   codes as not existing in Atlas at all — they exist; they just aren't order-type codes,
+   they're ERP customer numbers).
+3. `035` is a same-day advisor fix: `034`'s `department_customer_codes_write` policy used
+   `for all`, which Postgres's RLS also applies to SELECT — flagged as
+   `multiple_permissive_policies` (two permissive SELECT policies on one table) since it
+   overlapped with the dedicated `department_customer_codes_select` policy. Split into
+   separate insert/update/delete policies instead. (`departments_write` in the original
+   `001` schema has this identical latent issue, pre-existing and untouched here — not
+   this migration's scope to fix.)
+4. **`apps/atlas/lib/auth/requireAtlasStaffAccess.ts` updated in the same pass** (plain
+   code change, no migration file): its `isAuthorized` check previously had no way to
+   know about department-granted codes, so a Jaipur Living employee with zero personal
+   `merchant_customer_codes`/`employee_salesperson_codes` rows would have been bounced to
+   `/my-access` despite `034` giving them real RLS-level access — added
+   `hasDepartmentCodeGrants` (true if any department the employee holds a
+   `department_access_grants` row for has rows in `department_customer_codes`) alongside
+   the existing checks. Also broadened the department-grants query this function already
+   ran (previously filtered to `ATLAS_DEPARTMENT_CODES` only) to fetch every department
+   grant, reusing one round trip rather than adding a second, since `jli` isn't and
+   shouldn't be in that blanket-access list.
+
+**Follow-up, same day (2026-09-18), once the concurrent session's work had landed
+(`5a63882`, "Orders: filter-aware summary panel"): the two gaps above are now closed.**
+
+- **`packages/supabase-client/src/types.ts` updated by hand** with a
+  `department_customer_codes` table entry (Row/Insert/Update/Relationships, matching the
+  file's existing style) — not a full `generate_typescript_types` regen, since the file
+  is large and hand-maintained in places; verified with `tsc --noEmit` on the file
+  directly rather than trusting it silently. `orders_with_on_time_status` was already
+  untyped in this file before today (the view isn't represented in `Database` at all —
+  `apps/atlas/lib/queries/orders.ts` deliberately uses a plain, un-generic'd
+  `SupabaseClient` — see that file's own top-of-file comment), so the new
+  `is_hidden_stock` column below needed no type change to be usable.
+- **0108 and 0322 now actually appear for Jaipur Living (`036_jli_stock_code_visibility.sql`).**
+  New helper `private.employee_has_explicit_customer_code(text)` — true if the calling
+  employee has an explicit grant for that exact `customer_no`, direct
+  (`merchant_customer_codes`) or via department (`department_customer_codes`, 033/034).
+  `orders_with_on_time_status` (024) gained a computed `is_hidden_stock` column built from
+  it; `orders_list_facets()`, `orders_dashboard_stats()`, and `orders_filtered_summary()`
+  (032, from the now-landed concurrent session) each got the same carve-out folded into
+  their existing stock-exclusion `where` clause. `apps/atlas/lib/queries/orders.ts`'s
+  `applyOrderFilters()` was updated to filter on the new `is_hidden_stock` column instead
+  of a flat `.not("customer_no", "in", STOCK_CUSTOMER_CODES)` — same outcome for everyone
+  without an explicit grant on 0108/0322 (still hidden), different only for employees who
+  now resolve access to those two codes via Jaipur Living. `STOCK_CUSTOMER_CODES` itself
+  is untouched and still used as-is by RugLens (`lib/queries/rugLens.ts`, which
+  deliberately queries *within* those 5 codes for physical stock tracking — the opposite
+  use case) and by the two offline scripts (`orders-delay-alerts.mjs`,
+  `validate-on-time-status-port.mjs`) — neither runs with a specific employee's session,
+  so the new per-employee carve-out doesn't apply to them and wasn't extended there;
+  delay-alert emails for 0108/0322 orders staying suppressed org-wide was not part of
+  this request.
+- Advisor-clean both times (`get_advisors` security + performance) — no new findings
+  from either `034`/`035` or `036`.
+- **Still genuinely open, unrelated to the above:** no employee has actually been added
+  to the Jaipur Living department yet (034's codes exist and the RLS/display path all
+  works, but `department_access_grants` has zero rows pointing at `jli` — someone needs a
+  name/email before this is usable end-to-end for anyone).
+
+## CAD Layout module — WRITTEN, NOT YET APPLIED (2026-09-18)
+
+`db/cad-layout/001_cad_layout_schema.sql` (+ `cad-layout-schema.mmd`) backs
+`apps/DND/CAD Layout`. It is on disk only — not applied to `matnispbauvvlnbsuzxq`, no
+advisor run, no types regenerated. The app currently works without it (generated decks
+live in a per-job temp folder); the migration adds the record/option/colour tables, the
+`cad-layout` app row, the `cad_layout.admin` permission, a `dnd` department row, the
+PRIVATE `cad-layout-files` Storage bucket (recorded override of the self-hosted-S3
+default — private, unlike `driver-photos`/`employee-avatars`, because the raw Tikni BMP
+must never be URL-reachable), read-only RLS (creator sees own, admin sees all) and the
+`cad_layout_usage_view`. Apply → advisors → log the version here → regenerate
+`packages/supabase-client` types → then build the Edge Functions
+(`cad-layout-create-record`, signed uploads) — see `apps/DND/CAD Layout/README.md`.

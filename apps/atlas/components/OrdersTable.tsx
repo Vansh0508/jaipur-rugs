@@ -335,6 +335,33 @@ function orderColumns(all: ColumnDef[], savedOrder: string[]): ColumnDef[] {
   return ordered;
 }
 
+interface FilterDef {
+  id: string;
+  label: string;
+}
+
+/** Same reordering idiom as orderColumns above, kept as its own function (not a shared
+ * generic) to match this file's existing convention of small, obviously-correct
+ * duplicated helpers over an abstraction neither call site actually needs. Added
+ * 2026-09-19, direct request: "give same option for drag and drop filters just like
+ * column reordering." */
+function orderFilters(all: readonly FilterDef[], savedOrder: string[]): FilterDef[] {
+  if (!savedOrder.length) return [...all];
+  const remaining = new Map(all.map((f) => [f.id, f]));
+  const ordered: FilterDef[] = [];
+  for (const id of savedOrder) {
+    const f = remaining.get(id);
+    if (f) {
+      ordered.push(f);
+      remaining.delete(id);
+    }
+  }
+  for (const f of all) {
+    if (remaining.has(f.id)) ordered.push(f);
+  }
+  return ordered;
+}
+
 export const ALL_FILTERS = [
   { id: "stageId", label: "Stage" },
   { id: "customerNo", label: "Customer No." },
@@ -487,11 +514,19 @@ export function OrdersTable({
   const [hiddenFilters, setHiddenFilters] = useState<string[]>(
     () => (initialViewPreferences ? asStringArray(initialViewPreferences.hidden_filters) : []),
   );
+  // Left-to-right order for the filter bar itself — same idiom as columnOrder above,
+  // added 2026-09-19 alongside making the filter bar's scrollbar visible (with 17
+  // filters and only room for ~8-9 on screen, someone's most-used filter could be
+  // buried off-screen with no way to bring it forward until now).
+  const [filterOrder, setFilterOrder] = useState<string[]>(
+    () => (initialViewPreferences ? asStringArray(initialViewPreferences.filter_order) : []),
+  );
   const [rowHeight, setRowHeight] = useState<"compact" | "normal" | "comfortable">(
     () => (initialViewPreferences?.row_height as "compact" | "normal" | "comfortable" | undefined) ?? "normal",
   );
   const hidden = useMemo(() => new Set(hiddenColumns), [hiddenColumns]);
   const hiddenFiltersSet = useMemo(() => new Set(hiddenFilters), [hiddenFilters]);
+  const orderedAllFilters = useMemo(() => orderFilters(ALL_FILTERS, filterOrder), [filterOrder]);
   const orderedAllColumns = useMemo(() => orderColumns(ALL_COLUMNS, columnOrder), [columnOrder]);
   const visibleColumns = useMemo(() => orderedAllColumns.filter((c) => !hidden.has(c.id)), [orderedAllColumns, hidden]);
   function resetColumns() {
@@ -532,6 +567,38 @@ export function OrdersTable({
     setColumnOrder(next.map((c) => c.id));
   }
 
+  // Filter-bar reordering — same up/down-buttons-plus-drag idiom as columns above,
+  // added 2026-09-19. Kept as its own set of functions rather than generalized with the
+  // column versions, matching this file's existing small-duplicated-helper convention.
+  function moveFilter(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= orderedAllFilters.length) return;
+    const next = [...orderedAllFilters];
+    const a = next[index];
+    const b = next[target];
+    if (!a || !b) return; // unreachable given the bounds check above — keeps TS happy under noUncheckedIndexedAccess
+    next[index] = b;
+    next[target] = a;
+    setFilterOrder(next.map((f) => f.id));
+  }
+  const [draggedFilterId, setDraggedFilterId] = useState<string | null>(null);
+  function handleFilterDrop(targetId: string) {
+    if (!draggedFilterId || draggedFilterId === targetId) {
+      setDraggedFilterId(null);
+      return;
+    }
+    const ids = orderedAllFilters.map((f) => f.id);
+    const fromIndex = ids.indexOf(draggedFilterId);
+    const toIndex = ids.indexOf(targetId);
+    setDraggedFilterId(null);
+    if (fromIndex === -1 || toIndex === -1) return;
+    const next = [...orderedAllFilters];
+    const [moved] = next.splice(fromIndex, 1);
+    if (!moved) return;
+    next.splice(toIndex, 0, moved);
+    setFilterOrder(next.map((f) => f.id));
+  }
+
   // Persists view-preference changes to the account (debounced — a drag or a run of
   // checkbox clicks shouldn't fire a network call per keystroke) — skips the very first
   // run so loading the page doesn't immediately re-save the exact values it just loaded.
@@ -543,14 +610,14 @@ export function OrdersTable({
     }
     const timeout = setTimeout(() => {
       const supabase = getBrowserSupabaseClient();
-      saveOrdersViewPreferences(supabase, { hiddenColumns, columnOrder, hiddenFilters, rowHeight }).catch(() => {
+      saveOrdersViewPreferences(supabase, { hiddenColumns, columnOrder, hiddenFilters, filterOrder, rowHeight }).catch(() => {
         // Swallowed — a background sync of UI preference, not order data; a failed save
         // just means the next load falls back to whatever was last saved successfully,
         // not a broken table right now.
       });
     }, 600);
     return () => clearTimeout(timeout);
-  }, [hiddenColumns, columnOrder, hiddenFilters, rowHeight]);
+  }, [hiddenColumns, columnOrder, hiddenFilters, filterOrder, rowHeight]);
 
   const [copiedEmailOrderId, setCopiedEmailOrderId] = useState<string | null>(null);
   const [copiedOtnId, setCopiedOtnId] = useState<string | null>(null);
@@ -835,130 +902,123 @@ export function OrdersTable({
 
       {/* 2. Controls Row: Filters & Search Area side by side (just above the table) */}
       <div className="flex shrink-0 items-center justify-between gap-3 px-0.5 min-w-0">
-        {/* Left: Filter list in horizontal hidden scroll (never wraps) */}
+        {/* Left: Filter list in horizontal scroll (never wraps) — a visible scrollbar,
+            not hidden, per direct request 2026-09-19: with 17 filters and only room for
+            ~8-9 on screen at once, a hidden scrollbar gave no hint the rest (Priority,
+            Aging, On Hold, Quick Ship, Delay Status, Construction, Date Range) even
+            existed off to the right. Order driven by orderedAllFilters (same request,
+            immediately followed by "give same option for drag and drop filters just
+            like column reordering") — rendered from filterChipsById below instead of a
+            hardcoded sequence, same cellsById idiom the row-column rendering already
+            uses, so the Filters submenu's drag/reorder can actually change what's on
+            screen. */}
         <div className="flex-1 min-w-0 overflow-hidden">
           <ScrollShadow
             orientation="horizontal"
-            hideScrollBar
-            className="flex items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden py-1 w-full"
+            className="flex items-center gap-2 overflow-x-auto py-1 w-full"
           >
             <div className="flex items-center gap-1.5 text-xs font-semibold text-muted px-1 shrink-0">
               <Funnel width={13} height={13} className="text-muted" />
               <span>Filters:</span>
             </div>
 
-            {facets && !hiddenFiltersSet.has("stageId") && (
-              <div className="shrink-0">
-                <FacetDropdown
-                  label="Stage"
-                  options={stages.map((s) => ({ value: s.id, label: s.display_name }))}
-                  selected={values.stageId}
-                  onApply={(v) => router.push(buildLink({ stageId: v }))}
-                />
-              </div>
-            )}
-            {facets && !hiddenFiltersSet.has("customerNo") && (
-              <div className="shrink-0">
-                <FacetDropdown
-                  label="Customer No."
-                  options={facets.customerNo.map((v) => ({ value: v, label: v }))}
-                  selected={values.customerNo}
-                  onApply={(v) => router.push(buildLink({ customerNo: v }))}
-                />
-              </div>
-            )}
-            {facets && !hiddenFiltersSet.has("merchantName") && (
-              <div className="shrink-0">
-                <FacetDropdown
-                  label="Merchant"
-                  options={facets.merchantName.map((v) => ({ value: v, label: v }))}
-                  selected={values.merchantName}
-                  onApply={(v) => router.push(buildLink({ merchantName: v }))}
-                />
-              </div>
-            )}
-            {facets && !hiddenFiltersSet.has("orderWiseMerchant") && (
-              <div className="shrink-0">
-                <FacetDropdown
-                  label="Order-wise Merchant"
-                  options={facets.orderWiseMerchant.map((v) => ({ value: v, label: v }))}
-                  selected={values.orderWiseMerchant}
-                  onApply={(v) => router.push(buildLink({ orderWiseMerchant: v }))}
-                />
-              </div>
-            )}
-            {facets && !hiddenFiltersSet.has("followUpPerson") && (
-              <div className="shrink-0">
-                <FacetDropdown
-                  label="Follow-up Person"
-                  options={facets.followUpPerson.map((v) => ({ value: v, label: v }))}
-                  selected={values.followUpPerson}
-                  onApply={(v) => router.push(buildLink({ followUpPerson: v }))}
-                />
-              </div>
-            )}
-            {facets && !hiddenFiltersSet.has("customerPoNo") && (
-              <div className="shrink-0">
-                <FacetDropdown
-                  label="Customer PO No."
-                  options={facets.customerPoNo.map((v) => ({ value: v, label: v }))}
-                  selected={values.customerPoNo}
-                  onApply={(v) => router.push(buildLink({ customerPoNo: v }))}
-                />
-              </div>
-            )}
-            {facets && !hiddenFiltersSet.has("quality") && (
-              <div className="shrink-0">
-                <FacetDropdown
-                  label="Quality"
-                  options={facets.quality.map((v) => ({ value: v, label: v }))}
-                  selected={values.quality}
-                  onApply={(v) => router.push(buildLink({ quality: v }))}
-                />
-              </div>
-            )}
-            {facets && !hiddenFiltersSet.has("design") && (
-              <div className="shrink-0">
-                <FacetDropdown
-                  label="Design"
-                  options={facets.design.map((v) => ({ value: v, label: v }))}
-                  selected={values.design}
-                  onApply={(v) => router.push(buildLink({ design: v }))}
-                />
-              </div>
-            )}
-            {facets && !hiddenFiltersSet.has("size") && (
-              <div className="shrink-0">
-                <FacetDropdown
-                  label="Size"
-                  options={facets.size.map((v) => ({ value: v, label: v }))}
-                  selected={values.size}
-                  onApply={(v) => router.push(buildLink({ size: v }))}
-                />
-              </div>
-            )}
-            {facets && !hiddenFiltersSet.has("productionOrderStatus") && (
-              <div className="shrink-0">
-                <FacetDropdown
-                  label="Prod. Status"
-                  options={facets.productionOrderStatus.map((v) => ({ value: v, label: v }))}
-                  selected={values.productionOrderStatus}
-                  onApply={(v) => router.push(buildLink({ productionOrderStatus: v }))}
-                />
-              </div>
-            )}
-            {facets && !hiddenFiltersSet.has("priority") && (
-              <div className="shrink-0">
-                <FacetDropdown
-                  label="Priority"
-                  options={facets.priority.map((v) => ({ value: v, label: v }))}
-                  selected={values.priority}
-                  onApply={(v) => router.push(buildLink({ priority: v }))}
-                />
-              </div>
-            )}
-            {!hiddenFiltersSet.has("aging") && (
-              <div className="shrink-0">
+            {(() => {
+              // Facet-backed dropdowns simply don't exist yet until facets has loaded —
+              // matches the original individual `{facets && ...}` guards exactly (no
+              // placeholder, no flash of an empty dropdown).
+              const filterChipsById: Record<string, React.ReactNode> = facets
+                ? {
+                    stageId: (
+                      <FacetDropdown
+                        label="Stage"
+                        options={stages.map((s) => ({ value: s.id, label: s.display_name }))}
+                        selected={values.stageId}
+                        onApply={(v) => router.push(buildLink({ stageId: v }))}
+                      />
+                    ),
+                    customerNo: (
+                      <FacetDropdown
+                        label="Customer No."
+                        options={facets.customerNo.map((v) => ({ value: v, label: v }))}
+                        selected={values.customerNo}
+                        onApply={(v) => router.push(buildLink({ customerNo: v }))}
+                      />
+                    ),
+                    merchantName: (
+                      <FacetDropdown
+                        label="Merchant"
+                        options={facets.merchantName.map((v) => ({ value: v, label: v }))}
+                        selected={values.merchantName}
+                        onApply={(v) => router.push(buildLink({ merchantName: v }))}
+                      />
+                    ),
+                    orderWiseMerchant: (
+                      <FacetDropdown
+                        label="Order-wise Merchant"
+                        options={facets.orderWiseMerchant.map((v) => ({ value: v, label: v }))}
+                        selected={values.orderWiseMerchant}
+                        onApply={(v) => router.push(buildLink({ orderWiseMerchant: v }))}
+                      />
+                    ),
+                    followUpPerson: (
+                      <FacetDropdown
+                        label="Follow-up Person"
+                        options={facets.followUpPerson.map((v) => ({ value: v, label: v }))}
+                        selected={values.followUpPerson}
+                        onApply={(v) => router.push(buildLink({ followUpPerson: v }))}
+                      />
+                    ),
+                    customerPoNo: (
+                      <FacetDropdown
+                        label="Customer PO No."
+                        options={facets.customerPoNo.map((v) => ({ value: v, label: v }))}
+                        selected={values.customerPoNo}
+                        onApply={(v) => router.push(buildLink({ customerPoNo: v }))}
+                      />
+                    ),
+                    quality: (
+                      <FacetDropdown
+                        label="Quality"
+                        options={facets.quality.map((v) => ({ value: v, label: v }))}
+                        selected={values.quality}
+                        onApply={(v) => router.push(buildLink({ quality: v }))}
+                      />
+                    ),
+                    design: (
+                      <FacetDropdown
+                        label="Design"
+                        options={facets.design.map((v) => ({ value: v, label: v }))}
+                        selected={values.design}
+                        onApply={(v) => router.push(buildLink({ design: v }))}
+                      />
+                    ),
+                    size: (
+                      <FacetDropdown
+                        label="Size"
+                        options={facets.size.map((v) => ({ value: v, label: v }))}
+                        selected={values.size}
+                        onApply={(v) => router.push(buildLink({ size: v }))}
+                      />
+                    ),
+                    productionOrderStatus: (
+                      <FacetDropdown
+                        label="Prod. Status"
+                        options={facets.productionOrderStatus.map((v) => ({ value: v, label: v }))}
+                        selected={values.productionOrderStatus}
+                        onApply={(v) => router.push(buildLink({ productionOrderStatus: v }))}
+                      />
+                    ),
+                    priority: (
+                      <FacetDropdown
+                        label="Priority"
+                        options={facets.priority.map((v) => ({ value: v, label: v }))}
+                        selected={values.priority}
+                        onApply={(v) => router.push(buildLink({ priority: v }))}
+                      />
+                    ),
+                  }
+                : {};
+              filterChipsById.aging = (
                 <SingleSelect
                   label="Aging"
                   selected={values.aging}
@@ -970,30 +1030,24 @@ export function OrdersTable({
                     { value: "30+", label: "30+ days" },
                   ]}
                 />
-              </div>
-            )}
-            {!hiddenFiltersSet.has("onHold") && (
-              <div className="shrink-0">
+              );
+              filterChipsById.onHold = (
                 <SingleSelect
                   label="On Hold"
                   selected={values.onHold}
                   onApply={(v) => router.push(buildLink({ onHold: v }))}
                   options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]}
                 />
-              </div>
-            )}
-            {!hiddenFiltersSet.has("quickShip") && (
-              <div className="shrink-0">
+              );
+              filterChipsById.quickShip = (
                 <SingleSelect
                   label="Quick Ship"
                   selected={values.quickShip}
                   onApply={(v) => router.push(buildLink({ quickShip: v }))}
                   options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]}
                 />
-              </div>
-            )}
-            {!hiddenFiltersSet.has("delayStatus") && (
-              <div className="shrink-0">
+              );
+              filterChipsById.delayStatus = (
                 <SingleSelect
                   label="Delay Status"
                   selected={values.delayStatus}
@@ -1005,10 +1059,8 @@ export function OrdersTable({
                     { value: "late_or_soon", label: "Delayed + due in 7 days" },
                   ]}
                 />
-              </div>
-            )}
-            {!hiddenFiltersSet.has("ctype") && (
-              <div className="shrink-0">
+              );
+              filterChipsById.ctype = (
                 <SingleSelect
                   label="Construction"
                   selected={values.ctype}
@@ -1021,17 +1073,26 @@ export function OrdersTable({
                     { value: "other", label: "Other" },
                   ]}
                 />
-              </div>
-            )}
-            {!hiddenFiltersSet.has("dateRange") && (
-              <div className="shrink-0">
+              );
+              filterChipsById.dateRange = (
                 <HeroDateRangePicker
                   startValue={values.dueFrom}
                   endValue={values.dueTo}
                   onChange={(start, end) => router.push(buildLink({ dueFrom: start, dueTo: end }))}
                 />
-              </div>
-            )}
+              );
+
+              return orderedAllFilters.map((filter) => {
+                if (hiddenFiltersSet.has(filter.id)) return null;
+                const chip = filterChipsById[filter.id];
+                if (!chip) return null;
+                return (
+                  <div key={filter.id} className="shrink-0">
+                    {chip}
+                  </div>
+                );
+              });
+            })()}
           </ScrollShadow>
         </div>
 
@@ -1314,26 +1375,70 @@ export function OrdersTable({
                           className="max-h-80 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                         >
                           <div className="flex flex-col gap-0.5 pr-0.5">
-                            {ALL_FILTERS.map((filter) => {
+                            {/* Drag-and-drop + up/down reordering, added 2026-09-19 —
+                                same idiom as the Columns submenu above, right down to
+                                the drag-handle glyph and disabled-at-the-ends buttons. */}
+                            {orderedAllFilters.map((filter, index) => {
                               const isVisible = !hiddenFiltersSet.has(filter.id);
                               return (
-                                <button
+                                <div
                                   key={filter.id}
-                                  type="button"
-                                  onClick={() => toggleFilter(filter.id)}
-                                  className="flex w-full items-center gap-3 rounded-xl px-2.5 py-1.5 text-xs text-left hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                                  draggable
+                                  onDragStart={() => setDraggedFilterId(filter.id)}
+                                  onDragOver={(e) => e.preventDefault()}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    handleFilterDrop(filter.id);
+                                  }}
+                                  onDragEnd={() => setDraggedFilterId(null)}
+                                  className={`flex w-full items-center gap-1 rounded-xl px-1.5 py-1.5 text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors ${
+                                    draggedFilterId === filter.id ? "opacity-40" : ""
+                                  }`}
                                 >
-                                  {isVisible ? (
-                                    <span className="flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full bg-[#0066FF] text-white shadow-xs">
-                                      <svg className="w-2.5 h-2.5 stroke-[3]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                                      </svg>
-                                    </span>
-                                  ) : (
-                                    <span className="h-4.5 w-4.5 shrink-0 rounded-full border-2 border-neutral-300 dark:border-neutral-600 transition-colors" />
-                                  )}
-                                  <span className="truncate font-medium text-foreground">{filter.label}</span>
-                                </button>
+                                  <span
+                                    className="shrink-0 px-0.5 text-muted cursor-grab active:cursor-grabbing"
+                                    title="Drag to reorder"
+                                    aria-hidden="true"
+                                  >
+                                    ⠿
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleFilter(filter.id)}
+                                    className="flex flex-1 items-center gap-3 text-left cursor-pointer min-w-0"
+                                  >
+                                    {isVisible ? (
+                                      <span className="flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full bg-[#0066FF] text-white shadow-xs">
+                                        <svg className="w-2.5 h-2.5 stroke-[3]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                        </svg>
+                                      </span>
+                                    ) : (
+                                      <span className="h-4.5 w-4.5 shrink-0 rounded-full border-2 border-neutral-300 dark:border-neutral-600 transition-colors" />
+                                    )}
+                                    <span className="truncate font-medium text-foreground">{filter.label}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={index === 0}
+                                    onClick={() => moveFilter(index, -1)}
+                                    title="Move earlier"
+                                    aria-label={`Move ${filter.label} filter earlier`}
+                                    className="shrink-0 rounded p-0.5 text-muted hover:bg-border disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer"
+                                  >
+                                    <ChevronUp width={12} height={12} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={index === orderedAllFilters.length - 1}
+                                    onClick={() => moveFilter(index, 1)}
+                                    title="Move later"
+                                    aria-label={`Move ${filter.label} filter later`}
+                                    className="shrink-0 rounded p-0.5 text-muted hover:bg-border disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer"
+                                  >
+                                    <ChevronDown width={12} height={12} />
+                                  </button>
+                                </div>
                               );
                             })}
                           </div>

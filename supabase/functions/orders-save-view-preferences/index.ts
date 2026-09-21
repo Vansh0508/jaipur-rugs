@@ -1,9 +1,13 @@
 // Self-service: saves the CALLER'S OWN Orders table view preferences (which columns are
-// shown, their order, which filters are hidden, row height) so they follow the account,
-// not the browser. Direct request, 2026-09-14: "lock the user's view acc to their user
-// id so from any system the user logs in he will view his own personalized view only" —
-// these used to live in localStorage (apps/atlas/lib/useLocalPreference.ts), which is
-// per-device, not per-account. See db/orders/023_user_view_preferences_and_request_approval.sql.
+// shown, their order, which filters are hidden, their order too, row height) so they
+// follow the account, not the browser. Direct request, 2026-09-14: "lock the user's view
+// acc to their user id so from any system the user logs in he will view his own
+// personalized view only" — these used to live in localStorage
+// (apps/atlas/lib/useLocalPreference.ts), which is per-device, not per-account. See
+// db/orders/023_user_view_preferences_and_request_approval.sql.
+//
+// filterOrder added 2026-09-19 (db/orders/038_filter_order.sql) — same idiom as
+// columnOrder, just for the filter bar's own drag-and-drop reordering.
 //
 // Same "service-role client + authz check in code, always the CALLER'S OWN employee_id,
 // never client-supplied" pattern as salesperson-codes-add/orders-request-column — no
@@ -25,6 +29,7 @@ interface SaveViewPreferencesBody {
   hiddenColumns?: string[];
   columnOrder?: string[];
   hiddenFilters?: string[];
+  filterOrder?: string[];
   rowHeight?: "compact" | "normal" | "comfortable";
 }
 
@@ -48,7 +53,7 @@ Deno.serve(async (req) => {
 
     const { data: existing, error: existingError } = await supabaseAdmin
       .from("user_orders_view_preferences")
-      .select("hidden_columns, column_order, hidden_filters, row_height")
+      .select("hidden_columns, column_order, hidden_filters, filter_order, row_height")
       .eq("employee_id", employeeId)
       .maybeSingle();
     if (existingError) return jsonResponse({ error: existingError.message }, 500);
@@ -58,6 +63,7 @@ Deno.serve(async (req) => {
       hidden_columns: body.hiddenColumns ?? existing?.hidden_columns ?? [],
       column_order: body.columnOrder ?? existing?.column_order ?? [],
       hidden_filters: body.hiddenFilters ?? existing?.hidden_filters ?? [],
+      filter_order: body.filterOrder ?? existing?.filter_order ?? [],
       row_height: body.rowHeight ?? existing?.row_height ?? "normal",
       updated_at: new Date().toISOString(),
     };

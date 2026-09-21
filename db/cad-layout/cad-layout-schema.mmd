@@ -1,0 +1,103 @@
+%% CAD Layout module ERD — apps/DND/CAD Layout (DnD). See apps/DND/CAD Layout/PRD.md.
+%%
+%% One CAD_LAYOUT_RECORD is one generated deck: a layout variant (b2c/jli/b2b), the rug
+%% spec block that repeats on every option slide, the employee who made it, and the
+%% generated PPTX/PDF object paths. It owns 1..n CAD_LAYOUT_OPTIONS (one per design
+%% option = one slide), each owning its ordered CAD_LAYOUT_COLOURS (slot #1..#N: the
+%% swatch hex read from the Tikni BMP, its covered area, its position in the Tikni legend
+%% strip, and the GRC/ARS code — typed by the designer for now, `code_source` records
+%% when the auto-read path lands) and 0..n CAD_LAYOUT_REFERENCE_IMAGES.
+%%
+%% Spec fields are plain text columns, not enums, on purpose: the "standard value" lists
+%% (shape, backing, edge, wash...) are provisional until DnD's reference folder arrives
+%% (PRD 2.5 item 1) and every dropdown deliberately accepts a typed value. `variant` and
+%% `colour_order` ARE fixed sets and are enums.
+%%
+%% Files (source BMP, rendered PNG, reference images, PPTX, PDF) live in the PRIVATE
+%% Storage bucket `cad-layout-files` — recorded override of AGENTS.md's self-hosted-S3
+%% default (PRD 8.3), private unlike driver-photos/employee-avatars because the raw BMP
+%% must never be reachable by URL. No client storage policy exists; the Edge Functions
+%% (service role) upload and mint signed download URLs.
+%%
+%% Reads: creator sees own records; `cad_layout.admin` permission sees all (PRD 8.5).
+%% Writes: none from clients — Edge Functions only, matching the journeys/orders pattern.
+
+erDiagram
+    EMPLOYEES ||--o{ CAD_LAYOUT_RECORDS : "created_by"
+    CAD_LAYOUT_RECORDS ||--|{ CAD_LAYOUT_OPTIONS : "has design options"
+    CAD_LAYOUT_OPTIONS ||--o{ CAD_LAYOUT_COLOURS : "has colour slots"
+    CAD_LAYOUT_OPTIONS ||--o{ CAD_LAYOUT_REFERENCE_IMAGES : "has reference images"
+
+    EMPLOYEES {
+        uuid id PK
+        text full_name
+        enum status
+    }
+
+    CAD_LAYOUT_RECORDS {
+        uuid id PK
+        uuid created_by FK
+        enum variant "cad_layout_variant: b2c/jli/b2b"
+        text project_no "PID-6815 / PD-12926-ND"
+        text construction
+        text client_name "B2C"
+        text project_type "B2C, default 'Customized Project'"
+        text layout_date "dd/mm/yy as printed"
+        text size
+        text customer_metrics "B2C"
+        text shape
+        text rug_quality
+        text fibre_content
+        text dyeing_technique
+        text finish_edge
+        text pile_height
+        text pile_type
+        text backing
+        text wash
+        text width
+        text length
+        text area "JLI"
+        text notes "JLI"
+        text pptx_path "storage object key"
+        text pdf_path "nullable — null when conversion failed"
+        text pdf_error "nullable"
+        text[] generation_warnings
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    CAD_LAYOUT_OPTIONS {
+        uuid id PK
+        uuid record_id FK
+        int sequence_no "1-based slide order; unique per record"
+        text design_code
+        text source_bmp_path "storage key — never shared, never in output"
+        text design_png_path "rendered, legend-cropped design as embedded"
+        int bmp_width
+        int bmp_height
+        int design_height "rows kept after cropping the legend strip"
+        enum colour_order "cad_layout_colour_order: area/legend/manual"
+        timestamptz created_at
+    }
+
+    CAD_LAYOUT_COLOURS {
+        uuid id PK
+        uuid option_id FK
+        int slot_no "1-based; unique per option"
+        char hex "6-digit uppercase"
+        numeric area_pct
+        int legend_index "nullable — position in Tikni legend strip"
+        text code "GRC/ARS code"
+        text yarn "nullable, B2C"
+        enum code_source "cad_layout_code_source: manual/auto_read"
+        timestamptz created_at
+    }
+
+    CAD_LAYOUT_REFERENCE_IMAGES {
+        uuid id PK
+        uuid option_id FK
+        int sequence_no
+        text storage_path
+        text original_filename
+        timestamptz created_at
+    }
