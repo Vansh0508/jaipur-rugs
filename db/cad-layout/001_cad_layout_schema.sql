@@ -52,8 +52,11 @@ create table cad_layout_options (
   record_id uuid not null references cad_layout_records(id) on delete cascade,
   sequence_no int not null check (sequence_no >= 1),
   design_code text not null default '',
-  source_bmp_path text not null,
+  -- No source_bmp_path on purpose: the Tikni BMP is never stored (DnD, 2026-09-19 —
+  -- "database me store nahi hogi"). Only the rendered, legend-cropped design image is.
   design_png_path text not null,
+  -- Manually cut piece of the design at the customer's physical size, uploaded as an image.
+  swatch_path text,
   bmp_width int not null,
   bmp_height int not null,
   design_height int not null,

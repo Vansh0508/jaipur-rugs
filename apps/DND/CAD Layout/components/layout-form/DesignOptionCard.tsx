@@ -19,6 +19,7 @@ interface DesignOptionCardProps {
 export function DesignOptionCard({ index, option, variant, maxSlots, canRemove, onChange, onRemove }: DesignOptionCardProps) {
   const bmpInputId = useId();
   const refInputId = useId();
+  const swatchInputId = useId();
 
   async function handleBmp(file: File | null) {
     if (!file) return;
@@ -101,6 +102,31 @@ export function DesignOptionCard({ index, option, variant, maxSlots, canRemove, 
               <p className="text-xs text-muted">{option.references.map((f) => f.name).join(", ")}</p>
             ) : null}
           </div>
+
+          {variant === "b2c" ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor={swatchInputId} className="text-sm font-medium text-foreground">
+                  Cut swatch <span className="font-normal text-muted">(optional — cut it yourself and upload)</span>
+                </label>
+                <input
+                  id={swatchInputId}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp"
+                  onChange={(e) => onChange({ ...option, swatch: e.target.files?.[0] ?? null })}
+                  className="h-11 rounded-lg border-2 border-border bg-transparent px-3 text-sm outline-none transition-colors file:mr-3 file:h-full file:cursor-pointer file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-accent focus:border-accent"
+                />
+                {option.swatch ? <p className="text-xs text-muted">{option.swatch.name}</p> : null}
+              </div>
+              <TextField
+                label="Swatch size"
+                value={option.swatchSize}
+                onChange={(v) => onChange({ ...option, swatchSize: v })}
+                placeholder="45 CMS"
+                fullWidth
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-col items-center gap-2">

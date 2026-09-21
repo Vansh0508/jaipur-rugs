@@ -29,6 +29,12 @@ pnpm engine:smoke                  # writes scripts/out/smoke-{jli,b2c}.{pptx,pd
 pnpm type-check
 ```
 
+**`samples/` is gitignored and local-only.** It holds real customer jobs (~100 MB of decks,
+BMPs and reference photos DnD sent), which shouldn't live in the repo or reach the deploy
+server. `templates/` — the two files the app actually needs at runtime — *is* committed.
+`pnpm engine:smoke` reads from `samples/`, so it only runs on a machine that has them;
+copy them from `\\jvault\Univ_Share\Daily Share\Deepak\` or ask DnD.
+
 PDF export needs a converter on the machine: LibreOffice (`soffice` on PATH or
 `SOFFICE_PATH`) or, on Windows, an installed PowerPoint (driven via `cscript` late-bound
 COM — PowerShell's `-ComObject` route fails on Click-to-Run Office). Without either, the
@@ -100,7 +106,80 @@ Fonts matter for the PDF: the templates use Tw Cen MT / Microsoft JhengHei / Ari
 the closest metric-compatible fonts on the server or accept LibreOffice's substitutions;
 check one PDF against PowerPoint's output before going live.
 
+## From the 2026-09-19 demo with DnD (`DnD_Demo_Transcript_2026-09-19.md`)
+
+Output accepted. Decisions: the BMP is never stored (only rendered PNG + PPT/PDF);
+colour codes are the last two digits DnD write under each legend swatch, yarn alongside
+(auto-read target, format now known); B2B ≠ JLI and Big Box is its own layout — one
+template map per variant once DnD's folders arrive; a **swatch** attachment (manually
+cut, customer-sized) goes bottom-left, references right; dimension arrows must hug the
+image (done — `dimensionShapes` in `templates.ts`).
+
+## What DnD delivered, 2026-09-21 (`samples/dnd-2026-09-21/`)
+
+Nine real jobs — 6 PPTX + 2 PDF — **all of the B2C "CAD Approval Sheet" family except one**.
+Not what was asked for in the demo: no BMPs, no separate swatch files, no JLI, no B2B, no
+Big Box, no per-variant folders. What they do give is nine real examples of how much that
+one family varies in practice:
+
+| File | Design slides | Max colours | Approval box | Swatch | `#N.` numbering | Intent label |
+|---|---:|---:|:--:|:--:|:--:|---|
+| `PD-14229` (19 Sep, newest) | 2 | 15 | yes | yes | yes | Rug Image / Design Intent |
+| `PD-013619-ESK-316` (18 Aug) | 1 | 3 | yes | yes | yes | Rug Image / Design Intent |
+| `vdr rESIDENCE` | 11 | 24 | – | – | yes | Rug Image / Design Intent |
+| `QNQ-21` | 1 | 26 | – | – | yes | Design Intent |
+| `PD-9800-TAQ-4309` | 3 | 8 | – | – | no | Rug Image / Color Ref Iamge |
+| `NEXUS` | 2 | 6 | – | – | no | Design Intent |
+| `vin Rajah` (PDF) | 2 | 2 | – | – | yes | – |
+| `Workplace Interiors` (PDF) | 11 | 12 | – | – | no | **different layout** |
+
+Useful conclusions:
+
+- **The skeleton is stable.** Every deck shares the same shape ids for the text fields —
+  `12` Date, `13` Customized Project, `17`/`18` signature lines, `19` spec labels, `37` PD +
+  design code, `38` Construction, `40` JRC+ARS header, `41` spec values, colour slots at
+  x=5.83 w=2.69 stacked ~0.31 apart. Only the pictures, colour count and optional blocks move.
+- **Swatch geometry answered** (PD-013619, PD-14229): the swatch is a square picture on the
+  **right**, with its **own** pair of dimension arrows (a second copy of the design's arrow
+  group) and two equal `45 CMS` labels — one right of it, one below. The design-intent image
+  sits **below** the swatch with its label above and a design-code caption underneath.
+- **They embed JPEG, never BMP** — every `ppt/media/*` across all six decks is jpg/jpeg (one
+  stray png/wdp). Confirms the "BMP never leaves the designer" rule the tool already follows.
+- **Colour slot text is `#N. <code>-<yarn + pile>`** — e.g. `#1. 194- Silk Cut Pile`,
+  `#1. M04-449-Bamboo Silk high cut pile`, `JRC-G12(515)+JRC-H13(897)-Wool Viscose Cut pile`.
+  Codes are not always numeric and not always prefixed; some decks drop `#N.` entirely.
+- **Dropdown values replaced** in `lib/engine/spec.ts` with what these files actually contain
+  (e.g. backing is only ever `NO Backing`/`XN Backing`; edge is only ever `4 side binding`).
+- **`Workplace Interiors` is a different layout** — labelled `Project:`, `Pd number:`,
+  `Quantity - 1`, and colours written as `911-14 WOOL | 6MM LOW CUT`. Closest thing to the
+  B2B/Big Box variant in this delivery, but it arrived as a PDF, so it can't be used as a
+  template — the PPTX is still needed.
+- **`Disney.pptx` (the current `templates/b2c.pptx`) is an older, simpler cut** of this family:
+  no approval box, no swatch, design-intent bottom-left. `PD-14229` is two days old and has
+  both — a better master, but swapping changes every B2C output, so it needs a decision.
+
+### Done off the back of that delivery (2026-09-21)
+
+- **`templates/b2c.pptx` is now `PD-14229`**, not `Disney.pptx`. Output gains the approval box,
+  the `IMPORTANT` rendering disclaimer, the `Option-N` line and the swatch slot.
+- **Swatch supported** — optional upload plus a size caption ("45 CMS") on the B2C form. When
+  none is uploaded the template's own swatch, its arrows and both captions are removed, so the
+  master job's swatch can't ride along into someone else's layout.
+- **Colour slots are no longer capped by the template.** The engine clones the last slot when a
+  design has more colours than the master job did, and tightens pitch, box height and font so
+  the column still ends above the next block — 25 colours fit the 15-slot B2C master, the same
+  way DnD hand-fit 26 into QNQ-21. The form now warns rather than silently dropping colours.
+- **Blank fields no longer leak the master job's data.** Every mapped shape is written even when
+  its value is empty — critical now that the template is a real customer's deck.
+- **`pileHeightMm` split from `pileHeight`** — real decks carry both (`FINISH PILE HEIGHT :
+  Standard` in the table, `Pile height – 7-8 MM` beside the image); they were previously conflated.
+
 ## Not yet done
+
+- Per-variant template maps for JLI-vs-B2B, Big Box and any department layouts (waiting on DnD's
+  PPTX files — `b2b` still points at the JLI deck).
+- Colour-code auto-read (OCR of the legend strip text) once files with DnD's numbering exist.
+- Manual "add colour" in the form (DnD asked for it on 19 Sep; remove/reorder already work).
 
 - Apply `db/cad-layout/001_cad_layout_schema.sql` (run advisors, log in `db/MIGRATIONS.md`,
   regenerate `packages/supabase-client` types), then add the Edge Functions

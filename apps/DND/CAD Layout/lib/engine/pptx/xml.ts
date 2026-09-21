@@ -161,6 +161,36 @@ export function setSolidFill(shape: XElement, hex: string): void {
   else spPr.appendChild(solid);
 }
 
+/**
+ * Multiplies every run's font size by `factor`. Used when the colour column is squeezed to
+ * fit more colours than the template was built for — without this the 17pt runs overflow
+ * their shortened boxes and overlap each other.
+ */
+export function scaleTextSize(shape: XElement, factor: number, minHundredths = 700): void {
+  const body = firstDescendant(shape, NS.p, "txBody");
+  if (!body) return;
+  for (const local of ["rPr", "endParaRPr", "defRPr"]) {
+    const list = body.getElementsByTagNameNS(NS.a, local);
+    for (let i = 0; i < list.length; i++) {
+      const rPr = list[i] as XElement;
+      const current = Number(rPr.getAttribute("sz"));
+      if (!current) continue;
+      rPr.setAttribute("sz", String(Math.max(minHundredths, Math.round(current * factor))));
+    }
+  }
+}
+
+/** Sets the text frame's top/bottom insets (EMU) — used to reclaim padding in squeezed boxes. */
+export function setVerticalInsets(shape: XElement, topEmu: number, bottomEmu: number): void {
+  const body = firstDescendant(shape, NS.p, "txBody");
+  const bodyPr = body ? childElements(body, NS.a, "bodyPr")[0] : undefined;
+  if (!bodyPr) return;
+  bodyPr.setAttribute("tIns", String(topEmu));
+  bodyPr.setAttribute("bIns", String(bottomEmu));
+  // spAutoFit would grow the box straight back to fit the text.
+  for (const fit of childElements(bodyPr).filter((c) => c.localName === "spAutoFit")) bodyPr.removeChild(fit);
+}
+
 /** Forces every run (and end-of-paragraph marker) in the shape to one text colour. */
 export function setTextColour(shape: XElement, hex: string): void {
   const doc = shape.ownerDocument!;

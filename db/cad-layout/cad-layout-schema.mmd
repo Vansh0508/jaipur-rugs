@@ -13,11 +13,12 @@
 %% (PRD 2.5 item 1) and every dropdown deliberately accepts a typed value. `variant` and
 %% `colour_order` ARE fixed sets and are enums.
 %%
-%% Files (source BMP, rendered PNG, reference images, PPTX, PDF) live in the PRIVATE
+%% Files (rendered design PNG, swatch, reference images, PPTX, PDF) live in the PRIVATE
 %% Storage bucket `cad-layout-files` — recorded override of AGENTS.md's self-hosted-S3
-%% default (PRD 8.3), private unlike driver-photos/employee-avatars because the raw BMP
-%% must never be reachable by URL. No client storage policy exists; the Edge Functions
-%% (service role) upload and mint signed download URLs.
+%% default (PRD 8.3). The source Tikni BMP is NOT stored anywhere (DnD decision
+%% 2026-09-19) — parsed in memory only. Bucket stays private because the rendered design
+%% is still confidential pre-order artwork. No client storage policy exists; the Edge
+%% Functions (service role) upload and mint signed download URLs.
 %%
 %% Reads: creator sees own records; `cad_layout.admin` permission sees all (PRD 8.5).
 %% Writes: none from clients — Edge Functions only, matching the journeys/orders pattern.
@@ -71,8 +72,8 @@ erDiagram
         uuid record_id FK
         int sequence_no "1-based slide order; unique per record"
         text design_code
-        text source_bmp_path "storage key — never shared, never in output"
-        text design_png_path "rendered, legend-cropped design as embedded"
+        text design_png_path "rendered, legend-cropped design as embedded — the BMP itself is never stored (DnD 2026-09-19)"
+        text swatch_path "nullable — manually cut swatch image"
         int bmp_width
         int bmp_height
         int design_height "rows kept after cropping the legend strip"

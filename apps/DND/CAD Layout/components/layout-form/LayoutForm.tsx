@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button, Select } from "@jaipur-rugs/ui-kit";
 import type { GeneratePayload, GenerateResponse } from "@/lib/api";
-import { maxColourSlots } from "@/lib/engine/pptx/templates";
+import { comfortableColourSlots } from "@/lib/engine/pptx/templates";
 import { emptySpec, LAYOUT_VARIANT_LABELS, LAYOUT_VARIANTS, type LayoutSpec, type LayoutVariant } from "@/lib/engine/spec";
 import { DesignOptionCard } from "./DesignOptionCard";
 import { newOption, todayDdMmYy, VARIANT_HELP, type DesignOptionState } from "./formState";
@@ -17,7 +17,7 @@ export function LayoutForm() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GenerateResponse | null>(null);
 
-  const maxSlots = maxColourSlots(variant);
+  const maxSlots = comfortableColourSlots(variant);
   const ready = options.every((o) => o.bmp && o.palette) && options.length > 0;
 
   function updateOption(index: number, next: DesignOptionState) {
@@ -36,16 +36,17 @@ export function LayoutForm() {
       spec,
       options: options.map((o) => ({
         designCode: o.designCode,
+        swatchSize: o.swatchSize || undefined,
         colours: o.colours
           .filter((c) => c.included)
-          .slice(0, maxSlots)
-          .map((c) => ({ hex: c.hex, code: c.code, yarn: variant === "b2c" && c.yarn ? c.yarn : undefined })),
+          .map((c) => ({ hex: c.hex, code: c.code, yarn: c.yarn || undefined })),
       })),
     };
     const body = new FormData();
     body.append("payload", JSON.stringify(payload));
     options.forEach((o, i) => {
       body.append(`bmp_${i}`, o.bmp!);
+      if (o.swatch) body.append(`swatch_${i}`, o.swatch);
       o.references.forEach((ref, j) => body.append(`ref_${i}_${j}`, ref));
     });
 

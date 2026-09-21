@@ -46,7 +46,7 @@ export function ColourTable({ rows, showYarn, maxSlots, onChange }: ColourTableP
                 <td className="px-2 py-1">
                   <input type="checkbox" checked={row.included} onChange={(e) => update(i, { included: e.target.checked })} aria-label={`Include ${row.hex}`} />
                 </td>
-                <td className={"px-2 py-1 font-medium " + (overflow ? "text-danger" : "")}>{slotNo ? `#${slotNo}` : "—"}</td>
+                <td className={"px-2 py-1 font-medium " + (overflow ? "text-muted" : "")}>{slotNo ? `#${slotNo}` : "—"}</td>
                 <td className="px-2 py-1">
                   <span className="inline-flex items-center gap-2">
                     <span className="inline-block size-6 rounded border border-border" style={{ backgroundColor: `#${row.hex}` }} />
@@ -87,8 +87,9 @@ export function ColourTable({ rows, showYarn, maxSlots, onChange }: ColourTableP
         </tbody>
       </table>
       {slot > maxSlots ? (
-        <p className="mt-2 text-xs text-danger">
-          {slot} colours selected but this layout has {maxSlots} slots — the last {slot - maxSlots} will be left off. Untick the ones that don&apos;t need a code.
+        <p className="mt-2 text-xs text-muted">
+          {slot} colours — more than the {maxSlots} this layout was built around. They all fit, but the colour list is
+          compressed. Untick any that don&apos;t need a code to keep it roomy.
         </p>
       ) : null}
     </div>

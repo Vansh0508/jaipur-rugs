@@ -10,7 +10,7 @@ type SpecKey = keyof LayoutSpec;
 const FIELDS_BY_VARIANT: Record<LayoutVariant, SpecKey[]> = {
   jli: ["projectNo", "date", "construction", "area", "size", "shape", "rugQuality", "fibreContent", "dyeingTechnique", "finishEdge", "pileHeight", "pileType", "backing", "wash", "width", "length", "notes"],
   b2b: ["projectNo", "date", "construction", "area", "size", "shape", "rugQuality", "fibreContent", "dyeingTechnique", "finishEdge", "pileHeight", "pileType", "backing", "wash", "width", "length", "notes"],
-  b2c: ["projectNo", "date", "clientName", "projectType", "construction", "size", "customerMetrics", "shape", "rugQuality", "fibreContent", "dyeingTechnique", "finishEdge", "pileHeight", "pileType", "backing", "wash", "width", "length"],
+  b2c: ["projectNo", "date", "clientName", "projectType", "construction", "size", "customerMetrics", "shape", "rugQuality", "fibreContent", "dyeingTechnique", "finishEdge", "pileHeight", "pileHeightMm", "pileType", "backing", "wash", "width", "length"],
 };
 
 const LABEL_OVERRIDES: Partial<Record<LayoutVariant, Partial<Record<SpecKey, string>>>> = {
@@ -28,7 +28,8 @@ const PLACEHOLDERS: Partial<Record<SpecKey, string>> = {
   length: "19 ft",
   area: "266 sq ft",
   fibreContent: "Wool Viscose",
-  pileHeight: "Standard pile / 7-8 MM",
+  pileHeight: "Standard",
+  pileHeightMm: "7 MM -8 MM",
 };
 
 export function SpecFields({

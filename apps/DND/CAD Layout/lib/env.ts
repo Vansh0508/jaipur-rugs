@@ -17,4 +17,18 @@ export const env = {
   get rootDomain() {
     return process.env.NEXT_PUBLIC_ROOT_DOMAIN || undefined;
   },
+  /**
+   * Whether the auth session cookie is marked Secure (HTTPS-only). Defaults to true — the
+   * safe choice — unless explicitly set to "false". This app is deployed to the internal
+   * office server over plain HTTP, and `next build`/`next start` always set
+   * NODE_ENV=production regardless of the actual connection, so packages/auth's
+   * NODE_ENV-only default would mark the cookie Secure on a connection that can never
+   * satisfy it: browsers silently drop it, sign-in "succeeds" but the session never
+   * survives the response, and the user bounces back to /login forever. Atlas hit exactly
+   * this on 2026-09-02 (see apps/atlas/lib/env.ts). Set NEXT_PUBLIC_COOKIE_SECURE=false
+   * only for a deployment you know is genuinely plain HTTP.
+   */
+  get secureCookies() {
+    return process.env.NEXT_PUBLIC_COOKIE_SECURE !== "false";
+  },
 };

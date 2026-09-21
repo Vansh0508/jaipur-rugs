@@ -14,5 +14,5 @@ export async function getServerSupabaseClient() {
     remove: (name, options) => cookieStore.set(name, "", { ...options, maxAge: 0 }),
   };
 
-  return createSupabaseServerClient(env.supabaseUrl, env.supabaseAnonKey, nextCookieAdapter, env.rootDomain);
+  return createSupabaseServerClient(env.supabaseUrl, env.supabaseAnonKey, nextCookieAdapter, env.rootDomain, env.secureCookies);
 }
