@@ -171,6 +171,7 @@ function onTimeSortValue(order: OrderRow, stageById: Map<string, StageRow>): num
     order.revised_ex_factory_date,
     stage?.is_terminal ?? false,
     standard.standardDays,
+    order.ever_late,
   );
   return status === "delayed" ? 3 : status === "late" ? 2 : status === "unknown" ? 1 : 0;
 }
@@ -1617,7 +1618,21 @@ export function OrdersTable({
                       order.revised_ex_factory_date,
                       stage?.is_terminal ?? false,
                       standard.standardDays,
+                      order.ever_late,
                     );
+                    // Whole-row highlight for Delayed/Late — direct feedback, Back Ops
+                    // walkthrough (transcript reviewed 2026-09-22): a colorblind user
+                    // couldn't see the existing per-cell red highlight at all. Two
+                    // visually distinct bright colors (red vs amber), applied to the
+                    // WHOLE row via a left border + tinted background, not just one
+                    // cell, plus text labels ("Delayed"/"Late") the badge already shows
+                    // — so the signal doesn't depend on color perception alone.
+                    const statusRowClassName =
+                      status === "delayed"
+                        ? "bg-red-50/70 dark:bg-red-950/30 border-l-4 border-l-danger hover:bg-red-50 dark:hover:bg-red-950/50"
+                        : status === "late"
+                          ? "bg-amber-50/70 dark:bg-amber-950/20 border-l-4 border-l-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                          : "hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40";
 
                     const cellsById: Record<string, React.ReactNode> = {
                       otn: (
@@ -1779,7 +1794,7 @@ export function OrdersTable({
                       rowHeight === "compact" ? "py-2" : rowHeight === "comfortable" ? "py-5" : "py-3.5";
 
                     return (
-                      <Table.Row key={order.id} id={order.id} className="border-b border-border/40 hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40 transition-colors whitespace-nowrap">
+                      <Table.Row key={order.id} id={order.id} className={`border-b border-border/40 transition-colors whitespace-nowrap ${statusRowClassName}`}>
                         <Table.Cell className={`pe-0 w-14 text-center whitespace-nowrap ${checkboxPaddingClass}`}>
                           <Checkbox
                             aria-label={`Select order ${order.otn_no}`}

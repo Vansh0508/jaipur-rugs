@@ -1,4 +1,5 @@
 import { getServerSupabaseClient } from "@/lib/supabaseClient.server";
+import { displayDate } from "@/lib/displayDate";
 import { listMySalespersonCodes, listMyCustomerCodes } from "@/lib/queries/merchants";
 import { listPendingColumnRequests, listApprovedColumnRequests } from "@/lib/queries/orders";
 import { requireAtlasStaffAccess } from "@/lib/auth/requireAtlasStaffAccess";
@@ -118,7 +119,7 @@ export default async function MyAccessPage({
                     <div>
                       <span className="font-medium text-foreground">{req.nav_field_name}</span>
                       <span className="ml-2 text-xs text-muted">
-                        requested by {req.requester_name ?? "unknown"} · {new Date(req.created_at).toLocaleDateString()}
+                        requested by {req.requester_name ?? "unknown"} · {displayDate(req.created_at)}
                       </span>
                     </div>
                   </li>
