@@ -81,11 +81,43 @@ async function main() {
   await writeFile(jliPath, jli.pptx);
   console.log(`JLI deck -> ${jliPath} (${jli.pptx.length} bytes)`, jli.warnings);
 
+  // B2C: two options, a swatch on the first, and 25 colours against a 15-slot template —
+  // exercises slot cloning, the compose fields and swatch removal on the option without one.
   const b2c = await generateDeck(
     {
       variant: "b2c",
-      spec: { ...spec, projectNo: "PD-12926-ND", construction: "Hand Knotted – 11/11", pileHeight: "7-8 MM", size: "5 Feet X 5 Feet", width: "5 Feet", length: "5 Feet" },
-      options: [{ designCode: "SHm-4", bmp: shm, colours: shmColours.map((c) => ({ ...c, yarn: "Silk Wool Mix Ply" })), references: [{ data: refPng, ext: "png" }] }],
+      spec: {
+        ...spec,
+        projectNo: "PD-14229",
+        clientName: "Divya Somani",
+        construction: "Hand Knotted 14/14 MS PS",
+        rugQuality: "Hand Knotted 14/14 MS PS",
+        fibreContent: "Silk",
+        pileHeight: "Standard",
+        pileHeightMm: "7 MM -8 MM",
+        pileType: "Cut Pile",
+        backing: "NO Backing",
+        size: "5 FEET X 8 FEET",
+        customerMetrics: "FEET",
+        width: "5 FEET",
+        length: "8 FEET",
+      },
+      options: [
+        {
+          designCode: "ASL-05",
+          bmp: shm,
+          colours: shmColours.map((c) => ({ ...c, yarn: "Silk Cut Pile" })),
+          references: [{ data: refPng, ext: "png" }],
+          swatch: { data: refPng, ext: "png" },
+          swatchSize: "45 CMS",
+        },
+        {
+          designCode: "ASL-06",
+          bmp: taq,
+          colours: taqColours.map((c) => ({ ...c, yarn: "Silk Cut Pile" })),
+          references: [{ data: refPng, ext: "png" }],
+        },
+      ],
     },
     templates,
   );

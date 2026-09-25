@@ -23,6 +23,9 @@ export interface DesignOptionState {
   ordering: ColourOrdering;
   colours: ColourRow[];
   references: File[];
+  /** Manually cut swatch, and the physical size printed beside it ("45 CMS"). */
+  swatch: File | null;
+  swatchSize: string;
 }
 
 export function newOption(): DesignOptionState {
@@ -37,6 +40,8 @@ export function newOption(): DesignOptionState {
     ordering: "area",
     colours: [],
     references: [],
+    swatch: null,
+    swatchSize: "",
   };
 }
 
@@ -64,6 +69,6 @@ export function todayDdMmYy(): string {
 
 export const VARIANT_HELP: Record<LayoutVariant, string> = {
   jli: "Jaipur Living deck — 12 colour slots, policies slide at the end.",
-  b2b: "B2B — currently the same deck as JLI until DnD confirms otherwise.",
-  b2c: "Jaipur Rugs B2C deck — up to 25 colour slots with yarn type, INFO SECTION slide at the end.",
+  b2b: "B2B — still the JLI deck; DnD confirmed on 19 Sep that B2B and Big Box each need their own layout, but haven't sent them yet.",
+  b2c: "Jaipur Rugs CAD Approval Sheet (PD-14229 master) — approval box, optional cut swatch, INFO SECTION slide at the end.",
 };

@@ -8,6 +8,7 @@
 // usage rather than re-picked per screen.
 export const STAGE_COLORS: Record<string, string> = {
   pre_loom: "bg-neutral-400",
+  at_branch: "bg-sky-400",
   loom: "bg-blue-500",
   purchase: "bg-purple-500",
   finish: "bg-amber-500",

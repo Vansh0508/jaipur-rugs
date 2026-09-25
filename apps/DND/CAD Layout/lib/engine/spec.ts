@@ -29,7 +29,14 @@ export interface LayoutSpec {
   fibreContent: string;
   dyeingTechnique: string;
   finishEdge: string;
+  /** The spec-row value — in every real DnD deck this is "Standard", not a measurement. */
   pileHeight: string;
+  /**
+   * The measured pile height printed beside the design ("7 MM -8 MM", "12-15 MM"). A
+   * separate field from `pileHeight` — real decks carry both (`FINISH PILE HEIGHT :
+   * Standard` in the spec table, `Pile height – 7-8 MM` below the image).
+   */
+  pileHeightMm: string;
   pileType: string;
   backing: string;
   wash: string;
@@ -54,6 +61,11 @@ export interface DesignOptionInput {
   designCode: string;
   /** In slot order (#1 first), already filtered by the designer. */
   colours: ColourSlotInput[];
+  /**
+   * Physical size of the cut swatch, as printed beside it ("45 CMS"). Both of the decks
+   * that carry a swatch label it on two sides with the same value.
+   */
+  swatchSize?: string;
 }
 
 export const SPEC_FIELD_LABELS: Record<keyof LayoutSpec, string> = {
@@ -70,6 +82,7 @@ export const SPEC_FIELD_LABELS: Record<keyof LayoutSpec, string> = {
   dyeingTechnique: "Dyeing technique",
   finishEdge: "Finish edge",
   pileHeight: "Finish pile height",
+  pileHeightMm: "Pile height (mm, printed by the image)",
   pileType: "Finish pile type",
   backing: "Finish backing",
   wash: "Finish wash",
@@ -80,20 +93,40 @@ export const SPEC_FIELD_LABELS: Record<keyof LayoutSpec, string> = {
 };
 
 /**
- * Dropdown option sets. PROVISIONAL — seeded from the two sample decks plus common DnD
- * finishes; the real lists come with DnD's reference folder (PRD Section 2.5 item 1).
- * Every dropdown also accepts a typed value, so a missing option never blocks a layout.
+ * Dropdown option sets, mined from the nine real DnD decks in `samples/dnd-2026-09-21/`
+ * (2026-09-21 delivery — see README "What DnD delivered"). Values are listed in the
+ * spelling DnD actually use, most frequent first; the invented lists these replaced had
+ * options ("Serging", "Abrash", "Latex backing") that appear in none of their files.
+ * Every dropdown still accepts a typed value, so a missing option never blocks a layout.
  */
 export const SPEC_OPTIONS: Partial<Record<keyof LayoutSpec, string[]>> = {
-  shape: ["RCT", "Round", "Square", "Runner", "Oval", "Irregular"],
-  pileType: ["Cut pile", "Loop pile", "Cut & Loop pile"],
-  pileHeight: ["Standard pile", "Low pile", "High pile", "Standard"],
-  backing: ["XN backing", "No Backing", "Cotton backing", "Latex backing"],
-  finishEdge: ["4 side binding", "Serging", "Fringes", "Overlocking"],
-  wash: ["Standard", "Antique wash", "No wash", "Special wash"],
-  dyeingTechnique: ["Standard", "Space dyed", "Hand dyed", "Abrash"],
-  customerMetrics: ["Feet", "CMS", "Inches", "Meters"],
-  rugQuality: ["Hand Tufted HD", "Hand Knotted 11/11", "Hand Knotted 8/8", "Hand Knotted 10/14", "Flat Weave", "Hand Loom"],
+  customerMetrics: ["Feet", "CMS", "Centimeters"],
+  shape: ["RCT", "Round", "Square", "Oval", "IRR"],
+  rugQuality: [
+    "Hand Knotted 6/6",
+    "Hand Knotted 8/8",
+    "Hand Knotted 11/11",
+    "Hand Knotted 14/14 MS PS",
+    "Hand Tufted Ultra HD",
+    "Hand Tufted HD",
+    "Tufted Ultra HD",
+  ],
+  fibreContent: [
+    "Bamboo Silk Wool",
+    "Wool Bamboo Silk",
+    "Wool",
+    "Silk",
+    "Silk & NZ Wool",
+    "Wool Viscose",
+    "Tencel Nz Wool",
+    "Viscose;New Zealand Wool",
+  ],
+  dyeingTechnique: ["Standard"],
+  finishEdge: ["4 side binding"],
+  pileHeight: ["Standard"],
+  pileType: ["Cut Pile"],
+  backing: ["NO Backing", "XN Backing"],
+  wash: ["Standard"],
 };
 
 export function emptySpec(): LayoutSpec {
@@ -111,6 +144,7 @@ export function emptySpec(): LayoutSpec {
     dyeingTechnique: "",
     finishEdge: "",
     pileHeight: "",
+    pileHeightMm: "",
     pileType: "",
     backing: "",
     wash: "",

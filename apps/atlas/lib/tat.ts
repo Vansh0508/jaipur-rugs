@@ -39,6 +39,67 @@ export function computeStageDurations(events: StageEvent[]): StageDuration[] {
   });
 }
 
+export interface StageWithOrder {
+  id: string;
+  displayOrder: number;
+}
+
+/** Direct feedback, Back Ops walkthrough (transcript reviewed 2026-09-22): "all the stage
+ * history should be visible here" — the Stage History table only ever shows real
+ * `order_stage_events` rows, but for most orders (confirmed live: ~80% of orders sitting
+ * in Finishing have exactly ONE recorded event) that's just the single stage Atlas
+ * happened to first observe the order in, not its real path — Atlas started tracking
+ * after most existing orders were already mid-pipeline, so earlier transitions were never
+ * seen and genuinely can't be recovered. Meanwhile the stage timeline widget at the top of
+ * this same page already draws every stage before the current one as "reached," so a
+ * table showing only 1 row while the timeline implies 4 looked like a bug even though the
+ * underlying UI code was already correct for the data it had.
+ *
+ * This closes that visual gap honestly: for every stage between the sequence start and
+ * the current stage that has NO real event, insert a placeholder row (no dates, no
+ * duration) instead of a guess — so the table visually matches the timeline without
+ * pretending to know something it doesn't. Real rows (from computeStageDurations) are
+ * untouched and always take precedence over a placeholder for the same stage. */
+export interface StageHistoryRow extends StageDuration {
+  isPlaceholder: boolean;
+}
+
+export function buildFullStageHistory(
+  stages: StageWithOrder[],
+  events: StageEvent[],
+  currentStageId: string | null,
+): StageHistoryRow[] {
+  const real = computeStageDurations(events);
+  const realRows: StageHistoryRow[] = real.map((d) => ({ ...d, isPlaceholder: false }));
+  if (!currentStageId) return realRows;
+
+  const sortedStages = [...stages].sort((a, b) => a.displayOrder - b.displayOrder);
+  const currentStage = sortedStages.find((s) => s.id === currentStageId);
+  if (!currentStage) return realRows;
+
+  const stageIdsWithRealEvents = new Set(real.map((d) => d.stageId));
+  // Only fill the gap for a stage whose place in the sequence is BEFORE the earliest
+  // real event we actually have — a stage after that point but still missing an event
+  // is a different situation (e.g. a genuinely skipped stage) this isn't trying to guess
+  // at, only the "never observed because tracking started later" gap at the front.
+  const earliestRealDisplayOrder = real.length
+    ? Math.min(...real.map((d) => sortedStages.find((s) => s.id === d.stageId)?.displayOrder ?? Infinity))
+    : currentStage.displayOrder + 1; // no real events at all — treat everything as a gap up to current
+
+  const placeholders: StageHistoryRow[] = sortedStages
+    .filter((s) => s.displayOrder < earliestRealDisplayOrder && s.displayOrder <= currentStage.displayOrder && !stageIdsWithRealEvents.has(s.id))
+    .map((s) => ({
+      stageId: s.id,
+      enteredAt: "",
+      exitedAt: null,
+      durationMs: 0,
+      isCurrent: false,
+      isPlaceholder: true,
+    }));
+
+  return [...placeholders, ...realRows];
+}
+
 export function formatDuration(ms: number): string {
   const days = Math.floor(ms / (24 * 60 * 60 * 1000));
   if (days >= 1) return `${days}d`;
@@ -99,11 +160,20 @@ export function daysLateFromOriginalExFactory(
   return Math.round((todayUtc - startMs) / (24 * 60 * 60 * 1000));
 }
 
+/** `everLate` — sticky "has this order EVER been Late or Delayed" flag (`orders.ever_late`,
+ * db/orders/040_sticky_late_status.sql), the SQL port's own ratchet, kept in this TS copy too.
+ * Direct feedback, Back Ops walkthrough (2026-09-22): once a stage has ever run over its own
+ * standard, "Late" should stay true even if a later stage recovers pace — their own analogy,
+ * a train delayed at one station is presumed late at the destination even if it makes up
+ * time in between. Explicitly still named "Late", not "Probable Delay" — matches this app's
+ * already-established naming (2026-09-07: "flag it as Late not delayed"). "Delayed" is
+ * unaffected — it already always takes precedence over "Late" below. */
 export function onTimeStatus(
   promisedDeliveryDate: string | null,
   revisedExFactoryDate: string | null,
   isTerminalStage: boolean,
   stageStandardDays: number | null,
+  everLate: boolean,
 ): "on_track" | "late" | "delayed" | "unknown" {
   if (isTerminalStage) return "on_track";
   const target = revisedExFactoryDate ?? promisedDeliveryDate;
@@ -122,5 +192,5 @@ export function onTimeStatus(
     const predictedMs = now + stageStandardDays * 24 * 60 * 60 * 1000;
     if (predictedMs > targetMs) return "late";
   }
-  return "on_track";
+  return everLate ? "late" : "on_track";
 }

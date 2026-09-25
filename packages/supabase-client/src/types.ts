@@ -1698,6 +1698,10 @@ export type Database = {
           shipping_agent_code: string | null
           shipping_agent_name: string | null
           ewb_no: string | null
+          // Sticky "has this order ever been Late/Delayed" ratchet, added by
+          // db/orders/040_sticky_late_status.sql — see that migration and
+          // lib/tat.ts's onTimeStatus() for how it's used.
+          ever_late: boolean
         }
         Insert: {
           authorization?: string | null
@@ -1759,6 +1763,7 @@ export type Database = {
           shipping_agent_code?: string | null
           shipping_agent_name?: string | null
           ewb_no?: string | null
+          ever_late?: boolean
         }
         Update: {
           authorization?: string | null
@@ -1820,6 +1825,7 @@ export type Database = {
           shipping_agent_code?: string | null
           shipping_agent_name?: string | null
           ewb_no?: string | null
+          ever_late?: boolean
         }
         Relationships: [
           {

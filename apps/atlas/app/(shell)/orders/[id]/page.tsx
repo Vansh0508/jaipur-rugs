@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { StageTimeline } from "@jaipur-rugs/ui-kit";
 import { getServerSupabaseClient } from "@/lib/supabaseClient.server";
 import { getOrder, getOrderStageEvents, getShippingDetail, listStages } from "@/lib/queries/orders";
-import { computeStageDurations, formatDuration, onTimeStatus, daysLateFromOriginalExFactory } from "@/lib/tat";
+import { buildFullStageHistory, formatDuration, onTimeStatus, daysLateFromOriginalExFactory } from "@/lib/tat";
 import { stageStandard } from "@/lib/stageTat";
 import { stageColorClassName } from "@/lib/stageColors";
 import { displayDate } from "@/lib/displayDate";
@@ -43,8 +43,13 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     order.revised_ex_factory_date,
     currentStage?.is_terminal ?? false,
     standard.standardDays,
+    order.ever_late,
   );
-  const durations = computeStageDurations(events.map((e) => ({ stageId: e.stage_id, enteredAt: e.entered_at })));
+  const durations = buildFullStageHistory(
+    stages.map((s) => ({ id: s.id, displayOrder: s.display_order })),
+    events.map((e) => ({ stageId: e.stage_id, enteredAt: e.entered_at })),
+    order.stage_id,
+  );
   const origExFactoryDelay = daysLateFromOriginalExFactory(order.original_ex_factory_date, currentStage?.is_terminal ?? false);
 
   const timelineSteps = stages.map((stage) => ({
@@ -174,15 +179,32 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                   // guessed number for a past stage would be actively misleading on a
                   // real production tool, so past rows get "—", not a guess.
                   const standardDays = d.isCurrent ? standard.standardDays : null;
+                  // Placeholder row (buildFullStageHistory): this order's timeline shows
+                  // it reached this stage, but Atlas has no recorded event for it —
+                  // tracking started after the order was already past this point. Shown
+                  // plainly as "Not tracked" rather than a blank/guessed date, per direct
+                  // feedback that the history table should visually match the timeline
+                  // above it instead of silently omitting stages.
+                  if (d.isPlaceholder) {
+                    return (
+                      <tr key={`placeholder-${d.stageId}`} className="border-t border-border text-muted">
+                        <td className="py-1.5">
+                          <StageChip code={stage?.code ?? null} label={stage?.display_name ?? "Unknown"} />
+                        </td>
+                        <td className="py-1.5" colSpan={3} title="Atlas started tracking this order after it had already passed this stage — no exact dates available.">
+                          Not tracked (before Atlas began recording this order's history)
+                        </td>
+                        <td className="py-1.5">—</td>
+                      </tr>
+                    );
+                  }
                   return (
                     <tr key={`${d.stageId}-${d.enteredAt}`} className="border-t border-border">
                       <td className="py-1.5">
                         <StageChip code={stage?.code ?? null} label={stage?.display_name ?? "Unknown"} />
                       </td>
-                      <td className="py-1.5 text-muted">{new Date(d.enteredAt).toLocaleDateString()}</td>
-                      <td className="py-1.5 text-muted">
-                        {d.exitedAt ? new Date(d.exitedAt).toLocaleDateString() : "—"}
-                      </td>
+                      <td className="py-1.5 text-muted">{displayDate(d.enteredAt)}</td>
+                      <td className="py-1.5 text-muted">{displayDate(d.exitedAt)}</td>
                       <td className="py-1.5">
                         {formatDuration(d.durationMs)}
                         {d.isCurrent ? <span className="ml-1 text-xs text-muted">(current)</span> : null}

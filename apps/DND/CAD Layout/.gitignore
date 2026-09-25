@@ -9,3 +9,6 @@ next-env.d.ts
 /tmp/
 /scripts/out/
 __pycache__/
+
+# Real DnD job files — reference data, not code. ~100MB of binaries; kept locally only.
+/samples/

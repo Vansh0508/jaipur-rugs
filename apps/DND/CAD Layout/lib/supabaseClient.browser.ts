@@ -6,5 +6,5 @@ import { env } from "./env";
  * `next/headers`, which can't be bundled into client code even if never called.
  */
 export function getBrowserSupabaseClient() {
-  return createSupabaseBrowserClient(env.supabaseUrl, env.supabaseAnonKey, env.rootDomain);
+  return createSupabaseBrowserClient(env.supabaseUrl, env.supabaseAnonKey, env.rootDomain, env.secureCookies);
 }

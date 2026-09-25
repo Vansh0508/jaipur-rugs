@@ -171,6 +171,7 @@ function onTimeSortValue(order: OrderRow, stageById: Map<string, StageRow>): num
     order.revised_ex_factory_date,
     stage?.is_terminal ?? false,
     standard.standardDays,
+    order.ever_late,
   );
   return status === "delayed" ? 3 : status === "late" ? 2 : status === "unknown" ? 1 : 0;
 }
@@ -848,7 +849,14 @@ export function OrdersTable({
             </button>
             <button
               type="button"
-              onClick={() => router.push(buildLink({ onTimeStatus: values.onTimeStatus === "late" ? undefined : "late" }))}
+              onClick={() =>
+                router.push(
+                  buildLink({
+                    delayStatus: undefined,
+                    onTimeStatus: values.onTimeStatus === "late" ? undefined : "late",
+                  }),
+                )
+              }
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium transition-colors cursor-pointer ${
                 values.onTimeStatus === "late"
                   ? "bg-amber-600 text-white shadow-xs"
@@ -857,9 +865,24 @@ export function OrdersTable({
             >
               <span>Late</span>
             </button>
+            {/* These four tabs are visually one mutually-exclusive group ("View Tabs"),
+                but delayStatus and onTimeStatus are two separate underlying filter
+                dimensions (see this section's own header comment) — each button here
+                must clear BOTH, not just its own, or the previous tab's param lingers
+                in the URL and ANDs together with the new one. Bug, reported live
+                2026-09-23: clicking Delayed after Late (or vice versa) left both active
+                at once, which is a logical contradiction (an order's computed status
+                can only ever be one of these) and always returned 0 rows. */}
             <button
               type="button"
-              onClick={() => router.push(buildLink({ delayStatus: values.delayStatus === "late" ? undefined : "late" }))}
+              onClick={() =>
+                router.push(
+                  buildLink({
+                    onTimeStatus: undefined,
+                    delayStatus: values.delayStatus === "late" ? undefined : "late",
+                  }),
+                )
+              }
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium transition-colors cursor-pointer ${
                 values.delayStatus === "late"
                   ? "bg-danger text-white shadow-xs"
@@ -870,7 +893,14 @@ export function OrdersTable({
             </button>
             <button
               type="button"
-              onClick={() => router.push(buildLink({ delayStatus: values.delayStatus === "on_track" ? undefined : "on_track" }))}
+              onClick={() =>
+                router.push(
+                  buildLink({
+                    onTimeStatus: undefined,
+                    delayStatus: values.delayStatus === "on_track" ? undefined : "on_track",
+                  }),
+                )
+              }
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium transition-colors cursor-pointer ${
                 values.delayStatus === "on_track"
                   ? "bg-success text-white shadow-xs"
@@ -881,7 +911,14 @@ export function OrdersTable({
             </button>
             <button
               type="button"
-              onClick={() => router.push(buildLink({ delayStatus: values.delayStatus === "soon" ? undefined : "soon" }))}
+              onClick={() =>
+                router.push(
+                  buildLink({
+                    onTimeStatus: undefined,
+                    delayStatus: values.delayStatus === "soon" ? undefined : "soon",
+                  }),
+                )
+              }
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium transition-colors cursor-pointer ${
                 values.delayStatus === "soon"
                   ? "bg-amber-600 text-white shadow-xs"
@@ -1617,7 +1654,34 @@ export function OrdersTable({
                       order.revised_ex_factory_date,
                       stage?.is_terminal ?? false,
                       standard.standardDays,
+                      order.ever_late,
                     );
+                    // Whole-row highlight for Delayed/Late — direct feedback, Back Ops
+                    // walkthrough (transcript reviewed 2026-09-22): a colorblind user
+                    // couldn't see the existing per-cell red highlight at all. Two
+                    // visually distinct bright colors (red vs amber), applied to the
+                    // WHOLE row via a left border + tinted background, not just one
+                    // cell, plus text labels ("Delayed"/"Late") the badge already shows
+                    // — so the signal doesn't depend on color perception alone.
+                    //
+                    // Inline style, not Tailwind classes, for the background/border —
+                    // reported live 2026-09-23: the tint only ever showed up on hover,
+                    // never at rest. HeroUI's Table.Row applies its own default
+                    // background class, and whichever of the two equal-specificity
+                    // class rules happens to come later in the compiled stylesheet
+                    // wins — apparently always HeroUI's, not this row's plain bg-*
+                    // class, while the :hover variant had no competing HeroUI rule to
+                    // lose to. An inline style always wins over any class regardless of
+                    // stylesheet order, so this sidesteps that cascade fight entirely.
+                    // Trade-off: no separate hover shade for a colored row (the base
+                    // tint is already always visible, which was the actual point).
+                    const statusRowStyle: React.CSSProperties | undefined =
+                      status === "delayed"
+                        ? { backgroundColor: "rgba(220, 38, 38, 0.10)", borderLeft: "4px solid #dc2626" }
+                        : status === "late"
+                          ? { backgroundColor: "rgba(217, 119, 6, 0.10)", borderLeft: "4px solid #d97706" }
+                          : undefined;
+                    const statusRowClassName = statusRowStyle ? "" : "hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40";
 
                     const cellsById: Record<string, React.ReactNode> = {
                       otn: (
@@ -1779,7 +1843,12 @@ export function OrdersTable({
                       rowHeight === "compact" ? "py-2" : rowHeight === "comfortable" ? "py-5" : "py-3.5";
 
                     return (
-                      <Table.Row key={order.id} id={order.id} className="border-b border-border/40 hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40 transition-colors whitespace-nowrap">
+                      <Table.Row
+                        key={order.id}
+                        id={order.id}
+                        style={statusRowStyle}
+                        className={`border-b border-border/40 transition-colors whitespace-nowrap ${statusRowClassName}`}
+                      >
                         <Table.Cell className={`pe-0 w-14 text-center whitespace-nowrap ${checkboxPaddingClass}`}>
                           <Checkbox
                             aria-label={`Select order ${order.otn_no}`}

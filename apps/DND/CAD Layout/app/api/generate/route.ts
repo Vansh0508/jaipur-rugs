@@ -53,8 +53,15 @@ export async function POST(request: Request) {
       if (!(ref instanceof File)) break;
       references.push({ data: new Uint8Array(await ref.arrayBuffer()), ext: path.extname(ref.name).slice(1) || "png" });
     }
+    const swatchFile = form.get(`swatch_${i}`);
+    const swatch =
+      swatchFile instanceof File
+        ? { data: new Uint8Array(await swatchFile.arrayBuffer()), ext: path.extname(swatchFile.name).slice(1) || "png" }
+        : undefined;
     options.push({
       designCode: String(opt.designCode ?? ""),
+      swatchSize: opt.swatchSize ? String(opt.swatchSize) : undefined,
+      swatch,
       colours: (opt.colours ?? []).map((c) => ({
         hex: String(c.hex).replace(/^#/, "").toUpperCase(),
         code: String(c.code ?? ""),

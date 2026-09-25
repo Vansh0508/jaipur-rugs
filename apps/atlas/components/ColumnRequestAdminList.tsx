@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { resolveColumnRequest } from "@jaipur-rugs/db-management-client";
 import { getBrowserSupabaseClient } from "@/lib/supabaseClient.browser";
 import type { ColumnRequestWithRequester } from "@/lib/queries/orders";
+import { displayDate } from "@/lib/displayDate";
 
 /** Admin Approve/Decline for pending "add this NAV column" requests — direct request,
  * 2026-09-14 ("admin will approve it"): there was no real approve action before this,
@@ -50,7 +51,7 @@ export function ColumnRequestAdminList({ requests }: { requests: ColumnRequestWi
             <div>
               <span className="font-medium text-foreground">{req.nav_field_name}</span>
               <span className="ml-2 text-xs text-muted">
-                requested by {req.requester_name ?? "unknown"} · {new Date(req.created_at).toLocaleDateString()}
+                requested by {req.requester_name ?? "unknown"} · {displayDate(req.created_at)}
               </span>
               {errorId === req.id ? <div className="text-xs text-danger">Couldn&apos;t save — try again.</div> : null}
             </div>
