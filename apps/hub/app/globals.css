@@ -6,3 +6,16 @@
    components live in a sibling workspace package outside that tree — this tells the v4
    scanner to include it too, replacing v3's JS `content: []` array. */
 @source "../../../packages/ui-kit/src";
+
+/* @heroui/styles defines --background (grey) and --surface (white) as raw CSS vars but
+   doesn't register either as a Tailwind utility (unlike --border/--muted/--surface-secondary/
+   etc, which it does register). Added here, app-scoped (same as apps/atlas/app/globals.css),
+   rather than in the shared packages/config theme file (AGENTS.md Section 4 — still just a
+   two-app need, not a broad one yet), for the shell redesign matching Atlas/BOM Checker's
+   grey app background behind a detached white content card. */
+.bg-app {
+  background-color: var(--background);
+}
+.bg-surface {
+  background-color: var(--surface);
+}

@@ -16,7 +16,12 @@ export interface HubEmployee {
   avatarPath: string | null;
   /** Whether this employee holds the `employees.write` permission — gates the Team page's admin actions. */
   canManageTeam: boolean;
+  /** Whether this employee holds any of departments.manage/roles.manage/apps.manage — gates the Settings nav link. */
+  canManageDependencies: boolean;
 }
+
+/** The permission keys that unlock any tab under /settings — see app/(shell)/settings/layout.tsx. */
+export const DEPENDENCY_MANAGE_PERMISSIONS = ["departments.manage", "roles.manage", "apps.manage"] as const;
 
 /**
  * Redirects to /login (no session), the force-logout route (session but no active
@@ -46,7 +51,12 @@ export async function requireHubAccess(supabase: SupabaseClient): Promise<HubEmp
     redirect("/onboarding");
   }
 
-  const canManageTeam = await employeeHasPermission(supabase, employee.id, employee.primary_role_id, "employees.write");
+  const [canManageTeam, dependencyPermissions] = await Promise.all([
+    employeeHasPermission(supabase, employee.id, employee.primary_role_id, "employees.write"),
+    Promise.all(
+      DEPENDENCY_MANAGE_PERMISSIONS.map((key) => employeeHasPermission(supabase, employee.id, employee.primary_role_id, key)),
+    ),
+  ]);
 
   return {
     employeeId: employee.id,
@@ -55,6 +65,7 @@ export async function requireHubAccess(supabase: SupabaseClient): Promise<HubEmp
     email: employee.email,
     avatarPath: employee.avatar_path,
     canManageTeam,
+    canManageDependencies: dependencyPermissions.some(Boolean),
   };
 }
 

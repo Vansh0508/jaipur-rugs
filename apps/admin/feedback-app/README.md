@@ -61,27 +61,18 @@ No S3 config needed — driver photos resolve directly against
 
 ### Two login paths, neither is Supabase Auth
 
-- **Employee** — `employee_code` + phone number, matched against the `employees` table via
-  the `employee-signin` edge function. Phone matching is digit-normalized on the last 10
-  digits (`employees.phone` has no enforced format, unlike guests), and the form uses a
-  plain phone field with no country-code picker. This used to be real Supabase Auth
-  (`signInWithPassword`) — replaced mid-build. See `db/MIGRATIONS.md`'s "Employee login
-  redesign" entry for the full reasoning.
-  - If the code matches **zero** `employees` rows, a recovery cascade runs before ever
-    offering to create anything: try the **phone** (ignoring the wrong code) → fall back
-    to an **email** the form asks for → only then offer to **create** a new row. Each step
-    is confirm-only where a match is found (no fields — the match came from data already
-    typed) and patches only whatever was genuinely missing (`status` → `'active'`,
-    `phone` if it was `null`) without ever touching `employee_code` or overwriting
-    anything already set. Only the final create-new step collects a Full Name (email
-    already known by then) and allocates a real `employee_code` via `next_employee_code()`
-    (the same sequence `create-driver` uses for `driver_code`) — the code typed at login is
-    always discarded, never written anywhere. New rows are `status: 'active'` immediately,
-    unlike the HR-flow default of `'invited'`. A code that *exists* but doesn't match the
-    given phone/status still gets the ordinary rejection — nothing in this cascade ever
-    runs for a real, claimed code. See `db/MIGRATIONS.md`'s "Employee sign-in recovery
-    cascade" entry for the full design (including why an earlier, simpler version built
-    the same day was replaced).
+- **Employee** — `employee_code` **only**, matched against the `employees` table via the
+  `employee-signin` edge function (`.toUpperCase()`-normalized, gated on
+  `status = 'active'`). No phone, no email, and therefore no recovery cascade — a code
+  that matches nothing, or matches an inactive row, gets the same flat
+  `"No active employee matches that employee code."` rejection either way (not revealing
+  which case it is). This app doesn't create or patch `employees` rows anymore; a new
+  employee needs a code from `apps/hub`'s HR-driven `invite-employee`/onboarding flow
+  first. This login used to be real Supabase Auth (`signInWithPassword`), then
+  `employee_code` + phone with a phone/email recovery cascade for unrecognized codes —
+  both replaced. See `db/MIGRATIONS.md`'s "Employee login redesign", "Employee sign-in
+  recovery cascade", and "Employee login simplified to code-only" entries for the full
+  history.
 - **Guest** — matched against (or inserted into) `guests` by phone via `guest-signup`, full
   E.164 with a mandatory country-code picker. This was a deliberate mid-build product
   decision — guests are tracked data for the purpose of the feedback record, not accounts.
@@ -108,7 +99,7 @@ Hub app yet to redirect unauthenticated users to, so they land on this app's own
 | Function | Auth required | Does |
 |---|---|---|
 | `guest-signup` | None (bootstrap step) | Phone match-or-create against `guests`. Returns `{guestId, matched}`. |
-| `employee-signin` | None (bootstrap step) | `employee_code` + phone match against `employees` (last-10-digits, case-insensitive code). Returns `{employeeId}`. If the code matches nothing, runs a recovery cascade driven by an `action` param (`confirmPhoneMatch` → `lookupEmail`/`confirmEmailMatch` → `createNew`) — see [Architecture](#architecture) below. |
+| `employee-signin` | None (bootstrap step) | `employee_code`-only match against `employees` (case-insensitive), gated on `status = 'active'`. Returns `{employeeId}`. No phone/email, no recovery cascade — a non-matching or inactive code is a flat rejection. See [Architecture](#architecture) below. |
 | `submit-feedback` | `guestId` **or** `employeeId` in body — exactly one | Validates driver/rating/date, inserts one `feedback` row. |
 
 ### Styling
@@ -147,6 +138,11 @@ disagree, they win.
 | `004_seed_drivers_and_vehicles.sql` | Created `vehicles`, seeded 13 real drivers + 14 real vehicles, tightened `drivers`' anon column grant before inserting real phone numbers |
 | `005_create_driver_photos_bucket.sql` | Created the public `driver-photos` Storage bucket |
 | `006_employee_code_phone_login.sql` | Redesigned employee login away from Supabase Auth to `employee_code` + phone matching (mirrors 003's guest redesign). Added `feedback.employee_id`, replaced the 2-way `feedback_reviewer_xor_guest` CHECK with the 3-way `feedback_reviewer_exactly_one`. |
+
+The phone requirement `006` added was itself dropped later (2026-09-25, no new `.sql` file
+— `employees.employee_code`/`status`/`feedback.employee_id` already existed, so this was a
+pure `employee-signin`/frontend change): employee login is now `employee_code` alone. See
+`db/MIGRATIONS.md`'s "Employee login simplified to code-only" entry.
 
 A parallel, unrelated fix also landed in the `team-members` module during this work:
 `003_drop_stale_auth_trigger.sql` removed orphaned debris (a trigger from a previous,

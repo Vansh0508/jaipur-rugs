@@ -305,7 +305,7 @@ export const BomGroupSetupTable: React.FC<BomGroupSetupTableProps> = ({
             <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search BOM no, item no, design, group..."
+              placeholder="Search exact BOM (e.g. 148425, JRC/PRDBOM/...), item no, design..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full sm:w-80 pl-8 pr-8 py-1.5 text-xs bg-stone-50/80 hover:bg-white focus:bg-white border border-stone-200/90 rounded-full focus:outline-hidden focus:border-stone-400 focus:ring-1 focus:ring-stone-200 transition placeholder:text-stone-400 font-medium"

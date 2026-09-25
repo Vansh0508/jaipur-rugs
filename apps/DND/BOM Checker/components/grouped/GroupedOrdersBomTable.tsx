@@ -36,7 +36,11 @@ import { NestedBomTable } from "./NestedBomTable";
 import { displayDate } from "@/lib/displayDate";
 import { copyToClipboard } from "@/lib/clipboardCopy";
 import { useLocalPreference } from "@/lib/useLocalPreference";
-import type { RugEvaluationResult, RugEvaluationInput } from "@/lib/bom-evaluator";
+import type {
+  RugEvaluationInput,
+  BomValidityResult,
+  WeightAccuracyResult,
+} from "@/lib/bom-evaluator";
 
 export type StageGroupTab = "all" | "pre_loom" | "loom" | "after_loom";
 
@@ -61,8 +65,9 @@ export const ALL_RUG_COLUMNS: ColumnDef[] = [
   { id: "weightAccuracy", label: "Weight Accuracy", sortable: true },
 ];
 
-// In-memory client cache for rug evaluations across tabs and re-renders
-const evaluationMemoryCache = new Map<string, RugEvaluationResult>();
+// In-memory client caches for rug evaluations across tabs and re-renders
+const bomValidityMemoryCache = new Map<string, BomValidityResult>();
+const weightAccuracyMemoryCache = new Map<string, WeightAccuracyResult>();
 
 export const ALL_BOM_COLUMNS: ColumnDef[] = [
   { id: "lineNo", label: "Line No" },
@@ -122,35 +127,39 @@ export function GroupedOrdersBomTable({
   const [bomsByItem, setBomsByItem] = useState<Record<string, AuditedBomLine[]>>({});
   const [loadingItemNos, setLoadingItemNos] = useState<Set<string>>(new Set());
 
-  // Lazy background rug evaluations state (BOM Validity & Weight Accuracy)
-  const [evaluations, setEvaluations] = useState<Record<string, RugEvaluationResult>>(() => {
-    const initial: Record<string, RugEvaluationResult> = {};
-    for (const [key, val] of evaluationMemoryCache.entries()) {
+  // Independent lazy background evaluations state (BOM Validity & Weight Accuracy)
+  const [bomValidityMap, setBomValidityMap] = useState<Record<string, BomValidityResult>>(() => {
+    const initial: Record<string, BomValidityResult> = {};
+    for (const [key, val] of bomValidityMemoryCache.entries()) {
       initial[key] = val;
     }
     return initial;
   });
-  const inFlightEvaluations = useRef<Set<string>>(new Set());
 
-  // Non-blocking lazy background loader for visible items
+  const [weightAccuracyMap, setWeightAccuracyMap] = useState<Record<string, WeightAccuracyResult>>(() => {
+    const initial: Record<string, WeightAccuracyResult> = {};
+    for (const [key, val] of weightAccuracyMemoryCache.entries()) {
+      initial[key] = val;
+    }
+    return initial;
+  });
+
+  const inFlightValidity = useRef<Set<string>>(new Set());
+  const inFlightWeight = useRef<Set<string>>(new Set());
+
+  // Non-blocking lazy background loader in batches of 10 starting from the first list provided by the ruglist
   useEffect(() => {
     if (!rows || rows.length === 0) return;
 
-    const itemsToFetch: RugEvaluationInput[] = [];
+    const abortController = new AbortController();
+    const signal = abortController.signal;
+
+    // Ordered list of items directly from the ruglist (preserving rows[0], rows[1], ...)
+    const orderedItems: RugEvaluationInput[] = [];
     for (const row of rows) {
       const itemNo = row.item_no?.trim();
       if (!itemNo) continue;
-
-      if (evaluationMemoryCache.has(itemNo)) {
-        if (!evaluations[itemNo]) {
-          setEvaluations((prev) => ({ ...prev, [itemNo]: evaluationMemoryCache.get(itemNo)! }));
-        }
-        continue;
-      }
-      if (inFlightEvaluations.current.has(itemNo)) continue;
-
-      inFlightEvaluations.current.add(itemNo);
-      itemsToFetch.push({
+      orderedItems.push({
         itemNo,
         design: row.design ?? undefined,
         quality: row.quality ?? undefined,
@@ -164,39 +173,137 @@ export function GroupedOrdersBomTable({
       });
     }
 
-    if (itemsToFetch.length === 0) return;
+    if (orderedItems.length === 0) return;
 
-    let isMounted = true;
+    // 1. Sync any already cached items immediately from memory caches
+    const cachedValidityUpdates: Record<string, BomValidityResult> = {};
+    const cachedWeightUpdates: Record<string, WeightAccuracyResult> = {};
 
-    fetch("/api/bom/evaluate-rugs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items: itemsToFetch }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (!isMounted) return;
-        if (data.success && data.evaluations) {
-          for (const [k, v] of Object.entries(data.evaluations as Record<string, RugEvaluationResult>)) {
-            evaluationMemoryCache.set(k, v);
+    for (const item of orderedItems) {
+      if (bomValidityMemoryCache.has(item.itemNo) && !bomValidityMap[item.itemNo]) {
+        cachedValidityUpdates[item.itemNo] = bomValidityMemoryCache.get(item.itemNo)!;
+      }
+      if (weightAccuracyMemoryCache.has(item.itemNo) && !weightAccuracyMap[item.itemNo]) {
+        cachedWeightUpdates[item.itemNo] = weightAccuracyMemoryCache.get(item.itemNo)!;
+      }
+    }
+
+    if (Object.keys(cachedValidityUpdates).length > 0) {
+      setBomValidityMap((prev) => ({ ...prev, ...cachedValidityUpdates }));
+    }
+    if (Object.keys(cachedWeightUpdates).length > 0) {
+      setWeightAccuracyMap((prev) => ({ ...prev, ...cachedWeightUpdates }));
+    }
+
+    // Helper to partition items into batches of 10
+    const chunkArray = <T,>(arr: T[], chunkSize = 10): T[][] => {
+      const chunks: T[][] = [];
+      for (let i = 0; i < arr.length; i += chunkSize) {
+        chunks.push(arr.slice(i, i + chunkSize));
+      }
+      return chunks;
+    };
+
+    // 2. Independent Pipeline: BOM Validity (processed sequentially in batches of 10 from top of list)
+    const validityItemsToFetch = orderedItems.filter(
+      (item) => !bomValidityMemoryCache.has(item.itemNo) && !inFlightValidity.current.has(item.itemNo)
+    );
+
+    if (validityItemsToFetch.length > 0) {
+      const validityBatches = chunkArray(validityItemsToFetch, 10);
+
+      (async () => {
+        for (const batch of validityBatches) {
+          if (signal.aborted) break;
+
+          for (const itm of batch) {
+            inFlightValidity.current.add(itm.itemNo);
           }
-          setEvaluations((prev) => ({
-            ...prev,
-            ...data.evaluations,
-          }));
+
+          try {
+            const res = await fetch("/api/bom/evaluate-rugs", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ items: batch, type: "bomValidity" }),
+              signal,
+            });
+
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+
+            if (data.success && data.evaluations) {
+              for (const [k, v] of Object.entries(data.evaluations as Record<string, BomValidityResult>)) {
+                bomValidityMemoryCache.set(k, v);
+              }
+              setBomValidityMap((prev) => ({
+                ...prev,
+                ...data.evaluations,
+              }));
+            }
+          } catch (err: any) {
+            if (err.name !== "AbortError") {
+              console.error("Failed to lazily evaluate BOM validity batch:", err);
+            }
+          } finally {
+            for (const itm of batch) {
+              inFlightValidity.current.delete(itm.itemNo);
+            }
+          }
         }
-      })
-      .catch((err) => {
-        console.error("Failed to lazily evaluate rugs:", err);
-      })
-      .finally(() => {
-        for (const item of itemsToFetch) {
-          inFlightEvaluations.current.delete(item.itemNo);
+      })();
+    }
+
+    // 3. Independent Pipeline: Weight Accuracy (processed sequentially in batches of 10 from top of list)
+    const weightItemsToFetch = orderedItems.filter(
+      (item) => !weightAccuracyMemoryCache.has(item.itemNo) && !inFlightWeight.current.has(item.itemNo)
+    );
+
+    if (weightItemsToFetch.length > 0) {
+      const weightBatches = chunkArray(weightItemsToFetch, 10);
+
+      (async () => {
+        for (const batch of weightBatches) {
+          if (signal.aborted) break;
+
+          for (const itm of batch) {
+            inFlightWeight.current.add(itm.itemNo);
+          }
+
+          try {
+            const res = await fetch("/api/bom/evaluate-rugs", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ items: batch, type: "weightAccuracy" }),
+              signal,
+            });
+
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+
+            if (data.success && data.evaluations) {
+              for (const [k, v] of Object.entries(data.evaluations as Record<string, WeightAccuracyResult>)) {
+                weightAccuracyMemoryCache.set(k, v);
+              }
+              setWeightAccuracyMap((prev) => ({
+                ...prev,
+                ...data.evaluations,
+              }));
+            }
+          } catch (err: any) {
+            if (err.name !== "AbortError") {
+              console.error("Failed to lazily evaluate Weight Accuracy batch:", err);
+            }
+          } finally {
+            for (const itm of batch) {
+              inFlightWeight.current.delete(itm.itemNo);
+            }
+          }
         }
-      });
+      })();
+    }
 
     return () => {
-      isMounted = false;
+      abortController.abort();
     };
   }, [rows]);
 
@@ -204,20 +311,20 @@ export function GroupedOrdersBomTable({
   const sortedRows = useMemo(() => {
     if (sortBy === "bomValidity") {
       return [...rows].sort((a, b) => {
-        const aVal = evaluations[a.item_no]?.bomValidity.status || "Z";
-        const bVal = evaluations[b.item_no]?.bomValidity.status || "Z";
+        const aVal = bomValidityMap[a.item_no]?.status || "Z";
+        const bVal = bomValidityMap[b.item_no]?.status || "Z";
         return sortDir === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       });
     }
     if (sortBy === "weightAccuracy") {
       return [...rows].sort((a, b) => {
-        const aVal = evaluations[a.item_no]?.weightAccuracy.status || "Z";
-        const bVal = evaluations[b.item_no]?.weightAccuracy.status || "Z";
+        const aVal = weightAccuracyMap[a.item_no]?.status || "Z";
+        const bVal = weightAccuracyMap[b.item_no]?.status || "Z";
         return sortDir === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       });
     }
     return rows;
-  }, [rows, sortBy, sortDir, evaluations]);
+  }, [rows, sortBy, sortDir, bomValidityMap, weightAccuracyMap]);
 
   // Search input state
   const [searchInput, setSearchInput] = useState(currentSearch);
@@ -845,8 +952,8 @@ export function GroupedOrdersBomTable({
                                   </Table.Cell>
                                 );
                               case "bomValidity": {
-                                const evalData = evaluations[order.item_no];
-                                if (!evalData) {
+                                const validityData = bomValidityMap[order.item_no];
+                                if (!validityData) {
                                   return (
                                     <Table.Cell key="bomValidity" className="py-2.5 px-3 whitespace-nowrap">
                                       <div className="flex items-center gap-1.5 animate-pulse">
@@ -856,7 +963,7 @@ export function GroupedOrdersBomTable({
                                   );
                                 }
 
-                                const { status, details, discrepanciesCount } = evalData.bomValidity;
+                                const { status, details, discrepanciesCount } = validityData;
                                 return (
                                   <Table.Cell key="bomValidity" className="py-2.5 px-3 whitespace-nowrap">
                                     <Tooltip delay={80}>
@@ -923,8 +1030,8 @@ export function GroupedOrdersBomTable({
                                 );
                               }
                               case "weightAccuracy": {
-                                const evalData = evaluations[order.item_no];
-                                if (!evalData) {
+                                const weightData = weightAccuracyMap[order.item_no];
+                                if (!weightData) {
                                   return (
                                     <Table.Cell key="weightAccuracy" className="py-2.5 px-3 whitespace-nowrap">
                                       <div className="flex items-center gap-1.5 animate-pulse">
@@ -943,7 +1050,7 @@ export function GroupedOrdersBomTable({
                                   referenceRatePsf,
                                   currentRatePsf,
                                   variancePct,
-                                } = evalData.weightAccuracy;
+                                } = weightData;
 
                                 return (
                                   <Table.Cell key="weightAccuracy" className="py-2.5 px-3 whitespace-nowrap">

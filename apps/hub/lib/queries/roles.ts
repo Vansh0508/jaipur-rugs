@@ -9,3 +9,10 @@ export async function listRoles(supabase: SupabaseClient) {
   if (error) throw error;
   return (data ?? []) as Pick<Role, "id" | "name">[];
 }
+
+/** Full rows (all columns) for the Settings > Roles management table. */
+export async function listRolesFull(supabase: SupabaseClient): Promise<Role[]> {
+  const { data, error } = await supabase.from("roles").select("*").order("name");
+  if (error) throw error;
+  return (data ?? []) as Role[];
+}

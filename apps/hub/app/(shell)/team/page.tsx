@@ -7,6 +7,7 @@ import { listRoles } from "@/lib/queries/roles";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { AddTeamMemberAction } from "@/components/team/AddTeamMemberAction";
+import { BulkUploadEmployeesAction } from "@/components/team/BulkUploadEmployeesAction";
 import { TeamTable } from "@/components/team/TeamTable";
 
 // Nothing here is a real access boundary — the shell layout already established the
@@ -37,7 +38,14 @@ export default async function TeamPage() {
       <PageHeader
         title="Team"
         description={canManageTeam ? "Manage departments, managers, and roles." : "People in your org, department, and reporting chain."}
-        action={canManageTeam ? <AddTeamMemberAction departments={departments} roles={roles} managerCandidates={managerCandidates} /> : null}
+        action={
+          canManageTeam ? (
+            <div className="flex items-center gap-2">
+              <BulkUploadEmployeesAction departments={departments} roles={roles} directory={directory} />
+              <AddTeamMemberAction departments={departments} roles={roles} managerCandidates={managerCandidates} />
+            </div>
+          ) : null
+        }
       />
       {directory.length === 0 ? (
         <EmptyState message="No teammates visible yet." />

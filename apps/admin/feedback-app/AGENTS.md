@@ -24,33 +24,23 @@ actually running and why" companion to that reference.
 ## What's live right now
 
 - **Login** (`app/login/page.tsx`) — two tabs, **neither is Supabase Auth**. Employee:
-  `employee_code` + phone number, matched against the `employees` table via the
-  `employee-signin` edge function (phone matching is digit-normalized on the last 10
-  digits — `employees.phone` has no enforced format, unlike guests). Guest: full name +
-  E.164 phone, matched against (or inserted into) `guests` via `guest-signup`. Both paths
+  `employee_code` **only**, matched against the `employees` table via the
+  `employee-signin` edge function — no phone, no email. Guest: full name + E.164 phone,
+  matched against (or inserted into) `guests` via `guest-signup` (unchanged). Both paths
   create no `auth.users` row and no session — the browser just remembers the returned id
   in a plain cookie (`jr_employee_id` / `jr_guest_id`, `lib/authCookies.ts`). The employee
-  path used to be real Supabase Auth (`signInWithPassword`); it was replaced mid-build —
-  see `db/MIGRATIONS.md`'s "Employee login redesign" and "Guest tracking redesign" entries
-  for the full reasoning and what each superseded.
-- **Employee sign-in on an unrecognized code runs a recovery cascade**, not an immediate
-  "create new?" offer (`db/MIGRATIONS.md`'s "Employee sign-in recovery cascade" entry has
-  the full story, including why the first, simpler version was replaced the same day it
-  was built). Order: try phone → try email → only then offer to create. Each step is a
-  distinct typed error from `db-management-client` (`EmployeePhoneMatchPendingError` →
-  `EmployeeNotFoundError` → `EmployeeEmailMatchPendingError`/`EmployeeEmailNotFoundError`)
-  that the login form catches to show the right popup and drive `employeeSignIn`'s `action`
-  param (`confirmPhoneMatch` / `lookupEmail` / `confirmEmailMatch` / `createNew`) — never
-  call any of those speculatively; each is only reachable after the specific error above.
-  A code that exists but has the wrong phone/status never enters this cascade — that's a
-  real account's wrong credentials, not a recovery case.
-  - The phone/email match steps patch **only fields that were genuinely missing**
-    (`status` if not already active, `phone` if the matched row's was `null`) and **never**
-    touch `employee_code` or overwrite anything already set. Their popups are confirm-only,
-    no editable fields — an explicit product decision, not a shortcut.
-  - The final create-new step still allocates `employee_code` server-side
-    (`next_employee_code()`, same sequence `create-driver` uses) and sets `status: 'active'`
-    immediately instead of the usual HR-flow `'invited'` — unchanged from before.
+  path used to be real Supabase Auth (`signInWithPassword`), then `employee_code` + phone
+  with a phone/email recovery cascade for unrecognized codes; both were replaced — see
+  `db/MIGRATIONS.md`'s "Employee login redesign", "Employee sign-in recovery cascade", and
+  "Employee login simplified to code-only" entries for the full reasoning and what each
+  superseded.
+- **A code that doesn't match an active `employees` row is a hard failure — no recovery
+  cascade, no self-service creation.** There's no phone/email collected at this login
+  anymore to fall back on, so `employee-signin` returns the same
+  `"No active employee matches that employee code."` message whether the code doesn't
+  exist at all or exists but isn't `active` (deliberately not revealing which, same as the
+  old wrong-phone case did). New employees still come from the HR-driven
+  `invite-employee`/onboarding flow in `apps/hub`, not from this app.
 - **Access gate** (`proxy.ts`) — purely cookie-based: lets a request through if it carries
   *either* `jr_employee_id` *or* `jr_guest_id`. There is no Supabase session check at all
   in this app anymore (neither login path produces one). No Hub to redirect to yet, so
@@ -101,17 +91,11 @@ actually running and why" companion to that reference.
 - **Public Storage buckets bypass RLS for reads, not writes.** Uploading to
   `driver-photos` still needs either a service-role client (no admin UI does this yet) or
   a new RLS policy on `storage.objects` — don't assume "public" means client uploads work.
-- **`employees.phone` has no enforced format** — the seeded row is a bare 10-digit
-  domestic number, no country code. `employee-signin` matches on the last 10 digits after
-  stripping non-digits, not exact string equality, and the employee login form uses a
-  plain phone field (no country-code picker) — don't swap it for the guest tab's
-  `PhoneInput` (which forces an E.164 `+` prefix) or matching will silently fail for every
-  real employee.
-- **`employees.email` is UNIQUE and NOT NULL** (unlike `guests`, which has no email column
-  at all) — `employee-signin`'s create-on-not-found path collects it in the confirmation
-  popup and pre-checks for a duplicate before allocating a code, mirroring
-  `invite-employee`'s own check. Don't skip that pre-check if you touch this function; the
-  raw unique-violation error is far less useful to show a real person.
+- **`employee-signin` no longer reads or writes `employees.phone`/`email` at all** — it's
+  a single `employee_code` lookup (`eq` + `.toUpperCase()` normalization, matching the
+  `DRV-XXX`/`driver_code` convention) gated on `status = 'active'`. Don't reintroduce
+  phone/email matching here; if a code doesn't resolve, the answer is "get the right code
+  from HR" (`apps/hub`'s `invite-employee`/onboarding flow), not a client-side fallback.
 - **`FEEDBACK.reviewer_auth_user_id` is vestigial for this app.** Neither login path
   produces a Supabase session anymore, so this column is never populated by
   `submit-feedback` going forward — `guest_id`/`employee_id` are what actually identify a

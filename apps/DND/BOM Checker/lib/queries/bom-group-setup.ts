@@ -79,16 +79,62 @@ export async function fetchBomGroupSetupRecords(
     let whereConditions: string[] = ["[No_] != '' AND [No_] != 'V'"];
 
     if (search) {
-      whereConditions.push(`(
-        [No_] LIKE @search
-        OR [Item No_] LIKE @search
-        OR [Item Description] LIKE @search
-        OR [Design] LIKE @search
-        OR [Quality] LIKE @search
-        OR [Group Item No_] LIKE @search
-        OR [Yarn Code] LIKE @search
-      )`);
-      request.input("search", sql.NVarChar, `%${search}%`);
+      const cleanSearch = search.trim();
+      const bomCandidates = new Set<string>();
+      bomCandidates.add(cleanSearch);
+      bomCandidates.add(cleanSearch.toUpperCase());
+
+      // If user typed purely digits (e.g. "148425", "25", "00001", "1")
+      if (/^\d+$/.test(cleanSearch)) {
+        bomCandidates.add(`JRC/PRDBOM/${cleanSearch}`);
+        bomCandidates.add(`JRC/PRDBOM/${cleanSearch.padStart(5, "0")}`);
+        bomCandidates.add(`JRC/PRDBOM/${cleanSearch.padStart(6, "0")}`);
+        bomCandidates.add(`JRC/BOM-DY/${cleanSearch.padStart(5, "0")}`);
+        bomCandidates.add(`CT/BOM/${cleanSearch.padStart(4, "0")}`);
+      }
+
+      // If user typed without "JRC/" (e.g. "PRDBOM/148425", "BOM-DY/00123")
+      if (/^PRDBOM\//i.test(cleanSearch)) {
+        bomCandidates.add(`JRC/${cleanSearch.toUpperCase()}`);
+      }
+      if (/^BOM-/i.test(cleanSearch)) {
+        bomCandidates.add(`JRC/${cleanSearch.toUpperCase()}`);
+        bomCandidates.add(`JR/${cleanSearch.toUpperCase()}`);
+      }
+
+      const isItemNo =
+        /^rug/i.test(cleanSearch) ||
+        /^rm\d/i.test(cleanSearch) ||
+        /^ct-\d/i.test(cleanSearch);
+
+      const isBOM =
+        /^\d+$/.test(cleanSearch) ||
+        /bom/i.test(cleanSearch) ||
+        /^(jrc|jr|ct|pwc|silkyarn)\//i.test(cleanSearch);
+
+      if (isBOM) {
+        // Exact BOM Number matching (instant index seek in <100ms)
+        const bomConds: string[] = [];
+        const candidatesArr = Array.from(bomCandidates);
+        candidatesArr.forEach((c, idx) => {
+          request.input(`bomCand${idx}`, sql.NVarChar, c);
+          bomConds.push(`[No_] = @bomCand${idx}`);
+        });
+
+        if (cleanSearch.includes("/")) {
+          request.input("bomPrefix", sql.NVarChar, `${cleanSearch}%`);
+          bomConds.push(`[No_] LIKE @bomPrefix`);
+        }
+        whereConditions.push(`(${bomConds.join(" OR ")})`);
+      } else if (isItemNo) {
+        request.input("itemSearch", sql.NVarChar, cleanSearch);
+        request.input("itemPrefix", sql.NVarChar, `${cleanSearch}%`);
+        whereConditions.push(`([Item No_] = @itemSearch OR [Item No_] LIKE @itemPrefix)`);
+      } else {
+        // Design or general search
+        request.input("designPrefix", sql.NVarChar, `${cleanSearch}%`);
+        whereConditions.push(`([Design] LIKE @designPrefix)`);
+      }
     }
 
     if (groupItemNo) {
@@ -98,7 +144,7 @@ export async function fetchBomGroupSetupRecords(
 
     if (design) {
       whereConditions.push(`[Design] LIKE @design`);
-      request.input("design", sql.NVarChar, `%${design}%`);
+      request.input("design", sql.NVarChar, `${design}%`);
     }
 
     if (onlyConfigured) {

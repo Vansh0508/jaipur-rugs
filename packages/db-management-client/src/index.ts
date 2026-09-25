@@ -44,80 +44,19 @@ export async function guestCheckIn(supabase: SupabaseClient, input: GuestCheckIn
 
 export interface EmployeeSignInInput {
   employeeCode: string;
-  /** Full E.164 phone number, country code included, e.g. "+919812345678". */
-  phone: string;
-  /**
-   * Drives the recovery cascade after a first call throws EmployeeNotFoundError (i.e. the
-   * typed employee_code matched zero rows). Never set any of these speculatively — a code
-   * that exists but doesn't match the phone/status is a wrong-credentials case, and the
-   * edge function won't recover that:
-   *
-   *   - "confirmPhoneMatch" — call after EmployeePhoneMatchPendingError, once the caller's
-   *     own confirm/cancel popup was accepted. Patches only what's missing and logs in.
-   *   - "lookupEmail" — call after EmployeeNotFoundError, with `email` set, to search by
-   *     email once neither code nor phone matched anything.
-   *   - "confirmEmailMatch" — call after EmployeeEmailMatchPendingError (same `email`),
-   *     once confirmed. Patches only what's missing and logs in.
-   *   - "createNew" — call after EmployeeEmailNotFoundError, with `email` (already known
-   *     from the lookupEmail step) and a newly-collected `fullName`. Creates a genuinely
-   *     new row with a server-allocated employee_code — never the one originally typed.
-   */
-  action?: "confirmPhoneMatch" | "lookupEmail" | "confirmEmailMatch" | "createNew";
-  fullName?: string;
-  email?: string;
 }
 
 interface EmployeeSignInResponse {
   employeeId: string;
-  /** Present only when a new row was just created — the server-allocated employee_code
-   * (next_employee_code()), not whatever the caller originally typed to sign in with. */
-  employeeCode?: string;
-  created?: boolean;
 }
-
-/** No `employees` row has the given employee_code, and none matches the given phone either. Next step: ask for an email and call again with action: "lookupEmail". */
-export class EmployeeNotFoundError extends Error {
-  constructor() {
-    super("No employee found with that code.");
-  }
-}
-
-/** The code didn't match, but an existing row's phone does. Show a plain confirm/cancel popup, then call again with action: "confirmPhoneMatch". */
-export class EmployeePhoneMatchPendingError extends Error {
-  constructor() {
-    super("A record already exists for this phone number.");
-  }
-}
-
-/** Neither the code, the phone, nor the given email matched anything. This is genuinely a new person — collect a full name and call again with action: "createNew". */
-export class EmployeeEmailNotFoundError extends Error {
-  constructor() {
-    super("No employee found with that email.");
-  }
-}
-
-/** The given email matches an existing row. Show a plain confirm/cancel popup, then call again with action: "confirmEmailMatch". */
-export class EmployeeEmailMatchPendingError extends Error {
-  constructor() {
-    super("A record already exists for this email.");
-  }
-}
-
-const EMPLOYEE_SIGN_IN_ERROR_CLASSES = {
-  not_found: EmployeeNotFoundError,
-  phone_match_pending: EmployeePhoneMatchPendingError,
-  email_not_found: EmployeeEmailNotFoundError,
-  email_match_pending: EmployeeEmailMatchPendingError,
-} as const;
 
 /**
- * employee_code + phone match against `employees` — NOT Supabase Auth. No password, no
- * auth.users row, no session. When the code matches nothing, the edge function runs a
- * recovery cascade (phone, then email, then offering to create a new row) rather than
- * failing outright — each step throws one of the typed errors above so the caller can
- * drive its own popups; see EmployeeSignInInput's `action` docs for the exact sequence.
- * Throws a plain Error with the edge function's actual message for every other failure
- * (e.g. "No active employee matches..." for a real code with the wrong phone).
+ * employee_code match against `employees` — NOT Supabase Auth. No password, no phone/email,
+ * no auth.users row, no session. A code that doesn't match an active row is a hard failure
+ * (no phone/email fallback, no recovery cascade — see db/MIGRATIONS.md's "Employee login
+ * simplified to code-only" entry); throws a plain Error with the edge function's message
+ * ("No active employee matches that employee code." for both an unknown code and an
+ * inactive one — deliberately the same message either way).
  */
 export async function employeeSignIn(supabase: SupabaseClient, input: EmployeeSignInInput) {
   const { data, error } = await supabase.functions.invoke<EmployeeSignInResponse>("employee-signin", {
@@ -125,36 +64,26 @@ export async function employeeSignIn(supabase: SupabaseClient, input: EmployeeSi
   });
 
   if (error || !data) {
-    const { code, message } = await parseEmployeeSignInError(error);
-    const ErrorClass = code ? EMPLOYEE_SIGN_IN_ERROR_CLASSES[code as keyof typeof EMPLOYEE_SIGN_IN_ERROR_CLASSES] : undefined;
-    if (ErrorClass) {
-      throw new ErrorClass();
-    }
-    throw new Error(message);
+    throw new Error(await parseEmployeeSignInErrorMessage(error));
   }
 
   return data;
 }
 
-/**
- * Reads a FunctionsHttpError's body exactly once, returning both the raw `error` string
- * (used to pick one of the typed errors above) and a display-ready message (used as a
- * plain Error's message for every other failure). Response bodies can only be read once,
- * so this must not call context.json() more than a single time per error.
- */
-async function parseEmployeeSignInError(error: unknown): Promise<{ code: string | null; message: string }> {
+/** Reads a FunctionsHttpError's body for a display-ready message; response bodies can only be read once. */
+async function parseEmployeeSignInErrorMessage(error: unknown): Promise<string> {
   const context = (error as { context?: Response } | null)?.context;
   if (context && typeof context.json === "function") {
     try {
       const body = await context.json();
       if (typeof body?.error === "string") {
-        return { code: body.error, message: body.error };
+        return body.error;
       }
     } catch {
       // fall through to the generic message below
     }
   }
-  return { code: null, message: error instanceof Error ? error.message : "The request failed." };
+  return error instanceof Error ? error.message : "The request failed.";
 }
 
 export interface SubmitFeedbackInput {
@@ -562,6 +491,247 @@ interface UpdateEmployeeResponse {
 /** Invokes `update-employee` — the Team page's row-level edit (department/manager/role/status). Requires `employees.write`. */
 export async function updateEmployee(supabase: SupabaseClient, input: UpdateEmployeeInput) {
   const { data, error } = await supabase.functions.invoke<UpdateEmployeeResponse>("update-employee", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface BulkUploadEmployeeRow {
+  fullName: string;
+  email: string;
+  /** Only meaningful (and only read server-side) when `dedupKey` is `"employee_code"`. */
+  employeeCode?: string;
+  departmentId?: string | null;
+  managerId?: string | null;
+  primaryRoleId?: string | null;
+  employmentType?: "full_time" | "part_time" | "contract" | "intern" | "consultant";
+}
+
+export interface BulkUploadEmployeesInput {
+  dedupKey: "email" | "employee_code";
+  overwriteExisting: boolean;
+  rows: BulkUploadEmployeeRow[];
+}
+
+export interface BulkUploadEmployeeResult {
+  index: number;
+  action: "created" | "updated" | "skipped" | "failed";
+  employeeId?: string;
+  employeeCode?: string;
+  error?: string;
+}
+
+interface BulkUploadEmployeesResponse {
+  results: BulkUploadEmployeeResult[];
+}
+
+/**
+ * Invokes `bulk-upload-employees` — the Team page's "Bulk upload" flow. The caller has
+ * already parsed the spreadsheet and resolved department/manager/role names to ids
+ * client-side (against data it read from the DB); this only sends the resolved rows plus
+ * the dedup key and overwrite choice the uploader picked. Requires `employees.write`, same
+ * as `inviteEmployee`/`updateEmployee` — a bulk upload is treated as N of those actions,
+ * not a separately-gated capability.
+ */
+export async function bulkUploadEmployees(supabase: SupabaseClient, input: BulkUploadEmployeesInput) {
+  const { data, error } = await supabase.functions.invoke<BulkUploadEmployeesResponse>("bulk-upload-employees", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Hub module (apps/hub) — Settings > Departments/Roles/Apps management (the reference
+// tables employee records hang off of). Same permission-gated, write-through-edge-function
+// shape as the Team-page functions above; see db/team-members/001_team_members_schema.sql
+// for the `*.manage` permissions these require.
+
+export interface CreateDepartmentInput {
+  name: string;
+  code: string;
+  parentDepartmentId?: string;
+}
+
+interface CreateDepartmentResponse {
+  departmentId: string;
+}
+
+/** Invokes `create-department`. Requires `departments.manage`. */
+export async function createDepartment(supabase: SupabaseClient, input: CreateDepartmentInput) {
+  const { data, error } = await supabase.functions.invoke<CreateDepartmentResponse>("create-department", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface UpdateDepartmentInput {
+  departmentId: string;
+  name?: string;
+  code?: string;
+  parentDepartmentId?: string | null;
+}
+
+interface UpdateDepartmentResponse {
+  departmentId: string;
+}
+
+/** Invokes `update-department`. Requires `departments.manage`. */
+export async function updateDepartment(supabase: SupabaseClient, input: UpdateDepartmentInput) {
+  const { data, error } = await supabase.functions.invoke<UpdateDepartmentResponse>("update-department", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface DeleteDepartmentInput {
+  departmentId: string;
+}
+
+interface DeleteDepartmentResponse {
+  departmentId: string;
+}
+
+/** Invokes `delete-department`. Requires `departments.manage`. Fails with a friendly 409 if the department is still referenced (employees, other departments, access grants). */
+export async function deleteDepartment(supabase: SupabaseClient, input: DeleteDepartmentInput) {
+  const { data, error } = await supabase.functions.invoke<DeleteDepartmentResponse>("delete-department", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface CreateRoleInput {
+  name: string;
+  description?: string;
+  isGlobal?: boolean;
+}
+
+interface CreateRoleResponse {
+  roleId: string;
+}
+
+/** Invokes `create-role`. Requires `roles.manage`. */
+export async function createRole(supabase: SupabaseClient, input: CreateRoleInput) {
+  const { data, error } = await supabase.functions.invoke<CreateRoleResponse>("create-role", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface UpdateRoleInput {
+  roleId: string;
+  name?: string;
+  description?: string | null;
+  isGlobal?: boolean;
+}
+
+interface UpdateRoleResponse {
+  roleId: string;
+}
+
+/** Invokes `update-role`. Requires `roles.manage`. */
+export async function updateRole(supabase: SupabaseClient, input: UpdateRoleInput) {
+  const { data, error } = await supabase.functions.invoke<UpdateRoleResponse>("update-role", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface DeleteRoleInput {
+  roleId: string;
+}
+
+interface DeleteRoleResponse {
+  roleId: string;
+}
+
+/** Invokes `delete-role`. Requires `roles.manage`. Fails with a friendly 409 if the role is still referenced (employees, role_permissions, role_app_access). */
+export async function deleteRole(supabase: SupabaseClient, input: DeleteRoleInput) {
+  const { data, error } = await supabase.functions.invoke<DeleteRoleResponse>("delete-role", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface CreateAppInput {
+  key: string;
+  name: string;
+  description?: string;
+  isActive?: boolean;
+}
+
+interface CreateAppResponse {
+  appId: string;
+}
+
+/** Invokes `create-app`. Requires `apps.manage`. */
+export async function createApp(supabase: SupabaseClient, input: CreateAppInput) {
+  const { data, error } = await supabase.functions.invoke<CreateAppResponse>("create-app", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface UpdateAppInput {
+  appId: string;
+  key?: string;
+  name?: string;
+  description?: string | null;
+  isActive?: boolean;
+}
+
+interface UpdateAppResponse {
+  appId: string;
+}
+
+/** Invokes `update-app`. Requires `apps.manage`. */
+export async function updateApp(supabase: SupabaseClient, input: UpdateAppInput) {
+  const { data, error } = await supabase.functions.invoke<UpdateAppResponse>("update-app", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface DeleteAppInput {
+  appId: string;
+}
+
+interface DeleteAppResponse {
+  appId: string;
+}
+
+/** Invokes `delete-app`. Requires `apps.manage`. Fails with a friendly 409 if the app is still referenced (permissions, role_app_access). */
+export async function deleteApp(supabase: SupabaseClient, input: DeleteAppInput) {
+  const { data, error } = await supabase.functions.invoke<DeleteAppResponse>("delete-app", {
     body: input,
   });
   if (error || !data) {

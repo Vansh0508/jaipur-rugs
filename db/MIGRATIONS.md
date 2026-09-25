@@ -1064,3 +1064,38 @@ must never be URL-reachable), read-only RLS (creator sees own, admin sees all) a
 `cad_layout_usage_view`. Apply → advisors → log the version here → regenerate
 `packages/supabase-client` types → then build the Edge Functions
 (`cad-layout-create-record`, signed uploads) — see `apps/DND/CAD Layout/README.md`.
+
+## Employee login simplified to code-only (2026-09-25) — code change, no schema change
+
+Feedback App employee tab: further simplified beyond the `employee_code` + phone match
+this section already covers (see "Employee login redesign" and "Employee sign-in recovery
+cascade" above) — employees now type **only** their `employee_code`, matched as-is against
+`employees.employee_code` (still `.toUpperCase()`-normalized, still gated on
+`status = 'active'`). No phone, no email, and therefore no recovery cascade at all: a code
+that matches nothing (or matches an inactive row) is a flat
+`"No active employee matches that employee code."` rejection, same message either way
+(deliberately not revealing which case it is, same principle the old wrong-phone rejection
+used). `employee-signin` no longer creates or patches any `employees` row — that
+capability only existed to back the phone/email recovery steps, which are gone; new
+employees still come from `apps/hub`'s HR-driven `invite-employee`/onboarding flow.
+
+No `db/feedback/*.sql` file — `employees.employee_code`/`status` and `feedback.employee_id`
+already existed (`006_employee_code_phone_login.sql`), so there's no schema to migrate,
+only edge-function and frontend logic. Guest login (`guest-signup`, full name + phone) is
+untouched.
+
+**Files changed:** `supabase/functions/employee-signin/index.ts` (rewritten — code-only
+lookup, no phone param, no cascade branches), `packages/db-management-client/src/index.ts`
+(`EmployeeSignInInput` now just `{ employeeCode }`; `EmployeeNotFoundError`/
+`EmployeePhoneMatchPendingError`/`EmployeeEmailNotFoundError`/`EmployeeEmailMatchPendingError`
+and the `action` param removed — `employeeSignIn` now throws a plain `Error`),
+`apps/admin/feedback-app/app/login/page.tsx` (`EmployeeLoginForm` down to a single
+Employee Code field, no more recovery `Modal`).
+
+**Deployed** the same day via `deploy_edge_function` against `matnispbauvvlnbsuzxq` —
+`employee-signin` is now version 9 (`verify_jwt: false`, unchanged from version 8), live
+and `ACTIVE`. Confirmed by re-fetching version 8's body first (still the old
+`employeeCode`+phone code, `"employeeCode and phone are required"` on a code-only
+request — this is the exact error a real employee hit, which is what triggered the
+redeploy) before pushing the rewritten version. No schema/RLS touched, so no advisor
+re-run was needed.
