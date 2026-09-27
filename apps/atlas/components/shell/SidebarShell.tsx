@@ -3,6 +3,7 @@
 import { useLocalPreference } from "@/lib/useLocalPreference";
 import { SidebarNav } from "./SidebarNav";
 import { UserMenu } from "./UserMenu";
+import { SessionTracker } from "./SessionTracker";
 
 // Owns the sidebar's expanded/collapsed state — added 2026-09-10 replacing the old
 // CSS-only `hover:w-72` behavior (see (shell)/layout.tsx's previous comment) with a real
@@ -32,6 +33,7 @@ export function SidebarShell({
         (expanded ? "w-72" : "w-16")
       }
     >
+      <SessionTracker />
       <SidebarNav isAdmin={isAdmin} expanded={expanded} onToggleExpanded={() => setExpanded((prev) => !prev)} />
       <UserMenu fullName={fullName} email={email} expanded={expanded} />
     </div>

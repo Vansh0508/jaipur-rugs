@@ -1132,6 +1132,59 @@ export async function escalateOrder(supabase: SupabaseClient, orderId: string, r
   return data;
 }
 
+// ---------------------------------------------------------------------------
+// User Activity module (apps/atlas admin) — see db/user-activity/001_login_sessions.sql.
+// Self-service, always the CALLER'S OWN session id — the edge functions independently
+// verify ownership server-side regardless of what a client passes.
+
+export interface StartLoginSessionResponse {
+  sessionId: string;
+  startedAt: string;
+  /** True if an existing open session (heartbeat within the last 20 min) was reused
+   * instead of a new row being created — see login-sessions-start's own comment. */
+  reused: boolean;
+}
+
+/** Invokes `login-sessions-start` — call once per tab on app load (see SessionTracker.tsx). */
+export async function startLoginSession(supabase: SupabaseClient) {
+  const { data, error } = await supabase.functions.invoke<StartLoginSessionResponse>("login-sessions-start", {
+    body: {},
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+/** Invokes `login-sessions-heartbeat` — call every few minutes while the tab is visible/focused. */
+export async function heartbeatLoginSession(supabase: SupabaseClient, sessionId: string) {
+  const { data, error } = await supabase.functions.invoke<{ sessionId: string }>("login-sessions-heartbeat", {
+    body: { sessionId },
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+/**
+ * Invokes `login-sessions-end` — awaited before an explicit sign-out. For the
+ * pagehide/beforeunload best-effort case, SessionTracker.tsx calls the function directly
+ * via `fetch(..., { keepalive: true })` instead of this helper, since supabase-js's
+ * `functions.invoke` doesn't expose a `keepalive` option and a normal fetch gets killed
+ * along with the page before it can complete.
+ */
+export async function endLoginSession(supabase: SupabaseClient, sessionId: string) {
+  const { data, error } = await supabase.functions.invoke<{ sessionId: string; ended: boolean }>(
+    "login-sessions-end",
+    { body: { sessionId } },
+  );
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
 /**
  * `supabase.functions.invoke` surfaces a non-2xx response as a generic FunctionsHttpError
  * whose `.context` is the raw Response — the structured `{ error, conflict }` body isn't

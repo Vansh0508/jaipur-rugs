@@ -2,7 +2,16 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { AccessIcon, AlertsIcon, ChevronIcon, DashboardIcon, MerchantsIcon, OrdersIcon, RugLensIcon } from "./icons";
+import {
+  AccessIcon,
+  AlertsIcon,
+  ChevronIcon,
+  DashboardIcon,
+  MerchantsIcon,
+  OrdersIcon,
+  RugLensIcon,
+  UserManagementIcon,
+} from "./icons";
 
 interface NavLink {
   href: string;
@@ -47,6 +56,7 @@ export function SidebarNav({
     // 2026-09-16), so this link no longer needs any department-specific gating.
     { href: "/rug-lens", label: "RugLens", icon: RugLensIcon },
     ...(isAdmin ? [{ href: "/merchants", label: "Merchants", icon: MerchantsIcon }] : []),
+    ...(isAdmin ? [{ href: "/admin/users", label: "Users", icon: UserManagementIcon }] : []),
     { href: "/my-access", label: "My access", icon: AccessIcon },
   ];
 

@@ -1,21 +1,8 @@
 // Generated from project matnispbauvvlnbsuzxq via mcp Supabase generate_typescript_types,
-// regenerated 2026-09-12 (see db/MIGRATIONS.md for every migration this reflects) — the
-// previous regeneration was 2026-08-19; this refresh was triggered by
-// 022_column_requests.sql landing (db/orders/022) and, separately, catches up every
-// orders-module migration since (013-020) whose tables/columns had been living here as
-// a hand-authored stand-in per this header comment's old note (that note itself was
-// stale — the migration it was waiting on landed long ago; this regeneration finally
-// replaces it). Regenerate after every schema migration (AGENTS.md Section 3.1, step 6)
-// — do not hand-edit.
-//
-// EXCEPTION, tracked explicitly rather than silently violating the rule above:
-// `user_orders_view_preferences` (Row/Insert/Update/Relationships below) and
-// `column_request_status`'s 'approved' value are hand-authored, because
-// 023_user_view_preferences_and_request_approval.sql hasn't been applied to the live
-// project yet as of this commit (the Supabase MCP connection dropped mid-session — see
-// db/MIGRATIONS.md's entry on this) — there's no live schema to generate from yet.
-// Re-run generate_typescript_types and replace this whole file once that migration
-// actually lands; don't hand-edit this section further in the meantime.
+// regenerated 2026-09-27 (see db/MIGRATIONS.md for every migration this reflects) — this
+// refresh folds in db/user-activity/001-002 (login_sessions + login_session_summary) after
+// rebasing onto origin/main.
+
 export type Json =
   | string
   | number
@@ -62,6 +49,120 @@ export type Database = {
         }
         Relationships: []
       }
+      auth_allowed_domains: {
+        Row: {
+          created_at: string
+          domain: string
+          id: string
+          is_active: boolean
+          note: string | null
+        }
+        Insert: {
+          created_at?: string
+          domain: string
+          id?: string
+          is_active?: boolean
+          note?: string | null
+        }
+        Update: {
+          created_at?: string
+          domain?: string
+          id?: string
+          is_active?: boolean
+          note?: string | null
+        }
+        Relationships: []
+      }
+      auth_login_attempts: {
+        Row: {
+          detail: Json
+          email: string | null
+          employee_id: string | null
+          event: Database["public"]["Enums"]["auth_attempt_event"]
+          id: string
+          ip: unknown
+          method: Database["public"]["Enums"]["auth_attempt_method"]
+          occurred_at: string
+          succeeded: boolean
+          user_agent: string | null
+          username: string | null
+        }
+        Insert: {
+          detail?: Json
+          email?: string | null
+          employee_id?: string | null
+          event: Database["public"]["Enums"]["auth_attempt_event"]
+          id?: string
+          ip?: unknown
+          method: Database["public"]["Enums"]["auth_attempt_method"]
+          occurred_at?: string
+          succeeded: boolean
+          user_agent?: string | null
+          username?: string | null
+        }
+        Update: {
+          detail?: Json
+          email?: string | null
+          employee_id?: string | null
+          event?: Database["public"]["Enums"]["auth_attempt_event"]
+          id?: string
+          ip?: unknown
+          method?: Database["public"]["Enums"]["auth_attempt_method"]
+          occurred_at?: string
+          succeeded?: boolean
+          user_agent?: string | null
+          username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "auth_login_attempts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "auth_login_attempts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
+        ]
+      }
+      auth_rate_limits: {
+        Row: {
+          failed_count: number
+          id: string
+          last_sent_at: string | null
+          locked_until: string | null
+          purpose: string
+          scope: Database["public"]["Enums"]["auth_limit_scope"]
+          subject: string
+          updated_at: string
+        }
+        Insert: {
+          failed_count?: number
+          id?: string
+          last_sent_at?: string | null
+          locked_until?: string | null
+          purpose?: string
+          scope: Database["public"]["Enums"]["auth_limit_scope"]
+          subject: string
+          updated_at?: string
+        }
+        Update: {
+          failed_count?: number
+          id?: string
+          last_sent_at?: string | null
+          locked_until?: string | null
+          purpose?: string
+          scope?: Database["public"]["Enums"]["auth_limit_scope"]
+          subject?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       department_access_grants: {
         Row: {
           access_level: Database["public"]["Enums"]["access_level"]
@@ -103,11 +204,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "department_access_grants_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
+          {
             foreignKeyName: "department_access_grants_granted_by_fkey"
             columns: ["granted_by"]
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "department_access_grants_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
           },
         ]
       }
@@ -230,6 +345,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "document_checks_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
+          {
             foreignKeyName: "document_checks_shipment_id_fkey"
             columns: ["shipment_id"]
             isOneToOne: false
@@ -333,6 +455,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "employee_roles_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
+          {
             foreignKeyName: "employee_roles_role_id_fkey"
             columns: ["role_id"]
             isOneToOne: false
@@ -367,6 +496,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_salesperson_codes_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
           },
         ]
       }
@@ -441,6 +577,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "employees_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
+          {
             foreignKeyName: "employees_primary_role_id_fkey"
             columns: ["primary_role_id"]
             isOneToOne: false
@@ -475,6 +618,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "escalation_levels_notify_employee_id_fkey"
+            columns: ["notify_employee_id"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
           },
         ]
       }
@@ -540,6 +690,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "feedback_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
+          {
             foreignKeyName: "feedback_guest_id_fkey"
             columns: ["guest_id"]
             isOneToOne: false
@@ -559,6 +716,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feedback_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
           },
         ]
       }
@@ -651,6 +815,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "filing_proposals_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
           },
           {
             foreignKeyName: "filing_proposals_shipment_id_fkey"
@@ -768,6 +939,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "freight_proposals_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
           },
           {
             foreignKeyName: "freight_proposals_rate_card_id_fkey"
@@ -891,6 +1069,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "inbound_mails_claimed_by_fkey"
+            columns: ["claimed_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
+          {
             foreignKeyName: "inbound_mails_claimed_shipment_id_fkey"
             columns: ["claimed_shipment_id"]
             isOneToOne: false
@@ -903,6 +1088,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbound_mails_dismissed_by_fkey"
+            columns: ["dismissed_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
           },
         ]
       }
@@ -1077,6 +1269,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "journeys_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
+          {
             foreignKeyName: "journeys_driver_id_fkey"
             columns: ["driver_id"]
             isOneToOne: false
@@ -1089,6 +1288,54 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vehicles"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      login_sessions: {
+        Row: {
+          auth_user_id: string
+          created_at: string
+          employee_id: string
+          ended_at: string | null
+          id: string
+          last_heartbeat_at: string
+          started_at: string
+          updated_at: string
+        }
+        Insert: {
+          auth_user_id: string
+          created_at?: string
+          employee_id: string
+          ended_at?: string | null
+          id?: string
+          last_heartbeat_at?: string
+          started_at?: string
+          updated_at?: string
+        }
+        Update: {
+          auth_user_id?: string
+          created_at?: string
+          employee_id?: string
+          ended_at?: string | null
+          id?: string
+          last_heartbeat_at?: string
+          started_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "login_sessions_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "login_sessions_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
           },
         ]
       }
@@ -1175,6 +1422,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "mail_drafts_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
+          {
             foreignKeyName: "mail_drafts_shipment_id_fkey"
             columns: ["shipment_id"]
             isOneToOne: false
@@ -1209,6 +1463,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merchant_customer_codes_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
           },
         ]
       }
@@ -1256,6 +1517,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nav011_pull_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
           },
           {
             foreignKeyName: "nav011_pull_requests_shipment_id_fkey"
@@ -1318,6 +1586,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "order_delay_alerts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders_with_on_time_status"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "order_delay_alerts_stage_id_fkey"
             columns: ["stage_id"]
             isOneToOne: false
@@ -1360,6 +1635,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "order_escalations_escalated_by_fkey"
+            columns: ["escalated_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
+          {
             foreignKeyName: "order_escalations_level_fkey"
             columns: ["level"]
             isOneToOne: false
@@ -1371,6 +1653,13 @@ export type Database = {
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_escalations_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders_with_on_time_status"
             referencedColumns: ["id"]
           },
         ]
@@ -1415,10 +1704,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "order_events_actor_employee_id_fkey"
+            columns: ["actor_employee_id"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
+          {
             foreignKeyName: "order_events_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders_with_on_time_status"
             referencedColumns: ["id"]
           },
         ]
@@ -1460,11 +1763,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "order_milestones_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders_with_on_time_status"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "order_milestones_recorded_by_fkey"
             columns: ["recorded_by"]
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_milestones_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
           },
         ]
       }
@@ -1494,6 +1811,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_request_seen_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
           },
           {
             foreignKeyName: "order_request_seen_request_id_fkey"
@@ -1559,10 +1883,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "order_requests_actioned_by_fkey"
+            columns: ["actioned_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
+          {
             foreignKeyName: "order_requests_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_requests_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders_with_on_time_status"
             referencedColumns: ["id"]
           },
           {
@@ -1578,6 +1916,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
           },
         ]
       }
@@ -1618,11 +1963,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "order_stage_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders_with_on_time_status"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "order_stage_events_recorded_by_fkey"
             columns: ["recorded_by"]
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_stage_events_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
           },
           {
             foreignKeyName: "order_stage_events_stage_id_fkey"
@@ -1646,7 +2005,10 @@ export type Database = {
           customer_po_no: string | null
           customer_service_zone: string | null
           design: string | null
+          dispatched_at: string | null
           erp_synced_at: string
+          ever_late: boolean
+          ewb_no: string | null
           expected_ready_date: string | null
           follow_up_person: string | null
           gr_color_name: string | null
@@ -1678,30 +2040,20 @@ export type Database = {
           sales_line_no: number | null
           sales_order_date: string | null
           sales_order_no: string | null
+          sales_shipment_no: string | null
           salesperson_code: string | null
           serial_no: string | null
           shape: string | null
+          shipping_agent_code: string | null
+          shipping_agent_name: string | null
           size: string | null
           size_cm: string | null
           stage_id: string | null
           std_cubage: number | null
+          tracking_no: string | null
           updated_at: string
           us_item_code: string | null
           warehouse_shipment_created: boolean
-          // Dispatch + shipment tracking, added by db/orders/029_dispatch_tracking.sql —
-          // see that migration and orders-sync.mjs's syncDispatchStatus/syncTrackingInfo
-          // for where these come from (NAV-011 / a separate AWB-tracking NAV view, not
-          // NAV_VIEW). Grouped here rather than alphabetized among the fields above.
-          dispatched_at: string | null
-          sales_shipment_no: string | null
-          tracking_no: string | null
-          shipping_agent_code: string | null
-          shipping_agent_name: string | null
-          ewb_no: string | null
-          // Sticky "has this order ever been Late/Delayed" ratchet, added by
-          // db/orders/040_sticky_late_status.sql — see that migration and
-          // lib/tat.ts's onTimeStatus() for how it's used.
-          ever_late: boolean
         }
         Insert: {
           authorization?: string | null
@@ -1715,7 +2067,10 @@ export type Database = {
           customer_po_no?: string | null
           customer_service_zone?: string | null
           design?: string | null
+          dispatched_at?: string | null
           erp_synced_at?: string
+          ever_late?: boolean
+          ewb_no?: string | null
           expected_ready_date?: string | null
           follow_up_person?: string | null
           gr_color_name?: string | null
@@ -1747,23 +2102,20 @@ export type Database = {
           sales_line_no?: number | null
           sales_order_date?: string | null
           sales_order_no?: string | null
+          sales_shipment_no?: string | null
           salesperson_code?: string | null
           serial_no?: string | null
           shape?: string | null
+          shipping_agent_code?: string | null
+          shipping_agent_name?: string | null
           size?: string | null
           size_cm?: string | null
           stage_id?: string | null
           std_cubage?: number | null
+          tracking_no?: string | null
           updated_at?: string
           us_item_code?: string | null
           warehouse_shipment_created?: boolean
-          dispatched_at?: string | null
-          sales_shipment_no?: string | null
-          tracking_no?: string | null
-          shipping_agent_code?: string | null
-          shipping_agent_name?: string | null
-          ewb_no?: string | null
-          ever_late?: boolean
         }
         Update: {
           authorization?: string | null
@@ -1777,7 +2129,10 @@ export type Database = {
           customer_po_no?: string | null
           customer_service_zone?: string | null
           design?: string | null
+          dispatched_at?: string | null
           erp_synced_at?: string
+          ever_late?: boolean
+          ewb_no?: string | null
           expected_ready_date?: string | null
           follow_up_person?: string | null
           gr_color_name?: string | null
@@ -1809,23 +2164,20 @@ export type Database = {
           sales_line_no?: number | null
           sales_order_date?: string | null
           sales_order_no?: string | null
+          sales_shipment_no?: string | null
           salesperson_code?: string | null
           serial_no?: string | null
           shape?: string | null
+          shipping_agent_code?: string | null
+          shipping_agent_name?: string | null
           size?: string | null
           size_cm?: string | null
           stage_id?: string | null
           std_cubage?: number | null
+          tracking_no?: string | null
           updated_at?: string
           us_item_code?: string | null
           warehouse_shipment_created?: boolean
-          dispatched_at?: string | null
-          sales_shipment_no?: string | null
-          tracking_no?: string | null
-          shipping_agent_code?: string | null
-          shipping_agent_name?: string | null
-          ewb_no?: string | null
-          ever_late?: boolean
         }
         Relationships: [
           {
@@ -1877,49 +2229,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "orders_column_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
+          {
             foreignKeyName: "orders_column_requests_resolved_by_fkey"
             columns: ["resolved_by"]
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
-        ]
-      }
-      user_orders_view_preferences: {
-        Row: {
-          column_order: Json
-          employee_id: string
-          filter_order: Json
-          hidden_columns: Json
-          hidden_filters: Json
-          row_height: string
-          updated_at: string
-        }
-        Insert: {
-          column_order?: Json
-          employee_id: string
-          filter_order?: Json
-          hidden_columns?: Json
-          hidden_filters?: Json
-          row_height?: string
-          updated_at?: string
-        }
-        Update: {
-          column_order?: Json
-          employee_id?: string
-          filter_order?: Json
-          hidden_columns?: Json
-          hidden_filters?: Json
-          row_height?: string
-          updated_at?: string
-        }
-        Relationships: [
           {
-            foreignKeyName: "user_orders_view_preferences_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: true
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
+            foreignKeyName: "orders_column_requests_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
           },
         ]
       }
@@ -2253,6 +2581,13 @@ export type Database = {
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "shipment_documents_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
         ]
       }
       shipment_lines: {
@@ -2383,6 +2718,13 @@ export type Database = {
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "shipments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
         ]
       }
       shipping_details: {
@@ -2440,11 +2782,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "shipping_details_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders_with_on_time_status"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "shipping_details_updated_by_fkey"
             columns: ["updated_by"]
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipping_details_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
           },
         ]
       }
@@ -2510,6 +2866,51 @@ export type Database = {
           },
         ]
       }
+      user_orders_view_preferences: {
+        Row: {
+          column_order: Json
+          employee_id: string
+          filter_order: Json
+          hidden_columns: Json
+          hidden_filters: Json
+          row_height: string
+          updated_at: string
+        }
+        Insert: {
+          column_order?: Json
+          employee_id: string
+          filter_order?: Json
+          hidden_columns?: Json
+          hidden_filters?: Json
+          row_height?: string
+          updated_at?: string
+        }
+        Update: {
+          column_order?: Json
+          employee_id?: string
+          filter_order?: Json
+          hidden_columns?: Json
+          hidden_filters?: Json
+          row_height?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_orders_view_preferences_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: true
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_orders_view_preferences_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: true
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
+        ]
+      }
       vehicles: {
         Row: {
           created_at: string
@@ -2560,6 +2961,99 @@ export type Database = {
           root_id: string | null
         }
         Relationships: []
+      }
+      login_session_summary: {
+        Row: {
+          department_id: string | null
+          department_name: string | null
+          employee_code: string | null
+          employee_id: string | null
+          full_name: string | null
+          is_online: boolean | null
+          last_active_at: string | null
+          last_sign_in_at: string | null
+          total_seconds: number | null
+          total_sessions: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employees_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orders_with_on_time_status: {
+        Row: {
+          authorization: string | null
+          backing: string | null
+          br_color_name: string | null
+          computed_on_time_status: string | null
+          computed_stage_standard_days: number | null
+          construction: string | null
+          created_at: string | null
+          current_location: string | null
+          current_status_pending_days: number | null
+          customer_no: string | null
+          customer_po_no: string | null
+          customer_service_zone: string | null
+          design: string | null
+          erp_synced_at: string | null
+          ever_late: boolean | null
+          expected_ready_date: string | null
+          follow_up_person: string | null
+          gr_color_name: string | null
+          hsn_sac_no: string | null
+          id: string | null
+          india_collection: string | null
+          is_hidden_stock: boolean | null
+          item_description: string | null
+          item_no: string | null
+          matching_code: string | null
+          merchant_name: string | null
+          on_hold: string | null
+          order_priority: number | null
+          order_wise_merchant: string | null
+          original_ex_factory_date: string | null
+          original_ex_india_date: string | null
+          otn_no: string | null
+          pile_fibre: string | null
+          pile_height: string | null
+          production_order_no: string | null
+          production_order_status: string | null
+          project_coordinator: string | null
+          promised_delivery_date: string | null
+          quality: string | null
+          quick_ship: boolean | null
+          raw_current_status: string | null
+          remark: string | null
+          revised_ex_factory_date: string | null
+          revised_ex_india_date: string | null
+          sales_line_no: number | null
+          sales_order_date: string | null
+          sales_order_no: string | null
+          salesperson_code: string | null
+          serial_no: string | null
+          shape: string | null
+          size: string | null
+          size_cm: string | null
+          stage_id: string | null
+          std_cubage: number | null
+          updated_at: string | null
+          us_item_code: string | null
+          warehouse_shipment_created: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_stage_id_fkey"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "stages"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Functions: {
@@ -2729,6 +3223,7 @@ export type Database = {
       }
       rug_lens_facets: {
         Args: {
+          p_customer_code?: string[]
           p_include_held_or_assigned?: boolean
           p_item_type?: string
           p_location?: string[]
@@ -2737,6 +3232,7 @@ export type Database = {
           p_size?: string[]
         }
         Returns: {
+          customer_codes: string[]
           locations: string[]
           qualities: string[]
           sizes: string[]
@@ -2750,8 +3246,19 @@ export type Database = {
     Enums: {
       access_level: "view" | "manage" | "admin"
       app_access_level: "none" | "view" | "manage"
+      auth_attempt_event:
+        | "code_requested"
+        | "code_verified"
+        | "code_failed"
+        | "password_succeeded"
+        | "password_failed"
+        | "domain_rejected"
+        | "cooldown_blocked"
+        | "lockout_blocked"
+      auth_attempt_method: "email_otp" | "password" | "password_reset"
+      auth_limit_scope: "email" | "ip" | "username"
       check_status: "pending" | "approved" | "rejected"
-      column_request_status: "pending" | "approved" | "added" | "declined"
+      column_request_status: "pending" | "added" | "declined" | "approved"
       courier: "dhl" | "fedex"
       document_kind:
         | "planning_mail"
@@ -2944,8 +3451,20 @@ export const Constants = {
     Enums: {
       access_level: ["view", "manage", "admin"],
       app_access_level: ["none", "view", "manage"],
+      auth_attempt_event: [
+        "code_requested",
+        "code_verified",
+        "code_failed",
+        "password_succeeded",
+        "password_failed",
+        "domain_rejected",
+        "cooldown_blocked",
+        "lockout_blocked",
+      ],
+      auth_attempt_method: ["email_otp", "password", "password_reset"],
+      auth_limit_scope: ["email", "ip", "username"],
       check_status: ["pending", "approved", "rejected"],
-      column_request_status: ["pending", "approved", "added", "declined"],
+      column_request_status: ["pending", "added", "declined", "approved"],
       courier: ["dhl", "fedex"],
       document_kind: [
         "planning_mail",

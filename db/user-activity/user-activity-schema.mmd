@@ -1,0 +1,15 @@
+
+erDiagram
+    EMPLOYEES ||--o{ LOGIN_SESSIONS : "signs in as"
+    AUTH_USERS ||--o{ LOGIN_SESSIONS : "authenticated identity"
+
+    LOGIN_SESSIONS {
+        uuid id PK
+        uuid employee_id FK
+        uuid auth_user_id FK
+        timestamptz started_at
+        timestamptz last_heartbeat_at
+        timestamptz ended_at
+        timestamptz created_at
+        timestamptz updated_at
+    }

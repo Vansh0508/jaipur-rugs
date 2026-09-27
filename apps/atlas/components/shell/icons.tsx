@@ -8,6 +8,7 @@ import {
   Person,
   ArrowRightFromSquare,
   ChevronLeft,
+  PersonGear,
 } from "@gravity-ui/icons";
 
 type IconProps = { className?: string };
@@ -36,6 +37,10 @@ export function RugLensIcon({ className }: IconProps) {
 
 export function AccessIcon({ className }: IconProps) {
   return <Key className={`${base} ${className ?? ""}`} width={20} height={20} />;
+}
+
+export function UserManagementIcon({ className }: IconProps) {
+  return <PersonGear className={`${base} ${className ?? ""}`} width={20} height={20} />;
 }
 
 export function UserIcon({ className }: IconProps) {

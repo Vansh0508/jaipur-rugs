@@ -1099,3 +1099,39 @@ and `ACTIVE`. Confirmed by re-fetching version 8's body first (still the old
 request — this is the exact error a real employee hit, which is what triggered the
 redeploy) before pushing the rewritten version. No schema/RLS touched, so no advisor
 re-run was needed.
+
+## User Activity module — APPLIED (2026-09-27)
+
+`db/user-activity/001_login_sessions.sql` (+ `002_advisor_fixes.sql`, folded into 001's
+`create index` for `auth_user_id` on a fresh apply — see that file's own header) backs
+`apps/atlas`'s new admin-only "User Management" screen (`/admin/users`, gated by the same
+`orders.read.all` isAdmin check every other admin surface in Atlas uses — no new
+permission key). Applied to `matnispbauvvlnbsuzxq` as `user_activity_login_sessions` then
+`user_activity_advisor_fixes`; advisor-clean afterward (only pre-existing, unrelated
+findings remained — `auth_rate_limits` RLS-no-policy and leaked-password-protection,
+neither introduced by this migration). `packages/supabase-client` types regenerated the
+same session.
+
+Adds one table, `login_sessions` (employee_id, auth_user_id, started_at,
+last_heartbeat_at, ended_at) and one view, `login_session_summary` (per-employee
+last-sign-in/last-active/is_online/total_sessions/total_seconds, `security_invoker`).
+Scope is implicit — the view only ever includes `employees` rows with `status = 'active'
+and auth_user_id is not null`, i.e. everyone who can actually sign in today (admins,
+management, production/shipping/sales, salesperson/customer-code grantees alike), not a
+separate allowlist. RLS grants SELECT only (self, or `orders.read.all`) — per AGENTS.md
+Section 9, there is no insert/update policy for anyone, including admins; every write
+goes through three new service-role Edge Functions instead: `login-sessions-start`
+(session-start-or-reuse-within-20-min, called once per browser tab on app load),
+`login-sessions-heartbeat` (bumps `last_heartbeat_at`, called every ~4 min while the tab
+is visible), and `login-sessions-end` (marks `ended_at`, called both on explicit sign-out
+and best-effort via `fetch(..., { keepalive: true })` on `pagehide`). Client-side wiring
+lives in `apps/atlas/components/shell/SessionTracker.tsx` (mounted once in
+`SidebarShell.tsx`) and `UserMenu.tsx`'s sign-out handler.
+
+All three `supabase/functions/login-sessions-*` Edge Functions are deployed and ACTIVE on
+`matnispbauvvlnbsuzxq` (`login-sessions-start`, `login-sessions-heartbeat`,
+`login-sessions-end`, all `verify_jwt: true`). **Still open**: nothing server-side — this
+only starts recording real sign-in data once `apps/atlas` itself is rebuilt/redeployed
+with this change (both the Hostinger VPS and the internal office server instance), since
+`SessionTracker.tsx`/`UserMenu.tsx` are what actually call these functions. Until that
+next deploy, `/admin/users` will just show zero sessions for everyone, not an error.

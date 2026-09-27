@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Popover, AlertDialog, Button } from "@jaipur-rugs/ui-kit";
 import { getBrowserSupabaseClient } from "@/lib/supabaseClient.browser";
+import { endLoginSession } from "@jaipur-rugs/db-management-client";
+import { LOGIN_SESSION_STORAGE_KEY } from "./SessionTracker";
 import { SignOutIcon, UserIcon } from "./icons";
 
 // Moved to the bottom of the sidebar column, 2026-09-10 (was pinned to the top) —
@@ -28,6 +30,13 @@ export function UserMenu({
 
   async function handleSignOut() {
     const supabase = getBrowserSupabaseClient();
+    const sessionId = sessionStorage.getItem(LOGIN_SESSION_STORAGE_KEY);
+    if (sessionId) {
+      await endLoginSession(supabase, sessionId).catch(() => {
+        // Best-effort — an explicit sign-out shouldn't be blocked by this failing.
+      });
+      sessionStorage.removeItem(LOGIN_SESSION_STORAGE_KEY);
+    }
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();
