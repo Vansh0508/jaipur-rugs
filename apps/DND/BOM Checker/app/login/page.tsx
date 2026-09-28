@@ -39,6 +39,13 @@ export default function LoginPage() {
       !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     setIsConfigured(hasUrl && hasKey);
 
+    if (new URLSearchParams(window.location.search).get("blocked") === "1") {
+      setErrorMessage(
+        "Your account isn't on the active employee directory for this portal. Contact your admin to get added."
+      );
+      return;
+    }
+
     // If already logged in, redirect to home
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {

@@ -2,20 +2,9 @@
 -- Jaipur Rugs D&D BOM Management - Supabase PostgreSQL Schema
 -- =================================================================
 
--- 1. Whitelisted Users Table (Outsiders restricted)
-CREATE TABLE IF NOT EXISTS public.whitelisted_users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email TEXT UNIQUE NOT NULL,
-    full_name TEXT,
-    department TEXT DEFAULT 'Design & Development',
-    role TEXT DEFAULT 'auditor' CHECK (role IN ('admin', 'auditor', 'viewer')),
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
-);
-
--- Index for fast whitelist verification on auth
-CREATE INDEX IF NOT EXISTS idx_whitelisted_users_email ON public.whitelisted_users (email);
+-- Access is gated by the org's shared `employees` table (matnispbauvvlnbsuzxq),
+-- checked in apps/DND/BOM Checker/lib/supabase/middleware.ts via RLS
+-- (auth_user_id = auth.uid(), status = 'active') — not a table owned by this app.
 
 -- 2. Design Code Benchmarks (Seeded from 'Final Sheet Data' where Remark = 'Done')
 CREATE TABLE IF NOT EXISTS public.design_code_benchmarks (
@@ -51,16 +40,10 @@ CREATE TABLE IF NOT EXISTS public.bom_audit_records (
 );
 
 -- Enable RLS
-ALTER TABLE public.whitelisted_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.design_code_benchmarks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bom_audit_records ENABLE ROW LEVEL SECURITY;
 
--- Allow authenticated users to read whitelist and benchmarks
-CREATE POLICY "Allow authenticated users to read whitelist"
-    ON public.whitelisted_users FOR SELECT
-    TO authenticated
-    USING (true);
-
+-- Allow authenticated users to read benchmarks
 CREATE POLICY "Allow authenticated users to read benchmarks"
     ON public.design_code_benchmarks FOR SELECT
     TO authenticated
@@ -72,11 +55,6 @@ CREATE POLICY "Allow authenticated users to insert/read audit logs"
     USING (true);
 
 -- Service role bypass for backend administration & migration
-CREATE POLICY "Service role full access on whitelisted_users"
-    ON public.whitelisted_users FOR ALL
-    TO service_role
-    USING (true);
-
 CREATE POLICY "Service role full access on design_code_benchmarks"
     ON public.design_code_benchmarks FOR ALL
     TO service_role

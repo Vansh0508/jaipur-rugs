@@ -105,22 +105,4 @@ export async function loadBenchmarks(): Promise<Map<string, DesignBenchmark>> {
   return map;
 }
 
-/**
- * Email whitelist verification (bypassed - all authenticated users permitted)
- */
-export async function checkEmailWhitelist(email: string): Promise<{
-  whitelisted: boolean;
-  user?: { email: string; full_name?: string; role: string; department?: string };
-}> {
-  const normalized = email.trim().toLowerCase();
-  return {
-    whitelisted: true,
-    user: {
-      email: normalized,
-      full_name: normalized.split("@")[0],
-      role: "auditor",
-      department: "Design and Development",
-    },
-  };
-}
 
