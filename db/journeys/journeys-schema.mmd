@@ -51,6 +51,7 @@ erDiagram
     JOURNEY_GUESTS ||--o{ JOURNEY_STOP_GUESTS : "picked up/dropped as"
     JOURNEYS ||--o{ FEEDBACK : "reviewed via (planned only)"
     EMPLOYEES ||--o{ FEEDBACK : "reviewed by (moderation)"
+    EMPLOYEES ||--o{ JOURNEY_GUESTS : "rides on (employee passenger, 011)"
 
     VEHICLES {
         uuid id PK
@@ -104,7 +105,8 @@ erDiagram
     JOURNEY_GUESTS {
         uuid id PK
         uuid journey_id FK
-        uuid guest_id FK "references existing feedback-module GUESTS"
+        uuid guest_id FK "nullable (011) — a guest passenger"
+        uuid employee_id FK "nullable, added 011 — an employee passenger; CHECK exactly one of guest_id/employee_id"
         timestamptz created_at
     }
 

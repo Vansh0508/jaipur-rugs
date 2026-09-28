@@ -10,7 +10,7 @@ import { getAvailableCarsForWindow, type CarAvailability } from "@/lib/queries/c
 import { getAvailableDriversForWindow, type DriverAvailability } from "@/lib/queries/drivers";
 import { formatDate, formatTime } from "@/lib/format";
 import { ActionDialog } from "@/components/shared/ActionDialog";
-import { DateTimeField, FieldError, LABEL_CLS, MultiGuestSelect, SectionHeading, TimeInput } from "./fields";
+import { DateTimeField, FieldError, LABEL_CLS, MultiGuestSelect, PassengerKindTag, SectionHeading, TimeInput } from "./fields";
 import { GuestPoolEditor } from "./GuestPool";
 import { CarPicker, DriverPicker } from "./pickers";
 import {
@@ -28,6 +28,14 @@ import {
   type BuilderStop,
   type PoolGuest,
 } from "./model";
+
+/** "Guests (3 configured)" / "Guests (2 guests, 1 employee)" for the pool button. */
+function poolSummary(pool: PoolGuest[]) {
+  const employees = pool.filter((g) => g.kind === "employee").length;
+  if (employees === 0) return `Guests (${pool.length} configured)`;
+  const guests = pool.length - employees;
+  return `Guests (${guests} guest${guests === 1 ? "" : "s"}, ${employees} employee${employees === 1 ? "" : "s"})`;
+}
 
 function nowLocal() {
   const d = new Date();
@@ -216,7 +224,7 @@ export function JourneyBuilder() {
           <div>
             <span className={LABEL_CLS}>Guests</span>
             <Button variant="outline" fullWidth className="h-10 justify-between rounded-xl" onPress={openPool}>
-              <span>{pool.length > 0 ? `Guests (${pool.length} configured)` : "Add guests"}</span>
+              <span>{pool.length > 0 ? poolSummary(pool) : "Add guests"}</span>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted">
                 <path d="m6 9 6 6 6-6" />
               </svg>
@@ -372,8 +380,11 @@ export function JourneyBuilder() {
                         .filter((g) => destinationIds.includes(g.clientId))
                         .map((g) => (
                           <div key={g.clientId} className="flex flex-col rounded-lg border border-border bg-surface-secondary/60 px-3 py-1.5">
-                            <span className="text-xs font-semibold text-foreground">{g.name}</span>
-                            <span className="text-[10px] text-muted tabular-nums">{g.phone}</span>
+                            <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                              {g.name}
+                              {g.kind === "employee" ? <PassengerKindTag /> : null}
+                            </span>
+                            <span className="text-[10px] text-muted tabular-nums">{g.kind === "employee" ? g.employeeCode : g.phone}</span>
                           </div>
                         ))}
                     </div>

@@ -74,6 +74,13 @@ export function DateTimeField({ label, value, onChange }: { label: string; value
   );
 }
 
+/** Small "Employee" marker next to a passenger name (guests are the default, unmarked). */
+export function PassengerKindTag() {
+  return (
+    <span className="shrink-0 rounded bg-accent/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-accent">Employee</span>
+  );
+}
+
 /** Time of day (12h), value as "HH:mm" (24h) or "". */
 export function TimeInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   const [h, m] = value ? value.split(":").map(Number) : [];
@@ -150,8 +157,11 @@ export function MultiGuestSelect({
               {guests.map((g) => (
                 <ListBox.Item key={g.clientId} id={g.clientId} textValue={g.name || g.phone}>
                   <div className="flex w-full min-w-0 items-center justify-between gap-4">
-                    <span className="truncate text-sm">{g.name || "Unnamed guest"}</span>
-                    <span className="shrink-0 text-xs text-muted tabular-nums">{g.phone}</span>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate text-sm">{g.name || "Unnamed guest"}</span>
+                      {g.kind === "employee" ? <PassengerKindTag /> : null}
+                    </span>
+                    <span className="shrink-0 text-xs text-muted tabular-nums">{g.kind === "employee" ? g.employeeCode : g.phone}</span>
                   </div>
                   <ListBox.ItemIndicator />
                 </ListBox.Item>

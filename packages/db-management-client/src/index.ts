@@ -305,13 +305,29 @@ export async function uploadDriverPhoto(supabase: SupabaseClient, file: File) {
   return data;
 }
 
-export interface JourneyGuestInput {
-  /** Set when picked from an existing-guest match; omitted for a brand-new inline guest. */
-  guestId?: string;
-  fullName?: string;
-  /** Full E.164 phone number — the correlation key stops' pickups/drops reference. */
-  phone: string;
-}
+/**
+ * One journey passenger — a guest, or (db/journeys/011) an employee. Stops' `pickups` /
+ * `drops` reference passengers by `key`, which defaults to the guest's `phone`.
+ */
+export type JourneyGuestInput =
+  | {
+      /** Set when picked from an existing-guest match; omitted for a brand-new inline guest. */
+      guestId?: string;
+      fullName?: string;
+      /** Full E.164 phone number — also the default correlation key. */
+      phone: string;
+      key?: string;
+      employeeId?: never;
+    }
+  | {
+      /** An existing, active `employees.id`. */
+      employeeId: string;
+      /** Required: most employees have no phone on file to key by. */
+      key: string;
+      guestId?: never;
+      fullName?: never;
+      phone?: never;
+    };
 
 export interface JourneyStopInput {
   /** 0-based, contiguous: 0 is the origin, the highest value is the destination. */
@@ -320,9 +336,9 @@ export interface JourneyStopInput {
   locationName: string;
   /** ISO timestamp — a full date+time, not just a time-of-day (see the New Journey form's date design). */
   arrivalAt: string;
-  /** Guest phones picked up here — must be empty for the destination stop. */
+  /** Passenger keys picked up here (see JourneyGuestInput) — empty for the destination stop. */
   pickups: string[];
-  /** Guest phones dropped here — must be empty for the origin stop. */
+  /** Passenger keys dropped here — empty for the origin stop. */
   drops: string[];
 }
 

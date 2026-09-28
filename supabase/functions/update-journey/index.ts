@@ -12,10 +12,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// A passenger is EITHER an employee ({ employeeId, key }) or a guest ({ guestId?, fullName?,
+// phone, key? }) — see db/journeys/011. Stops' pickups/drops reference passengers by
+// `key`, which defaults to the guest's phone (so phone-keyed callers keep working).
 interface JourneyGuestInput {
+  employeeId?: string;
   guestId?: string;
   fullName?: string;
-  phone: string;
+  phone?: string;
+  key?: string;
 }
 
 interface JourneyStopInput {
@@ -81,6 +86,8 @@ Deno.serve(async (req) => {
   }
 });
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function validateJourneyBody(body: Partial<UpdateJourneyBody>): string | null {
   if (!body.vehicleId || !body.driverId) {
     return "vehicleId and driverId are required";
@@ -91,10 +98,23 @@ function validateJourneyBody(body: Partial<UpdateJourneyBody>): string | null {
   if (!Array.isArray(body.stops) || body.stops.length < 2) {
     return "stops must include at least an origin and a destination";
   }
+  const passengerKeys = new Set<string>();
   for (const guest of body.guests) {
-    if (!guest.phone) {
+    if (guest.employeeId) {
+      if (!UUID_PATTERN.test(guest.employeeId)) {
+        return "employeeId must be a uuid";
+      }
+      if (!guest.key) {
+        return "employee passengers require a key";
+      }
+    } else if (!guest.phone) {
       return "every guest requires a phone";
     }
+    const key = guest.key ?? guest.phone!;
+    if (passengerKeys.has(key)) {
+      return `the same passenger appears twice: ${key}`;
+    }
+    passengerKeys.add(key);
   }
 
   const sorted = [...body.stops].sort((a, b) => a.sequenceNo - b.sequenceNo);
@@ -118,11 +138,10 @@ function validateJourneyBody(body: Partial<UpdateJourneyBody>): string | null {
     return "the destination stop cannot have pickups";
   }
 
-  const guestPhones = new Set(body.guests.map((g) => g.phone));
   for (const stop of sorted) {
-    for (const phone of [...(stop.pickups ?? []), ...(stop.drops ?? [])]) {
-      if (!guestPhones.has(phone)) {
-        return `stop "${stop.locationName}" references a phone not present in guests: ${phone}`;
+    for (const key of [...(stop.pickups ?? []), ...(stop.drops ?? [])]) {
+      if (!passengerKeys.has(key)) {
+        return `stop "${stop.locationName}" references a passenger not present in guests: ${key}`;
       }
     }
   }

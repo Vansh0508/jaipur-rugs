@@ -3,12 +3,20 @@ import type { CreateJourneyInput } from "@jaipur-rugs/db-management-client";
 // Pure state logic for JourneyBuilder — driver-app-new's JourneyBuilder rules, kept out of
 // the component so the (fiddly) pickup/drop eligibility and schedule math live in one place.
 
-/** One entry in the guest pool. `guestId` is set when matched to an existing guest. */
+/**
+ * One entry in the guest pool — a guest or an employee (the pool row's Guest/Employee
+ * switch). Guests: `guestId` is set when matched to an existing guest, else created by
+ * phone on save. Employees: `employeeId` links the existing employees row (no copy made).
+ */
 export interface PoolGuest {
   clientId: string;
+  kind: "guest" | "employee";
   guestId: string | null;
+  employeeId: string | null;
+  employeeCode: string | null;
+  departmentName: string | null;
   name: string;
-  /** Full E.164, e.g. "+919812345678" (ui-kit PhoneInput's output). */
+  /** Guests: full E.164, e.g. "+919812345678" (ui-kit PhoneInput's output). Employees: whatever is on file, often "". */
   phone: string;
 }
 
@@ -27,8 +35,13 @@ export function newClientId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${counter}`;
 }
 
-export function emptyGuest(): PoolGuest {
-  return { clientId: newClientId("guest"), guestId: null, name: "", phone: "" };
+export function emptyGuest(kind: PoolGuest["kind"] = "guest"): PoolGuest {
+  return { clientId: newClientId("guest"), kind, guestId: null, employeeId: null, employeeCode: null, departmentName: null, name: "", phone: "" };
+}
+
+/** The key stops reference a passenger by (create-journey contract): phone for guests, "employee:<id>" for employees. */
+export function passengerKey(g: PoolGuest) {
+  return g.kind === "employee" ? `employee:${g.employeeId}` : g.phone;
 }
 
 export function emptyStop(): BuilderStop {
@@ -131,12 +144,20 @@ export interface BuilderValues {
 
 export function validatePool(pool: PoolGuest[]) {
   const errors: Record<string, string> = {};
-  const seen = new Map<string, string>();
+  const seenPhones = new Set<string>();
+  const seenEmployees = new Set<string>();
   for (const g of pool) {
-    if (!g.name.trim() || !g.phone) errors[`guest_${g.clientId}`] = "Enter guest name and phone number";
-    else if (!E164.test(g.phone)) errors[`guest_${g.clientId}`] = "Enter a valid phone number";
-    else if (seen.has(g.phone)) errors[`guest_${g.clientId}`] = "This phone number is already in the pool";
-    if (g.phone) seen.set(g.phone, g.clientId);
+    const key = `guest_${g.clientId}`;
+    if (g.kind === "employee") {
+      if (!g.employeeId) errors[key] = "Search and select an employee";
+      else if (seenEmployees.has(g.employeeId)) errors[key] = "This employee is already in the pool";
+      if (g.employeeId) seenEmployees.add(g.employeeId);
+      continue;
+    }
+    if (!g.name.trim() || !g.phone) errors[key] = "Enter guest name and phone number";
+    else if (!E164.test(g.phone)) errors[key] = "Enter a valid phone number";
+    else if (seenPhones.has(g.phone)) errors[key] = "This phone number is already in the pool";
+    if (g.phone) seenPhones.add(g.phone);
   }
   return errors;
 }
@@ -162,11 +183,15 @@ export function validate(values: BuilderValues) {
 
 /** The create-journey payload (see supabase/functions/create-journey for the contract). */
 export function buildPayload(values: BuilderValues, schedule: Date[]): Omit<CreateJourneyInput, "vehicleId" | "driverId"> {
-  const phoneOf = new Map(values.pool.map((g) => [g.clientId, g.phone]));
-  const phones = (ids: string[]) => ids.map((id) => phoneOf.get(id)!).filter(Boolean);
+  const keyOf = new Map(values.pool.map((g) => [g.clientId, passengerKey(g)]));
+  const phones = (ids: string[]) => ids.map((id) => keyOf.get(id)!).filter(Boolean);
   const last = values.stops.length + 1;
   return {
-    guests: values.pool.map((g) => ({ guestId: g.guestId ?? undefined, fullName: g.name.trim(), phone: g.phone })),
+    guests: values.pool.map((g) =>
+      g.kind === "employee"
+        ? { employeeId: g.employeeId!, key: passengerKey(g) }
+        : { guestId: g.guestId ?? undefined, fullName: g.name.trim(), phone: g.phone },
+    ),
     stops: [
       { sequenceNo: 0, role: "origin", locationName: values.startPoint.trim(), arrivalAt: schedule[0]!.toISOString(), pickups: phones(values.startIds), drops: [] },
       ...values.stops.map((s, i) => ({

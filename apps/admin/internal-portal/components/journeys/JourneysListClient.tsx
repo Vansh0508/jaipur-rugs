@@ -104,7 +104,7 @@ export function JourneysListClient({
           (j.driverName ?? "").toLowerCase().includes(q) ||
           (j.plate ?? "").toLowerCase().includes(q) ||
           (j.carName ?? "").toLowerCase().includes(q) ||
-          j.guests.some((g) => g.name.toLowerCase().includes(q) || g.phone.includes(q)),
+          j.guests.some((g) => g.name.toLowerCase().includes(q) || (g.phone && g.phone.includes(q)) || g.employeeCode?.toLowerCase().includes(q)),
       )
       .sort((a, b) => STATUS_RANK[a.displayStatus] - STATUS_RANK[b.displayStatus] || b.firstPickupAt.localeCompare(a.firstPickupAt));
   }, [journeys, search, status, carId, driverId]);

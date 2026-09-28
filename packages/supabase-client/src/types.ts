@@ -1,7 +1,7 @@
 // Generated from project matnispbauvvlnbsuzxq via mcp Supabase generate_typescript_types,
 // regenerated 2026-09-28 (see db/MIGRATIONS.md for every migration this reflects) — this
-// refresh folds in db/journeys/009-010 (cars/drivers parity: new vehicle_status,
-// fuel_type and driver_status enum values).
+// refresh folds in db/journeys/009-011 (cars/drivers parity enum values; journey_guests
+// employee passengers).
 
 export type Json =
   | string
@@ -1101,23 +1101,40 @@ export type Database = {
       journey_guests: {
         Row: {
           created_at: string
-          guest_id: string
+          employee_id: string | null
+          guest_id: string | null
           id: string
           journey_id: string
         }
         Insert: {
           created_at?: string
-          guest_id: string
+          employee_id?: string | null
+          guest_id?: string | null
           id?: string
           journey_id: string
         }
         Update: {
           created_at?: string
-          guest_id?: string
+          employee_id?: string | null
+          guest_id?: string | null
           id?: string
           journey_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "journey_guests_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journey_guests_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
           {
             foreignKeyName: "journey_guests_guest_id_fkey"
             columns: ["guest_id"]

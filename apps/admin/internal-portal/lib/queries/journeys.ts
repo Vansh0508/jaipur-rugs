@@ -2,9 +2,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { effectiveJourneyStatus, type JourneyStatus } from "@/lib/journeyStatus";
 import { todayInAppZone } from "@/lib/format";
 
+/** A journey passenger — a guest, or an employee (db/journeys/011). */
 export interface GuestRef {
+  kind: "guest" | "employee";
   name: string;
+  /** "" when an employee has no phone on file (most don't). */
   phone: string;
+  /** Employees only. */
+  employeeCode?: string;
 }
 
 export interface JourneyStopSummary {
@@ -44,7 +49,7 @@ const JOURNEY_SELECT = `
   id, status, first_pickup_at, last_drop_at, date_from, date_to, notes, vehicle_id, driver_id,
   vehicle:vehicles(id, name, registration_number),
   driver:drivers(id, full_name),
-  journey_guests(id, guest:guests(full_name, phone)),
+  journey_guests(id, guest:guests(full_name, phone), employee:employees(full_name, phone, employee_code)),
   journey_stops(id, location_name, role, sequence_no, arrival_at, journey_stop_guests(action, journey_guest_id))
 `;
 
@@ -62,7 +67,11 @@ interface RawJourneyRow {
   driver_id: string;
   vehicle: { id: string; name: string; registration_number: string } | null;
   driver: { id: string; full_name: string } | null;
-  journey_guests: { id: string; guest: { full_name: string; phone: string } | null }[];
+  journey_guests: {
+    id: string;
+    guest: { full_name: string; phone: string } | null;
+    employee: { full_name: string; phone: string | null; employee_code: string } | null;
+  }[];
   journey_stops: {
     id: string;
     location_name: string;
@@ -74,8 +83,13 @@ interface RawJourneyRow {
 }
 
 function toSummary(row: RawJourneyRow, now: number): JourneySummary {
-  const guestByJourneyGuestId = new Map(
-    row.journey_guests.map((jg) => [jg.id, { name: jg.guest?.full_name ?? "Unknown guest", phone: jg.guest?.phone ?? "" }]),
+  const guestByJourneyGuestId = new Map<string, GuestRef>(
+    row.journey_guests.map((jg) => [
+      jg.id,
+      jg.employee
+        ? { kind: "employee", name: jg.employee.full_name, phone: jg.employee.phone ?? "", employeeCode: jg.employee.employee_code }
+        : { kind: "guest", name: jg.guest?.full_name ?? "Unknown guest", phone: jg.guest?.phone ?? "" },
+    ]),
   );
   const stops = [...row.journey_stops]
     .sort((a, b) => a.sequence_no - b.sequence_no)

@@ -1,16 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Tooltip } from "@heroui/react";
+import { Tabs, Tooltip } from "@heroui/react";
 import { Button, PhoneInput, TextField } from "@jaipur-rugs/ui-kit";
 import { getBrowserSupabaseClient } from "@/lib/supabaseClient.browser";
 import { searchGuestCandidates, type GuestCandidate } from "@/lib/queries/guests";
-import type { PoolGuest } from "./model";
+import { searchEmployeeCandidates, type EmployeeCandidate } from "@/lib/queries/employees";
+import { emptyGuest, type PoolGuest } from "./model";
 
 // driver-app-new's "Guests Pool" overlay + GuestAutocomplete: every guest on the journey
 // is entered once here (phone + name, both searching existing guests), then picked per
 // stop below. Choosing a suggestion links the existing `guests` row (create_journey
-// matches on it); a new phone creates a guest when the journey is saved.
+// matches on it); a new phone creates a guest when the journey is saved. Each row has a
+// Guest / Employee switch: an employee is picked from the employees directory (by name or
+// employee code) and linked as-is — no guest copy, and no phone needed (most have none).
 
 function useGuestSuggestions(term: string, enabled: boolean) {
   const [results, setResults] = useState<GuestCandidate[]>([]);
@@ -109,6 +112,129 @@ function GuestRow({ guest, onChange }: { guest: PoolGuest; onChange: (g: PoolGue
   );
 }
 
+function useEmployeeSuggestions(term: string, enabled: boolean) {
+  const [results, setResults] = useState<EmployeeCandidate[]>([]);
+  useEffect(() => {
+    const q = term.trim();
+    if (!enabled || q.length < 2) {
+      setResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        setResults(await searchEmployeeCandidates(getBrowserSupabaseClient(), q));
+      } catch {
+        setResults([]);
+      }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [term, enabled]);
+  return results;
+}
+
+function EmployeeRow({ guest, onChange }: { guest: PoolGuest; onChange: (g: PoolGuest) => void }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const matches = useEmployeeSuggestions(query, open && !guest.employeeId);
+
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
+  if (guest.employeeId) {
+    const initials = guest.name.split(" ").filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-secondary/40 p-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-xs font-semibold">
+          {initials}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">{guest.name}</p>
+          <p className="truncate text-xs text-muted">
+            <span className="tracking-wide tabular-nums">{guest.employeeCode}</span>
+            {guest.departmentName ? ` · ${guest.departmentName}` : ""}
+            {" · "}
+            <span className="tabular-nums">{guest.phone || "No phone on file"}</span>
+          </p>
+        </div>
+        <Button size="sm" variant="ghost" onPress={() => onChange({ ...emptyGuest("employee"), clientId: guest.clientId })}>
+          Change
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={containerRef} className="relative" onFocus={() => setOpen(true)}>
+      <TextField label="Employee" value={query} onChange={setQuery} placeholder="Search by name or employee code" isRequired fullWidth />
+      {open && matches.length > 0 ? (
+        <ul className="absolute left-0 right-0 z-[100] mt-1 max-h-60 overflow-y-auto rounded-xl border border-border bg-surface p-1 shadow-lg">
+          {matches.map((e) => (
+            <li key={e.id}>
+              <button
+                type="button"
+                onMouseDown={(ev) => {
+                  ev.preventDefault();
+                  onChange({
+                    ...guest,
+                    employeeId: e.id,
+                    employeeCode: e.employeeCode,
+                    departmentName: e.departmentName,
+                    name: e.fullName,
+                    phone: e.phone ?? "",
+                  });
+                  setQuery("");
+                  setOpen(false);
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-surface-secondary"
+              >
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-secondary text-[10px] font-semibold">
+                  {e.fullName[0]?.toUpperCase()}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[11px] font-semibold text-foreground">{e.fullName}</span>
+                  <span className="block truncate text-[10px] text-muted">
+                    <span className="tabular-nums">{e.employeeCode}</span>
+                    {e.departmentName ? ` · ${e.departmentName}` : ""}
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {open && query.trim().length >= 2 && matches.length === 0 ? (
+        <p className="mt-1 text-[11px] text-muted">No active employee matches “{query.trim()}”.</p>
+      ) : null}
+    </div>
+  );
+}
+
+/** Guest / Employee switch for one pool row. Locked while the passenger is on the route. */
+function KindSwitch({ kind, isDisabled, onChange }: { kind: PoolGuest["kind"]; isDisabled: boolean; onChange: (kind: PoolGuest["kind"]) => void }) {
+  return (
+    <Tabs selectedKey={kind} onSelectionChange={(key) => onChange(String(key) as PoolGuest["kind"])} isDisabled={isDisabled}>
+      <Tabs.ListContainer>
+        <Tabs.List aria-label="Passenger type">
+          <Tabs.Tab id="guest" className="px-3 text-xs">
+            Guest
+            <Tabs.Indicator />
+          </Tabs.Tab>
+          <Tabs.Tab id="employee" className="px-3 text-xs">
+            Employee
+            <Tabs.Indicator />
+          </Tabs.Tab>
+        </Tabs.List>
+      </Tabs.ListContainer>
+    </Tabs>
+  );
+}
+
 export function GuestPoolEditor({
   pool,
   errors,
@@ -164,13 +290,18 @@ export function GuestPoolEditor({
             );
             return (
               <div key={guest.clientId} className="flex items-start gap-3 p-3">
-                <div className="min-w-0 flex-1">
-                  <GuestRow guest={guest} onChange={onChange} />
+                <div className="flex min-w-0 flex-1 flex-col gap-2">
+                  <KindSwitch
+                    kind={guest.kind}
+                    isDisabled={inRoute}
+                    onChange={(kind) => kind !== guest.kind && onChange({ ...emptyGuest(kind), clientId: guest.clientId })}
+                  />
+                  {guest.kind === "employee" ? <EmployeeRow guest={guest} onChange={onChange} /> : <GuestRow guest={guest} onChange={onChange} />}
                   {errors[`guest_${guest.clientId}`] ? (
                     <p className="mt-1 pl-1 text-[11px] text-danger">{errors[`guest_${guest.clientId}`]}</p>
                   ) : null}
                 </div>
-                <div className="shrink-0 pt-7">
+                <div className="shrink-0 pt-1">
                   {inRoute ? (
                     <Tooltip delay={0} closeDelay={0}>
                       <Tooltip.Trigger>

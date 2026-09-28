@@ -64,6 +64,7 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | (2026-09-12) | `column_requests` + `column_requests_resolved_by_index` | orders | `db/orders/022_column_requests.sql` |
 | `20260928043603` | `cars_drivers_parity_enums` | journeys | `db/journeys/009_cars_drivers_parity_enums.sql` |
 | `20260928043624` | `cars_drivers_parity_rules` | journeys | `db/journeys/010_cars_drivers_parity_rules.sql` |
+| `20260928073957` | `journey_employee_passengers` | journeys | `db/journeys/011_journey_employee_passengers.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
@@ -1211,3 +1212,39 @@ restored afterwards (checked via SQL: 14 vacant cars, 13 active drivers).
 **Still open:** nothing sets `vehicles.status = 'on_trip'` — Internal Portal derives "On trip" at
 read time instead (`listCarsWithActivity`/`listDriversWithStats`), so any other consumer
 reading the stored column directly still sees "vacant" for a car mid-journey.
+
+## Journeys page parity + employee passengers — APPLIED (2026-09-28)
+
+Internal Portal's Journeys list and New Journey pages were rebuilt to match
+`Admin-Driver-App/driver-app-new` (filter bar, card/table views, route builder with guest
+pool, drag-to-reorder stops, Mark ended), on this schema.
+
+**`complete-journey` v1 (new Edge Function, `verify_jwt: true`, Internal Portal admin):**
+"Mark ended". Sets `status = 'completed'`; when ending before the planned last drop it also
+pulls `last_drop_at` back to now(), so the car/driver `EXCLUDE` constraints actually free
+them (planned stop `arrival_at`s are left as the record of the plan). 409 for a journey that
+hasn't started (cancel it instead) or is already cancelled/completed. Verified live through
+the UI: a journey marked ended mid-trip came back `completed` with `busy_window` ending at the
+moment of the click. Nothing else ever advances `journeys.status` — Internal Portal derives
+"Ongoing"/"Completed" from the busy window at read time (`apps/admin/internal-portal/lib/journeyStatus.ts`).
+
+**`db/journeys/011_journey_employee_passengers.sql` (`20260928073957`):** employees can ride
+on a journey alongside guests. `journey_guests.guest_id` is now nullable, plus a new nullable
+`employee_id` → `employees`, with `journey_guests_passenger_exactly_one` (exactly one of the
+two) and `unique (journey_id, employee_id)`. Employees are linked, never copied into `guests`
+(330 of 335 active employees have no phone to match on). `create_journey`/`update_journey`
+accept a passenger entry of `{ employeeId, key }` besides the existing guest shape; stops'
+pickups/drops now reference passengers by `key`, which defaults to the guest phone — the
+old phone-keyed payload is unchanged and still works. `employees_select` gained
+`or private.is_internal_portal_admin(...)` so Internal Portal admins can pick employee
+passengers and see their names on journeys (the one admin today already has
+`employees.read.all`, so no practical change yet). Verified live (rolled back): a mixed
+employee+guest journey, the legacy phone-keyed payload, an inactive employee being refused,
+and the exactly-one check. Advisors: no new findings beyond the expected `unused_index`
+INFO on the new `journey_guests_employee_id_idx`. Types regenerated.
+`create-journey` / `update-journey` redeployed as **v6** with matching validation (a
+passenger needs a phone or an employeeId+key; keys unique; stop references checked against
+keys). End-to-end UI run (guest + employee on one journey, saved, shown on detail with the
+employee tagged, found by employee code in list search) — test journey and guest deleted
+afterwards.
+

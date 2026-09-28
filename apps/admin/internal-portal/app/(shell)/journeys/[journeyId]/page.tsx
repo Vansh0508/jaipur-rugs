@@ -1,11 +1,15 @@
 import { notFound } from "next/navigation";
 import { getServerSupabaseClient } from "@/lib/supabaseClient.server";
-import { getJourneyById } from "@/lib/queries/journeys";
+import { getJourneyById, type GuestRef } from "@/lib/queries/journeys";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { JourneyStatusChip } from "@/components/journeys/JourneyStatusChip";
 import { CancelJourneyButton } from "@/components/journeys/CancelJourneyButton";
 import { MarkEndedButton } from "@/components/journeys/MarkEndedButton";
 import { formatDate, formatTime } from "@/lib/format";
+
+function passengerLabel(g: GuestRef) {
+  return g.kind === "employee" ? `${g.name} (employee ${g.employeeCode})` : g.name;
+}
 
 export default async function JourneyDetailPage({ params }: { params: Promise<{ journeyId: string }> }) {
   const { journeyId } = await params;
@@ -48,8 +52,8 @@ export default async function JourneyDetailPage({ params }: { params: Promise<{ 
             <p className="text-sm text-muted">
               {formatDate(stop.arrivalAt)} · {formatTime(stop.arrivalAt)}
             </p>
-            {stop.pickups.length > 0 ? <p className="mt-1 text-sm text-success">Picks up: {stop.pickups.map((g) => g.name).join(", ")}</p> : null}
-            {stop.drops.length > 0 ? <p className="mt-1 text-sm text-warning">Drops off: {stop.drops.map((g) => g.name).join(", ")}</p> : null}
+            {stop.pickups.length > 0 ? <p className="mt-1 text-sm text-success">Picks up: {stop.pickups.map(passengerLabel).join(", ")}</p> : null}
+            {stop.drops.length > 0 ? <p className="mt-1 text-sm text-warning">Drops off: {stop.drops.map(passengerLabel).join(", ")}</p> : null}
           </li>
         ))}
       </ol>
