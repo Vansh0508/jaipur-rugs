@@ -1,32 +1,37 @@
 import Link from "next/link";
 import { buttonVariants } from "@heroui/react";
 import { getServerSupabaseClient } from "@/lib/supabaseClient.server";
-import { listJourneys } from "@/lib/queries/journeys";
-import { JourneyCard } from "@/components/journeys/JourneyCard";
-import { JourneyFilters } from "@/components/journeys/JourneyFilters";
+import { getDefaultJourneyRange, listJourneys } from "@/lib/queries/journeys";
+import { listCars } from "@/lib/queries/cars";
+import { listDrivers } from "@/lib/queries/drivers";
+import { parseListView } from "@/lib/listView";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { EmptyState } from "@/components/shared/EmptyState";
-import type { Enums } from "@jaipur-rugs/supabase-client";
+import { JourneysListClient } from "@/components/journeys/JourneysListClient";
 
-const TAB_TO_STATUS: Record<string, Enums<"journey_status"> | undefined> = {
-  active: "ongoing",
-  upcoming: "planned",
-  completed: "completed",
-};
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function JourneysPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; range?: string; view?: string }>;
 }) {
   const params = await searchParams;
   const supabase = await getServerSupabaseClient();
 
-  const journeys = await listJourneys(supabase, {
-    status: params.tab ? TAB_TO_STATUS[params.tab] : undefined,
-    from: params.from,
-    to: params.to,
-  });
+  // ?range=all → every journey; explicit ?from=&to= → that window; neither → the default
+  // (today, widened to cover all upcoming/in-progress journeys — see getDefaultJourneyRange).
+  const range =
+    params.range === "all"
+      ? null
+      : params.from && params.to && DATE_PATTERN.test(params.from) && DATE_PATTERN.test(params.to)
+        ? { from: params.from, to: params.to }
+        : await getDefaultJourneyRange(supabase);
+
+  const [journeys, cars, drivers] = await Promise.all([
+    listJourneys(supabase, range ?? {}),
+    listCars(supabase),
+    listDrivers(supabase),
+  ]);
 
   return (
     <div>
@@ -34,18 +39,17 @@ export default async function JourneysPage({
         title="Journeys"
         action={
           <Link href="/journeys/new" className={buttonVariants()}>
-            Plan new journey
+            New journey
           </Link>
         }
       />
-      <JourneyFilters />
-      <div className="flex flex-col gap-3">
-        {journeys.length === 0 ? (
-          <EmptyState message="No journeys match this filter." />
-        ) : (
-          journeys.map((j) => <JourneyCard key={j.id} journey={j} variant="detailed" />)
-        )}
-      </div>
+      <JourneysListClient
+        journeys={journeys}
+        cars={cars.map((c) => ({ id: c.id, label: `${c.registration_number} — ${c.name}` }))}
+        drivers={drivers.map((d) => ({ id: d.id, label: d.full_name }))}
+        range={range}
+        view={parseListView(params.view)}
+      />
     </div>
   );
 }

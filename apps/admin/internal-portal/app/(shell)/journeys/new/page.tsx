@@ -1,11 +1,11 @@
 import { PageHeader } from "@/components/shared/PageHeader";
-import { NewJourneyForm } from "@/components/journeys/new/NewJourneyForm";
+import { JourneyBuilder } from "@/components/journeys/builder/JourneyBuilder";
 
 export default function NewJourneyPage() {
   return (
-    <div className="mx-auto max-w-2xl">
-      <PageHeader title="Plan a new journey" />
-      <NewJourneyForm />
+    <div>
+      <PageHeader title="New journey" />
+      <JourneyBuilder />
     </div>
   );
 }

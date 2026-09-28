@@ -9,11 +9,10 @@ import { EmptyState } from "@/components/shared/EmptyState";
 
 export default async function DashboardPage() {
   const supabase = await getServerSupabaseClient();
-  const today = new Date().toISOString().slice(0, 10);
 
   const [active, upcoming, recentFeedback] = await Promise.all([
     listJourneys(supabase, { status: "ongoing" }),
-    listJourneys(supabase, { status: "planned", from: today }),
+    listJourneys(supabase, { status: "planned" }),
     listRecentFeedback(supabase, 5),
   ]);
 
@@ -33,7 +32,7 @@ export default async function DashboardPage() {
             )}
           </Card.Content>
           <Card.Footer>
-            <Link href="/journeys?tab=active" className="text-sm font-medium text-accent hover:underline">
+            <Link href="/journeys" className="text-sm font-medium text-accent hover:underline">
               View all
             </Link>
           </Card.Footer>
@@ -51,7 +50,7 @@ export default async function DashboardPage() {
             )}
           </Card.Content>
           <Card.Footer>
-            <Link href="/journeys?tab=upcoming" className="text-sm font-medium text-accent hover:underline">
+            <Link href="/journeys" className="text-sm font-medium text-accent hover:underline">
               View all
             </Link>
           </Card.Footer>

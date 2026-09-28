@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Card } from "@heroui/react";
 import type { JourneySummary } from "@/lib/queries/journeys";
+import { formatDate } from "@/lib/format";
 import { JourneyStatusChip } from "./JourneyStatusChip";
 
 // Reused across Dashboard, Journeys list, Car detail, and Driver detail — one prop shape
@@ -10,7 +11,9 @@ export function JourneyCard({ journey, variant = "detailed" }: { journey: Journe
     <Card variant="transparent" className="w-full">
       <Card.Header>
         <Card.Title className="text-base">
-          {journey.dateFrom === journey.dateTo ? journey.dateFrom : `${journey.dateFrom} – ${journey.dateTo}`}
+          {formatDate(journey.firstPickupAt) === formatDate(journey.lastDropAt)
+            ? formatDate(journey.firstPickupAt)
+            : `${formatDate(journey.firstPickupAt)} – ${formatDate(journey.lastDropAt)}`}
         </Card.Title>
         <Card.Description>{journey.routeSummary || "Route not set"}</Card.Description>
       </Card.Header>
@@ -22,7 +25,7 @@ export function JourneyCard({ journey, variant = "detailed" }: { journey: Journe
         </Card.Content>
       ) : null}
       <Card.Footer className="flex items-center justify-between">
-        <JourneyStatusChip status={journey.status} />
+        <JourneyStatusChip status={journey.displayStatus} />
         <Link href={`/journeys/${journey.id}`} className="text-sm font-medium text-accent hover:underline">
           View
         </Link>

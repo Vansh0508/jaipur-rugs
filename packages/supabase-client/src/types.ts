@@ -1,7 +1,7 @@
 // Generated from project matnispbauvvlnbsuzxq via mcp Supabase generate_typescript_types,
-// regenerated 2026-09-27 (see db/MIGRATIONS.md for every migration this reflects) — this
-// refresh folds in db/user-activity/001-002 (login_sessions + login_session_summary) after
-// rebasing onto origin/main.
+// regenerated 2026-09-28 (see db/MIGRATIONS.md for every migration this reflects) — this
+// refresh folds in db/journeys/009-010 (cars/drivers parity: new vehicle_status,
+// fuel_type and driver_status enum values).
 
 export type Json =
   | string
@@ -3276,7 +3276,7 @@ export type Database = {
         | "rodtep"
         | "import_declaration"
         | "other"
-      driver_status: "active" | "inactive"
+      driver_status: "active" | "inactive" | "on_leave" | "suspended"
       employee_status:
         | "invited"
         | "active"
@@ -3291,7 +3291,18 @@ export type Database = {
         | "consultant"
       feedback_review_status: "pending" | "approved" | "rejected"
       filing_status: "pending" | "approved" | "rejected"
-      fuel_type: "diesel" | "ev" | "petrol"
+      fuel_type:
+        | "diesel"
+        | "ev"
+        | "petrol"
+        | "cng"
+        | "hybrid"
+        | "lpg"
+        | "biodiesel"
+        | "hydrogen"
+        | "petrol_cng"
+        | "petrol_lpg"
+        | "ev_petrol"
       inbound_document_kind: "cha_checklist" | "bl_draft" | "hawb_draft"
       inbound_mail_status: "unclaimed" | "claimed" | "dismissed"
       journey_status: "planned" | "ongoing" | "completed" | "cancelled"
@@ -3321,7 +3332,12 @@ export type Database = {
       stage_event_source: "erp_sync" | "manual"
       stop_guest_action: "pickup" | "drop"
       stop_role: "origin" | "stop" | "destination"
-      vehicle_status: "vacant" | "on_trip" | "maintenance"
+      vehicle_status:
+        | "vacant"
+        | "on_trip"
+        | "maintenance"
+        | "accidental"
+        | "inactive"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -3483,7 +3499,7 @@ export const Constants = {
         "import_declaration",
         "other",
       ],
-      driver_status: ["active", "inactive"],
+      driver_status: ["active", "inactive", "on_leave", "suspended"],
       employee_status: [
         "invited",
         "active",
@@ -3500,7 +3516,19 @@ export const Constants = {
       ],
       feedback_review_status: ["pending", "approved", "rejected"],
       filing_status: ["pending", "approved", "rejected"],
-      fuel_type: ["diesel", "ev", "petrol"],
+      fuel_type: [
+        "diesel",
+        "ev",
+        "petrol",
+        "cng",
+        "hybrid",
+        "lpg",
+        "biodiesel",
+        "hydrogen",
+        "petrol_cng",
+        "petrol_lpg",
+        "ev_petrol",
+      ],
       inbound_document_kind: ["cha_checklist", "bl_draft", "hawb_draft"],
       inbound_mail_status: ["unclaimed", "claimed", "dismissed"],
       journey_status: ["planned", "ongoing", "completed", "cancelled"],
@@ -3533,7 +3561,13 @@ export const Constants = {
       stage_event_source: ["erp_sync", "manual"],
       stop_guest_action: ["pickup", "drop"],
       stop_role: ["origin", "stop", "destination"],
-      vehicle_status: ["vacant", "on_trip", "maintenance"],
+      vehicle_status: [
+        "vacant",
+        "on_trip",
+        "maintenance",
+        "accidental",
+        "inactive",
+      ],
     },
   },
 } as const

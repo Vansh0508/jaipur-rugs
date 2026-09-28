@@ -54,12 +54,12 @@ erDiagram
 
     VEHICLES {
         uuid id PK
-        text registration_number UK
+        text registration_number UK "stored trimmed + uppercase (trigger, 010)"
         text make
         text model
         text name "added 001 — friendly display name, backfilled make || ' ' || model"
-        enum fuel_type "diesel/ev/petrol"
-        enum status "added 001 — vacant/on_trip/maintenance"
+        enum fuel_type "diesel/ev/petrol; 009 adds cng/hybrid/lpg/biodiesel/hydrogen/petrol_cng/petrol_lpg/ev_petrol"
+        enum status "added 001 — vacant/on_trip/maintenance; 009 adds accidental/inactive (inactive = soft-delete)"
         text qr_code_url "added 001 — nullable, populated once the QR endpoint exists; keyed off id"
         timestamptz created_at
         timestamptz updated_at
@@ -72,7 +72,7 @@ erDiagram
         text photo_path
         text phone "made NOT NULL + E.164 CHECK, 001"
         uuid department_id FK "nullable"
-        enum status "active/inactive"
+        enum status "active/inactive; 009 adds on_leave/suspended — only active visible to guests, admins see all (010)"
         timestamptz created_at
         timestamptz updated_at
     }

@@ -2,14 +2,23 @@
 
 import { useState } from "react";
 import { Button } from "@jaipur-rugs/ui-kit";
-import { NewCarModal } from "./NewCarModal";
+import { CarFormModal } from "./CarFormModal";
 
 export function AddCarAction() {
   const [isOpen, setIsOpen] = useState(false);
+  // Bumped per open so the form remounts empty, instead of keeping a cancelled draft.
+  const [formKey, setFormKey] = useState(0);
   return (
     <>
-      <Button onPress={() => setIsOpen(true)}>Add car</Button>
-      <NewCarModal isOpen={isOpen} onClose={() => setIsOpen(false)} />
+      <Button
+        onPress={() => {
+          setFormKey((k) => k + 1);
+          setIsOpen(true);
+        }}
+      >
+        Add car
+      </Button>
+      <CarFormModal key={formKey} isOpen={isOpen} onClose={() => setIsOpen(false)} />
     </>
   );
 }

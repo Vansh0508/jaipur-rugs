@@ -62,6 +62,8 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | (2026-09-11) | `rug_lens_facets_cross_filter` | orders | `db/orders/020_rug_lens_facets_cross_filter.sql` |
 | — (written, NOT applied, deliberately) | `nav_full_field_expansion` | orders | `db/orders/021_nav_full_field_expansion.sql` |
 | (2026-09-12) | `column_requests` + `column_requests_resolved_by_index` | orders | `db/orders/022_column_requests.sql` |
+| `20260928043603` | `cars_drivers_parity_enums` | journeys | `db/journeys/009_cars_drivers_parity_enums.sql` |
+| `20260928043624` | `cars_drivers_parity_rules` | journeys | `db/journeys/010_cars_drivers_parity_rules.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
@@ -1135,3 +1137,77 @@ only starts recording real sign-in data once `apps/atlas` itself is rebuilt/rede
 with this change (both the Hostinger VPS and the internal office server instance), since
 `SessionTracker.tsx`/`UserMenu.tsx` are what actually call these functions. Until that
 next deploy, `/admin/users` will just show zero sessions for everyone, not an error.
+
+## Cars/drivers parity with Admin-Driver-App — APPLIED (2026-09-28)
+
+`db/journeys/009`–`010`, applied to `matnispbauvvlnbsuzxq` as `cars_drivers_parity_enums`
+(`20260928043603`) then `cars_drivers_parity_rules` (`20260928043624`). First step of
+bringing the standalone `Admin-Driver-App/driver-app-new` admin portal's cars/drivers logic
+into `apps/admin/internal-portal`. That app runs on its **own, separate** Supabase project
+(`clbagovgidusbhvrhjrn`) with its own `cars`/`drivers` tables; nothing was migrated from it.
+A column-by-column comparison found every car/driver column it uses already exists here
+under another name (`plate`→`registration_number`, `brand`→`make`, `name`→`full_name`,
+`avatar_url`→`photo_path`), so **no columns were added** — only the enum value sets and
+row rules were short:
+
+- **Enums (009, additive only):** `vehicle_status` + `accidental`, `inactive` (soft-delete —
+  journeys/feedback FKs have no cascade, so a car with history can't be hard-deleted);
+  `fuel_type` + `cng`, `hybrid`, `lpg`, `biodiesel`, `hydrogen`, `petrol_cng`, `petrol_lpg`,
+  `ev_petrol`; `driver_status` + `on_leave`, `suspended`. Its own migration because Postgres
+  won't let a new enum value be used in the transaction that adds it.
+- **`drivers_select` (010)** replaces `drivers_select_active`: authenticated users still see
+  only `active` drivers, **except internal-portal admins, who now see every status**.
+  Before this, a driver set `inactive` disappeared from the admin portal too, with no way
+  to reactivate them. `drivers_select_active_anon` (Feedback App guests) is unchanged:
+  on-leave/suspended/inactive drivers stay hidden from the rating grid, by design.
+- **Plate normalization trigger (010):** `vehicles.registration_number` stored
+  `upper(btrim(...))` on every insert/update, so `vehicles_registration_number_key` can't be
+  sidestepped by case/whitespace. All 14 existing plates were already normalized.
+- **`updated_at` triggers (010)** on `vehicles` and `drivers` (neither had one), via a new
+  `private.touch_updated_at()`. The pre-existing `public.set_updated_at()` on this project
+  is orphaned debris attached to no table and was deliberately not reused (helpers belong
+  in `private`, AGENTS.md Section 10).
+
+Verified live (all inside blocks that raise at the end, so everything rolled back): a
+`'  rj99-zz-0001 '` insert with `fuel_type = 'petrol_cng'`, `status = 'accidental'` landed as
+`RJ99-ZZ-0001`; updating a driver's status moved `updated_at`; with one driver
+`suspended`, the internal-portal admin saw 13 drivers, a non-admin authenticated user 12,
+and anon 12. Security + performance advisors identical to the pre-migration baseline (no
+new findings). `packages/supabase-client` types regenerated; the only consumer affected
+was `apps/admin/internal-portal/components/cars/CarStatusChip.tsx` (labels for the two new
+car statuses added).
+
+**Edge Functions for it (2026-09-28, deployed to `matnispbauvvlnbsuzxq`, all `verify_jwt: true`,
+all gated by `requireInternalPortalAdmin`):** backing Internal Portal's Cars/Drivers ⋮ quick-action
+menus (table + card view) and edit forms.
+- `update-car-status` **v6** (was v5): now accepts `vacant`/`maintenance`/`accidental`/`inactive`
+  (was vacant/maintenance only). Still 409s any change while the car is mid-trip; new 409 for
+  `inactive` while the car has upcoming non-cancelled journeys.
+- `update-car` **v1** (new): edit name/make/model/fuel/plate (create-car's fields); 409 on a
+  duplicate plate.
+- `update-driver` **v1** (new): edit name/E.164 phone/photo (`photoPath` omitted = keep,
+  `null` = remove; the old object is left in `driver-photos`, never deleted).
+- `update-driver-status` **v1** (new): `active`/`on_leave`/`suspended`/`inactive`, same guards
+  as cars (non-active blocked mid-trip; `inactive` blocked with upcoming journeys).
+- `create-car` **v6** (was v5): fuel allowlist widened to all 11 `fuel_type` values; friendlier
+  duplicate-plate message.
+- `upload-driver-photo` **v6** (was v5): JPG/JPEG/PNG only (was any `image/*`) — checks both the
+  MIME type and the file extension, and names the stored object from the checked MIME type rather
+  than the client's file name. Verified live: a GIF upload with a real admin session returns 400.
+- `complete-journey` **v1** (new, same day): driver-app-new's "Mark ended". Sets a *started* journey
+  (`now() >= first_pickup_at`) to `completed`; when ended early it also pulls `last_drop_at` back to
+  `now()` so `busy_window` — and therefore the no-double-booking EXCLUDE constraints — frees the car
+  and driver immediately (planned stop `arrival_at`s are left as the record). 409 for a journey that
+  hasn't started (cancel it instead) or is already cancelled/completed. Verified live end-to-end
+  through Internal Portal's new journey builder + list (then the test journey and its two test guests
+  were deleted). Note: nothing stores `ongoing`/`completed` automatically — Internal Portal derives
+  the live status from the busy window at read time (`lib/journeyStatus.ts`).
+`packages/db-management-client` gained `updateCar`/`updateDriver`/`updateDriverStatus` (and now
+surfaces these functions' own error messages via `extractErrorMessage`). Verified live through
+the real UI (Playwright): maintenance → accidental → deactivate (confirm) → reactivate on a car,
+on leave → suspend (confirm) → available on a driver, edit-and-save on both — every row
+restored afterwards (checked via SQL: 14 vacant cars, 13 active drivers).
+
+**Still open:** nothing sets `vehicles.status = 'on_trip'` — Internal Portal derives "On trip" at
+read time instead (`listCarsWithActivity`/`listDriversWithStats`), so any other consumer
+reading the stored column directly still sees "vacant" for a car mid-journey.

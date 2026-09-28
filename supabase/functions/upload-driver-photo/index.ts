@@ -17,6 +17,10 @@ const corsHeaders = {
 
 const DRIVER_PHOTOS_BUCKET = "driver-photos";
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
+// JPG/JPEG/PNG only (product decision, 2026-09-28) — mirrors Internal Portal's
+// PhotoDropzone. The stored object's extension comes from the checked MIME type, never the
+// client-supplied file name.
+const EXTENSION_BY_TYPE: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png" };
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -34,14 +38,14 @@ Deno.serve(async (req) => {
     if (!(file instanceof File)) {
       return jsonResponse({ error: "file is required (multipart form field 'file')" }, 400);
     }
-    if (!file.type.startsWith("image/")) {
-      return jsonResponse({ error: "file must be an image" }, 400);
+    const extension = EXTENSION_BY_TYPE[file.type];
+    if (!extension || !/\.(jpe?g|png)$/i.test(file.name)) {
+      return jsonResponse({ error: "Only JPG, JPEG or PNG images are supported." }, 400);
     }
     if (file.size > MAX_BYTES) {
       return jsonResponse({ error: "file must be 5MB or smaller" }, 400);
     }
 
-    const extension = file.name.includes(".") ? file.name.split(".").pop() : "jpg";
     const path = `${crypto.randomUUID()}.${extension}`;
 
     const { error: uploadError } = await supabaseAdmin.storage

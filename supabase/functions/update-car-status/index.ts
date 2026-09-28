@@ -1,6 +1,10 @@
-// db-management write endpoint: set a car's status to vacant or maintenance. Blocked
-// (409) if a non-cancelled journey's busy_window currently contains now() for that
-// vehicle — the car is mid-trip right now. Internal Portal admin only.
+// db-management write endpoint: set a car's status — vacant, maintenance, accidental, or
+// inactive (soft-delete; db/journeys/009). Internal Portal admin only. Blocked (409):
+// - any change while a non-cancelled journey's busy window contains now() for that
+//   vehicle — the car is mid-trip right now;
+// - `inactive` while the car still has upcoming non-cancelled journeys — deactivating a
+//   car out from under a booked trip is always a mistake; cancel or reassign them first.
+// `on_trip` is never settable: it's derived from journeys at read time, not stored.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { requireInternalPortalAdmin, authzErrorResponse } from "../_shared/authz.ts";
@@ -10,9 +14,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const SETTABLE_STATUSES = ["vacant", "maintenance", "accidental", "inactive"] as const;
+type SettableStatus = (typeof SETTABLE_STATUSES)[number];
+
 interface UpdateCarStatusBody {
   vehicleId: string;
-  status: "vacant" | "maintenance";
+  status: SettableStatus;
 }
 
 Deno.serve(async (req) => {
@@ -32,8 +39,8 @@ Deno.serve(async (req) => {
     if (!vehicleId || !status) {
       return jsonResponse({ error: "vehicleId and status are required" }, 400);
     }
-    if (status !== "vacant" && status !== "maintenance") {
-      return jsonResponse({ error: "status must be 'vacant' or 'maintenance'" }, 400);
+    if (!SETTABLE_STATUSES.includes(status)) {
+      return jsonResponse({ error: `status must be one of ${SETTABLE_STATUSES.join(", ")}` }, 400);
     }
 
     const nowIso = new Date().toISOString();
@@ -51,9 +58,29 @@ Deno.serve(async (req) => {
     }
     if (activeJourney) {
       return jsonResponse(
-        { error: "car is on an active journey right now", conflict: activeJourney },
+        { error: "This car is on a journey right now — change its status once the trip ends.", conflict: activeJourney },
         409,
       );
+    }
+
+    if (status === "inactive") {
+      const { count, error: upcomingError } = await supabaseAdmin
+        .from("journeys")
+        .select("id", { count: "exact", head: true })
+        .eq("vehicle_id", vehicleId)
+        .neq("status", "cancelled")
+        .gt("first_pickup_at", nowIso);
+      if (upcomingError) {
+        return jsonResponse({ error: upcomingError.message }, 500);
+      }
+      if (count && count > 0) {
+        return jsonResponse(
+          {
+            error: `This car has ${count} upcoming ${count === 1 ? "journey" : "journeys"} — cancel or reassign ${count === 1 ? "it" : "them"} before deactivating.`,
+          },
+          409,
+        );
+      }
     }
 
     const { data: updated, error: updateError } = await supabaseAdmin
@@ -61,10 +88,13 @@ Deno.serve(async (req) => {
       .update({ status })
       .eq("id", vehicleId)
       .select("id, status")
-      .single();
+      .maybeSingle();
 
-    if (updateError || !updated) {
-      return jsonResponse({ error: updateError?.message ?? "update failed" }, 500);
+    if (updateError) {
+      return jsonResponse({ error: updateError.message }, 500);
+    }
+    if (!updated) {
+      return jsonResponse({ error: "car not found" }, 404);
     }
 
     return jsonResponse(updated);

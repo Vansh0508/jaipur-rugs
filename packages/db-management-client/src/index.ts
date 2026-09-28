@@ -147,11 +147,25 @@ async function extractErrorMessage(error: unknown): Promise<string> {
 // admin-only; the edge function itself re-verifies that (supabase/functions/_shared/authz.ts)
 // rather than trusting this client-side call to only ever be reachable by an admin.
 
+/** Mirrors the `fuel_type` Postgres enum (db/feedback/004 + db/journeys/009). */
+export type FuelType =
+  | "petrol"
+  | "diesel"
+  | "ev"
+  | "cng"
+  | "hybrid"
+  | "lpg"
+  | "biodiesel"
+  | "hydrogen"
+  | "petrol_cng"
+  | "petrol_lpg"
+  | "ev_petrol";
+
 export interface CreateCarInput {
   name: string;
   make: string;
   model: string;
-  fuelType: "diesel" | "ev" | "petrol";
+  fuelType: FuelType;
   registrationNumber: string;
 }
 
@@ -163,14 +177,28 @@ interface CreateCarResponse {
 export async function createCar(supabase: SupabaseClient, input: CreateCarInput) {
   const { data, error } = await supabase.functions.invoke<CreateCarResponse>("create-car", { body: input });
   if (error || !data) {
-    throw error ?? new Error("create-car returned no data");
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface UpdateCarInput extends CreateCarInput {
+  vehicleId: string;
+}
+
+/** Invokes `update-car` — edits details only (status goes through updateCarStatus). */
+export async function updateCar(supabase: SupabaseClient, input: UpdateCarInput) {
+  const { data, error } = await supabase.functions.invoke<{ id: string }>("update-car", { body: input });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
   }
   return data;
 }
 
 export interface UpdateCarStatusInput {
   vehicleId: string;
-  status: "vacant" | "maintenance";
+  /** `inactive` is the soft-delete. `on_trip` is derived from journeys, never settable. */
+  status: "vacant" | "maintenance" | "accidental" | "inactive";
 }
 
 interface UpdateCarStatusResponse {
@@ -178,13 +206,16 @@ interface UpdateCarStatusResponse {
   status: string;
 }
 
-/** Invokes `update-car-status`. Throws if the car is on an active journey right now. */
+/**
+ * Invokes `update-car-status`. Throws (with the function's own message) if the car is on
+ * a journey right now, or — for `inactive` — if it still has upcoming journeys.
+ */
 export async function updateCarStatus(supabase: SupabaseClient, input: UpdateCarStatusInput) {
   const { data, error } = await supabase.functions.invoke<UpdateCarStatusResponse>("update-car-status", {
     body: input,
   });
   if (error || !data) {
-    throw error ?? new Error("update-car-status returned no data");
+    throw new Error(await extractErrorMessage(error));
   }
   return data;
 }
@@ -208,7 +239,46 @@ export async function createDriver(supabase: SupabaseClient, input: CreateDriver
     body: input,
   });
   if (error || !data) {
-    throw error ?? new Error("create-driver returned no data");
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface UpdateDriverInput {
+  driverId: string;
+  fullName: string;
+  /** Full E.164 phone number, country code included, e.g. "+919812345678". */
+  phone: string;
+  /** Omit to keep the current photo; a new key from uploadDriverPhoto; `null` to remove it. */
+  photoPath?: string | null;
+}
+
+/** Invokes `update-driver` — edits details only (status goes through updateDriverStatus). */
+export async function updateDriver(supabase: SupabaseClient, input: UpdateDriverInput) {
+  const { data, error } = await supabase.functions.invoke<{ id: string }>("update-driver", { body: input });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface UpdateDriverStatusInput {
+  driverId: string;
+  /** `inactive` is the soft-delete. `on_trip` is derived from journeys, never settable. */
+  status: "active" | "on_leave" | "suspended" | "inactive";
+}
+
+/**
+ * Invokes `update-driver-status`. Throws (with the function's own message) for any
+ * non-active status while the driver is on a journey right now, or — for `inactive` — if
+ * they still have upcoming journeys.
+ */
+export async function updateDriverStatus(supabase: SupabaseClient, input: UpdateDriverStatusInput) {
+  const { data, error } = await supabase.functions.invoke<{ id: string; status: string }>("update-driver-status", {
+    body: input,
+  });
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
   }
   return data;
 }
@@ -230,7 +300,7 @@ export async function uploadDriverPhoto(supabase: SupabaseClient, file: File) {
     body: formData,
   });
   if (error || !data) {
-    throw error ?? new Error("upload-driver-photo returned no data");
+    throw new Error(await extractErrorMessage(error));
   }
   return data;
 }
@@ -301,7 +371,7 @@ export async function createJourney(supabase: SupabaseClient, input: CreateJourn
     if (conflict) {
       throw new JourneyConflictError(conflict);
     }
-    throw error;
+    throw new Error(await extractErrorMessage(error));
   }
   if (!data) {
     throw new Error("create-journey returned no data");
@@ -327,7 +397,7 @@ export async function updateJourney(supabase: SupabaseClient, input: UpdateJourn
     if (conflict) {
       throw new JourneyConflictError(conflict);
     }
-    throw error;
+    throw new Error(await extractErrorMessage(error));
   }
   if (!data) {
     throw new Error("update-journey returned no data");
@@ -350,7 +420,27 @@ export async function cancelJourney(supabase: SupabaseClient, input: CancelJourn
     body: input,
   });
   if (error || !data) {
-    throw error ?? new Error("cancel-journey returned no data");
+    throw new Error(await extractErrorMessage(error));
+  }
+  return data;
+}
+
+export interface CompleteJourneyInput {
+  journeyId: string;
+}
+
+/**
+ * Invokes `complete-journey` ("Mark ended"). Throws (with the function's own message) if
+ * the journey hasn't started yet — cancel it instead — or is already cancelled/completed.
+ * Ending early also frees the car and driver from now on (see the function's header).
+ */
+export async function completeJourney(supabase: SupabaseClient, input: CompleteJourneyInput) {
+  const { data, error } = await supabase.functions.invoke<{ id: string; status: "completed"; last_drop_at: string }>(
+    "complete-journey",
+    { body: input },
+  );
+  if (error || !data) {
+    throw new Error(await extractErrorMessage(error));
   }
   return data;
 }
@@ -1196,7 +1286,8 @@ async function extractConflict(error: unknown): Promise<JourneyConflictDetail | 
     return null;
   }
   try {
-    const body = await context.json();
+    // clone(): the caller may still need the body afterwards (extractErrorMessage).
+    const body = await context.clone().json();
     return body?.conflict ?? null;
   } catch {
     return null;

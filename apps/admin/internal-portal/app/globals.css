@@ -6,3 +6,24 @@
    components live in a sibling workspace package outside that tree — this tells the v4
    scanner to include it too, replacing v3's JS `content: []` array. */
 @source "../../../../packages/ui-kit/src";
+
+/* @heroui/styles defines --background (grey) and --surface (white) as raw CSS vars but
+   doesn't register either as a Tailwind utility. Declared app-locally, same as
+   apps/hub/app/globals.css and apps/atlas/app/globals.css, for the standard department
+   app shell (grey canvas behind a detached white content card — see the
+   department-app-shell skill). */
+.bg-app {
+  background-color: var(--background);
+}
+.bg-surface {
+  background-color: var(--surface);
+}
+
+/* Sans-serif everywhere in this app (product decision, 2026-09-28) — including places
+   that would otherwise fall back to monospace: number plates / driver codes (which use
+   tabular-nums + tracking instead), any future `font-mono`, and Tailwind preflight's
+   default monospace for <code>/<kbd>/<pre>. */
+@theme {
+  --font-mono: var(--font-sans);
+  --default-mono-font-family: var(--font-sans);
+}

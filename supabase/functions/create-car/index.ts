@@ -14,11 +14,12 @@ interface CreateCarBody {
   name: string;
   make: string;
   model: string;
-  fuelType: "diesel" | "ev" | "petrol";
+  fuelType: string;
   registrationNumber: string;
 }
 
-const FUEL_TYPES = ["diesel", "ev", "petrol"];
+// Must match the fuel_type enum (db/feedback/004 + db/journeys/009).
+const FUEL_TYPES = ["petrol", "diesel", "ev", "cng", "hybrid", "lpg", "biodiesel", "hydrogen", "petrol_cng", "petrol_lpg", "ev_petrol"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -45,7 +46,7 @@ Deno.serve(async (req) => {
       );
     }
     if (!FUEL_TYPES.includes(fuelType)) {
-      return jsonResponse({ error: "fuelType must be one of diesel, ev, petrol" }, 400);
+      return jsonResponse({ error: `fuelType must be one of ${FUEL_TYPES.join(", ")}` }, 400);
     }
 
     const { data: created, error: insertError } = await supabaseAdmin
@@ -55,8 +56,10 @@ Deno.serve(async (req) => {
       .single();
 
     if (insertError || !created) {
-      const status = insertError?.code === "23505" ? 409 : 500;
-      return jsonResponse({ error: insertError?.message ?? "insert failed" }, status);
+      if (insertError?.code === "23505") {
+        return jsonResponse({ error: "Another car already has this number plate." }, 409);
+      }
+      return jsonResponse({ error: insertError?.message ?? "insert failed" }, 500);
     }
 
     return jsonResponse({ id: created.id }, 201);

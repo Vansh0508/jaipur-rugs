@@ -59,7 +59,7 @@ erDiagram
         text photo_path "Supabase Storage object key, driver-photos bucket"
         text phone
         uuid department_id FK "nullable"
-        enum status "driver_status: active/inactive"
+        enum status "driver_status: active/inactive (+ on_leave/suspended, db/journeys/009)"
         timestamptz created_at
         timestamptz updated_at
     }
@@ -89,7 +89,7 @@ erDiagram
         text registration_number UK
         text make
         text model
-        enum fuel_type "diesel/ev/petrol"
+        enum fuel_type "diesel/ev/petrol (+ 8 more, db/journeys/009)"
         timestamptz created_at
         timestamptz updated_at
     }

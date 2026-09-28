@@ -1,162 +1,204 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Enums } from "@jaipur-rugs/supabase-client";
+import { effectiveJourneyStatus, type JourneyStatus } from "@/lib/journeyStatus";
+import { todayInAppZone } from "@/lib/format";
+
+export interface GuestRef {
+  name: string;
+  phone: string;
+}
+
+export interface JourneyStopSummary {
+  sequenceNo: number;
+  role: "origin" | "stop" | "destination";
+  locationName: string;
+  arrivalAt: string;
+  pickups: GuestRef[];
+  drops: GuestRef[];
+}
 
 export interface JourneySummary {
   id: string;
+  /** Stored status — only ever changed by cancel-journey / complete-journey. */
+  status: JourneyStatus;
+  /** What the journey actually is right now (see lib/journeyStatus.ts). Display this. */
+  displayStatus: JourneyStatus;
+  firstPickupAt: string;
+  lastDropAt: string;
   dateFrom: string;
   dateTo: string;
   guestCount: number;
   routeSummary: string;
+  vehicleId: string;
+  driverId: string;
+  carName: string | null;
+  plate: string | null;
+  driverName: string | null;
   carLabel: string | null;
   driverLabel: string | null;
-  status: Enums<"journey_status">;
+  /** Ordered origin → stops → destination. */
+  stops: JourneyStopSummary[];
+  guests: GuestRef[];
 }
 
 const JOURNEY_SELECT = `
-  id, status, first_pickup_at, last_drop_at, date_from, date_to, notes,
+  id, status, first_pickup_at, last_drop_at, date_from, date_to, notes, vehicle_id, driver_id,
   vehicle:vehicles(id, name, registration_number),
   driver:drivers(id, full_name),
-  journey_guests(id),
-  journey_stops(location_name, role, sequence_no)
+  journey_guests(id, guest:guests(full_name, phone)),
+  journey_stops(id, location_name, role, sequence_no, arrival_at, journey_stop_guests(action, journey_guest_id))
 `;
 
-// The DB relations above are typed loosely (PostgREST embedding isn't reflected in the
-// generated Database type without a manual override) — narrow with a small local shape
-// instead of `any`, matching what JOURNEY_SELECT actually returns.
+// PostgREST embeds aren't reflected in the generated Database type — narrow with a local
+// shape matching JOURNEY_SELECT instead of `any`.
 interface RawJourneyRow {
   id: string;
-  status: Enums<"journey_status">;
+  status: JourneyStatus;
+  first_pickup_at: string;
+  last_drop_at: string;
   date_from: string;
   date_to: string;
+  notes: string | null;
+  vehicle_id: string;
+  driver_id: string;
   vehicle: { id: string; name: string; registration_number: string } | null;
   driver: { id: string; full_name: string } | null;
-  journey_guests: { id: string }[];
-  journey_stops: { location_name: string; role: string; sequence_no: number }[];
+  journey_guests: { id: string; guest: { full_name: string; phone: string } | null }[];
+  journey_stops: {
+    id: string;
+    location_name: string;
+    role: JourneyStopSummary["role"];
+    sequence_no: number;
+    arrival_at: string;
+    journey_stop_guests: { action: "pickup" | "drop"; journey_guest_id: string }[];
+  }[];
 }
 
-function toSummary(row: RawJourneyRow): JourneySummary {
-  const stops = [...row.journey_stops].sort((a, b) => a.sequence_no - b.sequence_no);
+function toSummary(row: RawJourneyRow, now: number): JourneySummary {
+  const guestByJourneyGuestId = new Map(
+    row.journey_guests.map((jg) => [jg.id, { name: jg.guest?.full_name ?? "Unknown guest", phone: jg.guest?.phone ?? "" }]),
+  );
+  const stops = [...row.journey_stops]
+    .sort((a, b) => a.sequence_no - b.sequence_no)
+    .map((s) => ({
+      sequenceNo: s.sequence_no,
+      role: s.role,
+      locationName: s.location_name,
+      arrivalAt: s.arrival_at,
+      pickups: s.journey_stop_guests.filter((g) => g.action === "pickup").map((g) => guestByJourneyGuestId.get(g.journey_guest_id)!).filter(Boolean),
+      drops: s.journey_stop_guests.filter((g) => g.action === "drop").map((g) => guestByJourneyGuestId.get(g.journey_guest_id)!).filter(Boolean),
+    }));
+
   return {
     id: row.id,
+    status: row.status,
+    displayStatus: effectiveJourneyStatus(row.status, row.first_pickup_at, row.last_drop_at, now),
+    firstPickupAt: row.first_pickup_at,
+    lastDropAt: row.last_drop_at,
     dateFrom: row.date_from,
     dateTo: row.date_to,
     guestCount: row.journey_guests.length,
-    routeSummary: stops.map((s) => s.location_name).join(" → "),
+    routeSummary: stops.map((s) => s.locationName).join(" → "),
+    vehicleId: row.vehicle_id,
+    driverId: row.driver_id,
+    carName: row.vehicle?.name ?? null,
+    plate: row.vehicle?.registration_number ?? null,
+    driverName: row.driver?.full_name ?? null,
     carLabel: row.vehicle ? `${row.vehicle.name} — ${row.vehicle.registration_number}` : null,
     driverLabel: row.driver?.full_name ?? null,
-    status: row.status,
+    stops,
+    guests: [...guestByJourneyGuestId.values()],
   };
 }
 
-export interface ListJourneysFilter {
-  from?: string;
-  to?: string;
-  status?: Enums<"journey_status">;
+/** Start/end of a yyyy-mm-dd day in IST, as ISO timestamps (the fleet's day, not UTC's). */
+function istDayStart(date: string) {
+  return new Date(`${date}T00:00:00+05:30`).toISOString();
+}
+function istDayEnd(date: string) {
+  return new Date(`${date}T23:59:59.999+05:30`).toISOString();
 }
 
+export interface ListJourneysFilter {
+  /** yyyy-mm-dd (IST) — journeys whose busy window overlaps [from, to] at all. */
+  from?: string;
+  to?: string;
+  /** Matched against the *derived* displayStatus, not the stored column. */
+  status?: JourneyStatus;
+}
+
+// Date filtering uses first_pickup_at/last_drop_at against IST day boundaries rather than
+// the stored date_from/date_to columns: those are cast in the database's own time zone
+// (UTC on Supabase), so a trip starting before 5:30 AM IST would land on the wrong day.
 export async function listJourneys(supabase: SupabaseClient, filter: ListJourneysFilter = {}) {
   let query = supabase.from("journeys").select(JOURNEY_SELECT).order("first_pickup_at", { ascending: false });
-
-  if (filter.from) query = query.gte("date_to", filter.from);
-  if (filter.to) query = query.lte("date_from", filter.to);
-  if (filter.status) query = query.eq("status", filter.status);
+  if (filter.from) query = query.gte("last_drop_at", istDayStart(filter.from));
+  if (filter.to) query = query.lte("first_pickup_at", istDayEnd(filter.to));
 
   const { data, error } = await query;
   if (error) throw error;
-  return ((data ?? []) as unknown as RawJourneyRow[]).map(toSummary);
+  const now = Date.now();
+  const journeys = ((data ?? []) as unknown as RawJourneyRow[]).map((row) => toSummary(row, now));
+  return filter.status ? journeys.filter((j) => j.displayStatus === filter.status) : journeys;
 }
 
-export async function listJourneysForCar(
+/**
+ * driver-app-new's list opens on today's date, widened to cover every journey that is
+ * still upcoming or in progress (so none is hidden by the default filter). Returns
+ * yyyy-mm-dd (IST) bounds.
+ */
+export async function getDefaultJourneyRange(supabase: SupabaseClient): Promise<{ from: string; to: string }> {
+  const today = todayInAppZone();
+  const { data, error } = await supabase
+    .from("journeys")
+    .select("first_pickup_at, last_drop_at")
+    .in("status", ["planned", "ongoing"])
+    .gte("last_drop_at", new Date().toISOString());
+  if (error) throw error;
+  if (!data || data.length === 0) return { from: today, to: today };
+
+  const toIstDate = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  const starts = data.map((j) => toIstDate(j.first_pickup_at)).concat(today).sort();
+  const ends = data.map((j) => toIstDate(j.last_drop_at)).concat(today).sort();
+  return { from: starts[0]!, to: ends[ends.length - 1]! };
+}
+
+async function listJourneysFor(
   supabase: SupabaseClient,
-  vehicleId: string,
-  filter: { status?: "upcoming" | "past" } = {},
+  column: "vehicle_id" | "driver_id",
+  id: string,
+  filter: { status?: "upcoming" | "past" },
 ) {
-  let query = supabase.from("journeys").select(JOURNEY_SELECT).eq("vehicle_id", vehicleId);
+  const nowIso = new Date().toISOString();
+  let query = supabase.from("journeys").select(JOURNEY_SELECT).eq(column, id);
   query =
     filter.status === "upcoming"
-      ? query.gte("last_drop_at", new Date().toISOString()).order("first_pickup_at", { ascending: true })
+      ? query.gte("last_drop_at", nowIso).order("first_pickup_at", { ascending: true })
       : filter.status === "past"
-        ? query.lt("last_drop_at", new Date().toISOString()).order("first_pickup_at", { ascending: false })
+        ? query.lt("last_drop_at", nowIso).order("first_pickup_at", { ascending: false })
         : query.order("first_pickup_at", { ascending: false });
 
   const { data, error } = await query;
   if (error) throw error;
-  return ((data ?? []) as unknown as RawJourneyRow[]).map(toSummary);
+  const now = Date.now();
+  return ((data ?? []) as unknown as RawJourneyRow[]).map((row) => toSummary(row, now));
+}
+
+export function listJourneysForCar(supabase: SupabaseClient, vehicleId: string, filter: { status?: "upcoming" | "past" } = {}) {
+  return listJourneysFor(supabase, "vehicle_id", vehicleId, filter);
+}
+
+export function listJourneysForDriver(supabase: SupabaseClient, driverId: string, filter: { status?: "upcoming" | "past" } = {}) {
+  return listJourneysFor(supabase, "driver_id", driverId, filter);
 }
 
 export interface JourneyDetail extends JourneySummary {
   notes: string | null;
-  vehicleId: string | null;
-  driverId: string | null;
-  stops: { locationName: string; role: string; sequenceNo: number; arrivalAt: string; pickups: string[]; drops: string[] }[];
-}
-
-interface RawJourneyDetailRow extends RawJourneyRow {
-  notes: string | null;
-  vehicle_id: string;
-  driver_id: string;
-  journey_stops: { location_name: string; role: string; sequence_no: number; arrival_at: string; id: string }[];
-  journey_guests: { id: string; guest_id: string; guests: { full_name: string; phone: string } | null }[];
 }
 
 export async function getJourneyById(supabase: SupabaseClient, id: string): Promise<JourneyDetail | null> {
-  const { data, error } = await supabase
-    .from("journeys")
-    .select(
-      `
-      id, status, first_pickup_at, last_drop_at, date_from, date_to, notes, vehicle_id, driver_id,
-      vehicle:vehicles(id, name, registration_number),
-      driver:drivers(id, full_name),
-      journey_guests(id, guest_id, guests(full_name, phone)),
-      journey_stops(id, location_name, role, sequence_no, arrival_at)
-    `,
-    )
-    .eq("id", id)
-    .maybeSingle();
+  const { data, error } = await supabase.from("journeys").select(JOURNEY_SELECT).eq("id", id).maybeSingle();
   if (error) throw error;
   if (!data) return null;
-
-  const row = data as unknown as RawJourneyDetailRow;
-  const guestNameByJourneyGuestId = new Map(row.journey_guests.map((jg) => [jg.id, jg.guests?.full_name ?? "Unknown guest"]));
-
-  const stopsWithGuests = await supabase
-    .from("journey_stop_guests")
-    .select("stop_id, action, journey_guest_id")
-    .in("stop_id", row.journey_stops.map((s) => s.id));
-  if (stopsWithGuests.error) throw stopsWithGuests.error;
-
-  const stops = [...row.journey_stops]
-    .sort((a, b) => a.sequence_no - b.sequence_no)
-    .map((s) => ({
-      locationName: s.location_name,
-      role: s.role,
-      sequenceNo: s.sequence_no,
-      arrivalAt: s.arrival_at,
-      pickups: (stopsWithGuests.data ?? [])
-        .filter((sg) => sg.stop_id === s.id && sg.action === "pickup")
-        .map((sg) => guestNameByJourneyGuestId.get(sg.journey_guest_id) ?? "Unknown guest"),
-      drops: (stopsWithGuests.data ?? [])
-        .filter((sg) => sg.stop_id === s.id && sg.action === "drop")
-        .map((sg) => guestNameByJourneyGuestId.get(sg.journey_guest_id) ?? "Unknown guest"),
-    }));
-
-  return { ...toSummary(row), notes: row.notes, vehicleId: row.vehicle_id, driverId: row.driver_id, stops };
-}
-
-export async function listJourneysForDriver(
-  supabase: SupabaseClient,
-  driverId: string,
-  filter: { status?: "upcoming" | "past" } = {},
-) {
-  let query = supabase.from("journeys").select(JOURNEY_SELECT).eq("driver_id", driverId);
-  query =
-    filter.status === "upcoming"
-      ? query.gte("last_drop_at", new Date().toISOString()).order("first_pickup_at", { ascending: true })
-      : filter.status === "past"
-        ? query.lt("last_drop_at", new Date().toISOString()).order("first_pickup_at", { ascending: false })
-        : query.order("first_pickup_at", { ascending: false });
-
-  const { data, error } = await query;
-  if (error) throw error;
-  return ((data ?? []) as unknown as RawJourneyRow[]).map(toSummary);
+  const row = data as unknown as RawJourneyRow;
+  return { ...toSummary(row, Date.now()), notes: row.notes };
 }
