@@ -30,7 +30,7 @@ export async function proxy(request: NextRequest) {
     remove: (name, options) => response.cookies.set(name, "", { ...options, maxAge: 0 }),
   };
 
-  const supabase = createSupabaseServerClient(env.supabaseUrl, env.supabaseAnonKey, cookieAdapter, env.rootDomain, env.secureCookies);
+  const supabase = createSupabaseServerClient(env.supabaseUrl, env.supabasePublishableKey, cookieAdapter, env.rootDomain, env.secureCookies);
   const {
     data: { user },
   } = await supabase.auth.getUser();

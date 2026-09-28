@@ -11,9 +11,21 @@ export const env = {
     if (!value) throw new Error("Missing required env var: NEXT_PUBLIC_SUPABASE_URL");
     return value;
   },
-  get supabaseAnonKey() {
-    const value = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!value) throw new Error("Missing required env var: NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  /**
+   * Prefers the new publishable key (`sb_publishable_...`) over the legacy anon JWT — see
+   * https://supabase.com/docs/guides/getting-started/migrating-to-new-api-keys. The legacy
+   * var is only a fallback for a .env.local that hasn't been updated yet; set
+   * NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY going forward.
+   */
+  get supabasePublishableKey() {
+    const value =
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!value) {
+      throw new Error(
+        "Missing required env var: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or legacy NEXT_PUBLIC_SUPABASE_ANON_KEY)"
+      );
+    }
     return value;
   },
   /** Undefined in local dev on purpose — see .env.example. */

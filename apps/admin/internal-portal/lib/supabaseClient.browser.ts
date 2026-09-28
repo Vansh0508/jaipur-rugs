@@ -8,5 +8,5 @@ import { env } from "./env";
  * ES module imports are evaluated for the whole file regardless of which export is used.
  */
 export function getBrowserSupabaseClient() {
-  return createSupabaseBrowserClient(env.supabaseUrl, env.supabaseAnonKey, env.rootDomain, env.secureCookies);
+  return createSupabaseBrowserClient(env.supabaseUrl, env.supabasePublishableKey, env.rootDomain, env.secureCookies);
 }
