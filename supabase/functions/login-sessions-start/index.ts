@@ -10,8 +10,14 @@
 // into several rows. Anything older than that is treated as a genuinely new session
 // (the old row is left as-is with whatever last_heartbeat_at it last reached — that IS
 // its real end time for analytics purposes, see login_session_summary).
+//
+// Also the trigger point for the "existing user login" Slack ping (Ayaan, 2026-09-28) —
+// fired only when a genuinely NEW session is created (`reused: false`), i.e. roughly once
+// per real sign-in rather than once per page load/tab. Best-effort, after the session row
+// already exists — a Slack failure must never break session tracking itself.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { notifySlack } from "../_shared/notifySlack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -46,7 +52,7 @@ Deno.serve(async (req) => {
 
     const { data: employee, error: employeeError } = await supabaseAdmin
       .from("employees")
-      .select("id, status")
+      .select("id, status, full_name")
       .eq("auth_user_id", user.id)
       .maybeSingle();
     if (employeeError) {
@@ -82,6 +88,8 @@ Deno.serve(async (req) => {
     if (insertError || !created) {
       return jsonResponse({ error: insertError?.message ?? "insert failed" }, 500);
     }
+
+    await notifySlack(supabaseAdmin, `🔐 *${employee.full_name}* signed in to Atlas`);
 
     return jsonResponse({ sessionId: created.id, startedAt: created.started_at, reused: false }, 201);
   } catch (err) {
