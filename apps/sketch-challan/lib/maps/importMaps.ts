@@ -31,67 +31,51 @@ export function sheetRows(buffer: ArrayBuffer, sheet?: string): Grid {
   return XLSX.utils.sheet_to_json<unknown[]>(book.Sheets[name]!, { header: 1, defval: "" });
 }
 
-// MAP Library copies by map number. Destroyed maps and copies without a rack or box (blank or 0) are hidden.
+// MAP Library copies by map number: only rack and box. Destroyed maps and copies without a rack or box (blank or 0)
+// are hidden.
 export function libraryCopies(rows: Grid): Map<string, MapCopy[]> {
   const [header = [], ...body] = rows;
-  const c = columns(header, {
-    item: "Item No_", serial: "Serial No_", location: "Location Code", rack: "Rack No",
-    box: "Box No", destroy: "Destroy Map", remarks: "Map Remarks", quality: "Quality", design: "Design",
-    ground: "Ground Color", border: "Border Color", size: "Size", shape: "Shape",
-  }, "The inventory file");
+  const c = columns(header, { item: "Item No_", location: "Location Code", rack: "Rack No", box: "Box No", destroy: "Destroy Map" }, "The inventory file");
   const byMap = new Map<string, MapCopy[]>();
   for (const row of body) {
     if (text(row[c.location]) !== MAP_LIBRARY_LOCATION || text(row[c.destroy]) === "Yes") continue;
     const rackNo = text(row[c.rack]);
     const boxNo = text(row[c.box]);
-    if (!rackNo || !boxNo || boxNo === "0") continue;
     const item = text(row[c.item]);
-    if (!item) continue;
-    const list = byMap.get(item) ?? [];
-    list.push({
-      serialNo: text(row[c.serial]), rackNo, boxNo, mapRemarks: text(row[c.remarks]),
-      quality: text(row[c.quality]), design: text(row[c.design]), groundColor: text(row[c.ground]),
-      borderColor: text(row[c.border]), size: text(row[c.size]), shape: text(row[c.shape]),
-    });
-    byMap.set(item, list);
+    if (!rackNo || !boxNo || boxNo === "0" || !item) continue;
+    byMap.set(item, [...(byMap.get(item) ?? []), { rackNo, boxNo }]);
   }
   return byMap;
 }
 
-// Orders whose map has at least one copy in the library. Repeated order rows collapse (last wins).
-export function availableOrders(rows: Grid, copies: Map<string, MapCopy[]>): MapOrder[] {
+// NAV-145 rows whose "Action to be Taken" is Print or Available (like the challans), each with its map's library copies.
+// A row without a Production Order No is skipped, as for the challans. Repeated order rows collapse (last wins).
+const TAKEN = new Set(["print", "available"]);
+export function mapOrders(rows: Grid, copies: Map<string, MapCopy[]>): MapOrder[] {
   const [header = [], ...body] = rows;
   const c = columns(header, {
-    rug: "Item No_", po: "Production Order No_", customer: "Customer No_", priority: "Order Priority",
-    pending: "Current Staus Pending Days", map: "MAP Item No_", description: "Map Item Description",
-    followUp: "Follow Up Person",
+    rug: "Item No_", po: "Production Order No_", quality: "Quality", design: "Design", size: "Size", shape: "Shape",
+    ground: "Ground Color", border: "Border Color", map: "MAP Item No_", action: "Action to be Taken",
   }, "The orders file");
-  const idOf = (row: unknown[]) => `${text(row[c.po])}|${text(row[c.rug])}`;
-  // "Req" like the old COUNTIF on the orders sheet, but a repeated order row counts once.
-  const needing = new Map<string, Set<string>>();
-  for (const row of body) {
-    const mapItemNo = text(row[c.map]);
-    if (mapItemNo) needing.set(mapItemNo, (needing.get(mapItemNo) ?? new Set()).add(idOf(row)));
-  }
   const byId = new Map<string, MapOrder>();
   for (const row of body) {
+    const productionOrderNo = text(row[c.po]);
+    const action = text(row[c.action]);
+    if (!productionOrderNo || !TAKEN.has(action.toLowerCase())) continue;
     const mapItemNo = text(row[c.map]);
-    const found = copies.get(mapItemNo);
-    if (!found?.length) continue;
-    const id = idOf(row);
+    const id = `${productionOrderNo}|${text(row[c.rug])}`;
     byId.set(id, {
-      id, rugItemNo: text(row[c.rug]), productionOrderNo: text(row[c.po]), mapItemNo, copies: found,
-      required: needing.get(mapItemNo)!.size,
-      customerNo: text(row[c.customer]), orderPriority: text(row[c.priority]), pendingDays: text(row[c.pending]),
-      mapDescription: text(row[c.description]), followUpPerson: text(row[c.followUp]),
+      id, productionOrderNo, mapItemNo, action, copies: copies.get(mapItemNo) ?? [],
+      quality: text(row[c.quality]), design: text(row[c.design]), size: text(row[c.size]), shape: text(row[c.shape]),
+      groundColor: text(row[c.ground]), borderColor: text(row[c.border]),
     });
   }
   return [...byId.values()];
 }
 
 // New dump wins for details and locations; the manager's assignment and the pickup carry over.
-// An order no longer in the dump (its map left the library, or the order is done) is removed, even if assigned,
-// so nobody is sent to a rack where the map no longer is (user decision, 2026-09-28).
+// An order no longer in the dump (no longer Print/Available, or the order is done) is removed, even if assigned
+// (user decision, 2026-09-28).
 export function mergeMapOrders(current: MapOrder[], incoming: MapOrder[]): MapOrder[] {
   const previous = new Map(current.map((order) => [order.id, order]));
   return incoming.map((order) => {

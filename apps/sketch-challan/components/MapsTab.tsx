@@ -15,27 +15,18 @@ function when(at?: string) {
   return at ? new Date(at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
 }
 
-// Serial / Rack / Box / Remarks differ per copy: one line per copy, same order in every column so they line up.
-function perCopy(field: keyof MapCopy, headerName: string, width: number, bold = false): GridColDef<MapOrder> {
+// Rack and Box differ per copy: one line per copy, same order in both columns so they line up.
+function perCopy(field: keyof MapCopy, headerName: string): GridColDef<MapOrder> {
   return {
-    field, headerName, width, sortable: false,
+    field, headerName, width: 110, sortable: false,
     valueGetter: (_value, row) => row.copies.map((copy) => copy[field]).join(", "),
-    renderCell: ({ row }) => (
+    renderCell: ({ row }) => row.copies.length ? (
       <div className="flex flex-col leading-5">
-        {row.copies.map((copy) => <span key={copy.serialNo} className={bold ? "font-semibold" : undefined}>{copy[field] || "—"}</span>)}
+        {row.copies.map((copy, i) => <span key={i} className="font-semibold">{copy[field]}</span>)}
       </div>
-    ),
+    ) : <span className="text-muted">Not in library</span>,
   };
 }
-
-// Quality … Shape describe the map itself, so every copy normally shares them; show each distinct value once.
-const detail = (row: MapOrder, field: keyof MapCopy) => [...new Set(row.copies.map((copy) => copy[field]))].join(", ");
-function mapDetail(field: keyof MapCopy, headerName: string, width: number): GridColDef<MapOrder> {
-  return { field, headerName, width, valueGetter: (_value, row) => detail(row, field) };
-}
-
-// More pending orders need this map than there are copies in the library.
-const short = (row: MapOrder) => row.required > row.copies.length;
 
 // State lives in the workspace so Home counts and a revisit of this tab show the latest assignments.
 export function MapsTab({ state, setState, user }: {
@@ -58,7 +49,7 @@ export function MapsTab({ state, setState, user }: {
       const body = await response.json() as MapsState & { available?: number; error?: string };
       if (!response.ok) throw new Error(body.error ?? "Could not refresh maps.");
       setState({ orders: body.orders, refreshedAt: body.refreshedAt, files: body.files });
-      setMessage(`Read ${body.files?.inventory} + ${body.files?.orders} · ${body.available} orders have a map in the library`);
+      setMessage(`Read ${body.files?.inventory} + ${body.files?.orders} · ${body.orders.length} Print/Available orders, ${body.available} with a map in the library`);
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "Could not refresh maps.");
     } finally {
@@ -86,7 +77,7 @@ export function MapsTab({ state, setState, user }: {
       .catch(() => setMessage("Could not reach the server. Your last change may not be saved."));
   }
 
-  const assignControl = (row: MapOrder) => role === "sketcher" || row.pickedUpAt ? <span>{row.assignedTo ?? "—"}</span> : (
+  const assignControl = (row: MapOrder) => role === "sketcher" || row.pickedUpAt || !row.copies.length ? <span>{row.assignedTo ?? "—"}</span> : (
     <select
       className="w-full rounded-lg border border-border bg-surface p-1 text-sm"
       value={row.assignedTo ?? ""}
@@ -118,29 +109,19 @@ export function MapsTab({ state, setState, user }: {
     return <span title={when(row.assignedAt)}>{row.assignedTo ? "Assigned" : "Not assigned"}</span>;
   };
 
-  // Test.xlsx (MAP Library sheet) columns first, in its order; Req/Ava replace its COUNTIF/VLOOKUP helpers.
+  // The columns the user asked for (2026-09-29): NAV-145 details, then rack and box looked up in NAV-028 LOC-031.
   const columns: GridColDef<MapOrder>[] = [
-    { field: "productionOrderNo", headerName: "Production Order No", width: 160 },
-    { field: "mapItemNo", headerName: "Item No (Map)", width: 120 },
-    { field: "available", headerName: "Ava", width: 60, type: "number", valueGetter: (_value, row) => row.copies.length },
-    {
-      field: "required", headerName: "Req", width: 60, type: "number",
-      renderCell: ({ row }) => <span className={short(row) ? "font-bold text-danger" : undefined} title={short(row) ? "More orders need this map than there are copies" : undefined}>{row.required}</span>,
-    },
-    perCopy("serialNo", "Serial No", 100),
-    mapDetail("quality", "Quality", 90),
-    mapDetail("design", "Design", 130),
-    mapDetail("groundColor", "Ground Color", 110),
-    mapDetail("borderColor", "Border Color", 110),
-    mapDetail("size", "Size", 80),
-    mapDetail("shape", "Shape", 80),
-    perCopy("rackNo", "Rack No", 110, true),
-    perCopy("boxNo", "Box No", 70, true),
-    perCopy("mapRemarks", "Map Remarks", 120),
-    { field: "rugItemNo", headerName: "Rug Item No", width: 120 },
-    { field: "mapDescription", headerName: "Map Description", width: 280 },
-    { field: "followUpPerson", headerName: "Follow Up Person", width: 170 },
-    { field: "pendingDays", headerName: "Pending Days", width: 110 },
+    { field: "productionOrderNo", headerName: "Prod Order No", width: 160 },
+    { field: "quality", headerName: "Quality", width: 120 },
+    { field: "design", headerName: "Design", width: 120 },
+    { field: "size", headerName: "Size", width: 90 },
+    { field: "shape", headerName: "Shape", width: 80 },
+    { field: "groundColor", headerName: "Ground Color", width: 110 },
+    { field: "borderColor", headerName: "Border Color", width: 110 },
+    { field: "mapItemNo", headerName: "Map Item No", width: 120 },
+    { field: "action", headerName: "Action to be Taken", width: 140 },
+    perCopy("rackNo", "Rack No"),
+    perCopy("boxNo", "Box No"),
     { field: "assignedTo", headerName: "Assigned to", width: 190, renderCell: ({ row }) => assignControl(row) },
     {
       field: "pickedUpAt", headerName: "Status", width: 230,
@@ -149,7 +130,7 @@ export function MapsTab({ state, setState, user }: {
     },
   ];
 
-  const empty = role === "sketcher" ? "No maps assigned to you." : "No orders with a map in the library. Admin: press Refresh.";
+  const empty = role === "sketcher" ? "No maps assigned to you." : "No Print or Available orders yet. Admin: press Refresh.";
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-3">
@@ -165,20 +146,17 @@ export function MapsTab({ state, setState, user }: {
           {state.orders.map((row) => (
             <article key={row.id} className="rounded-xl border border-border bg-surface p-4">
               <div className="flex items-baseline justify-between gap-2">
-                <p className="text-lg font-semibold">{row.mapItemNo}</p>
-                <span className={"text-xs " + (short(row) ? "font-bold text-danger" : "text-muted")}>Ava {row.copies.length} · Req {row.required}</span>
+                <p className="text-lg font-semibold">{row.mapItemNo || "No map no."}</p>
+                <span className="text-xs text-muted">{row.action}</span>
               </div>
               <ul className="mt-2 flex flex-col gap-1">
-                {row.copies.map((copy) => (
-                  <li key={copy.serialNo} className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg bg-surface-secondary px-3 py-2">
-                    <span className="text-base font-bold">Rack {copy.rackNo} · Box {copy.boxNo}</span>
-                    <span className="text-xs text-muted">#{copy.serialNo}{copy.mapRemarks ? ` · ${copy.mapRemarks}` : ""}</span>
-                  </li>
-                ))}
+                {row.copies.length ? row.copies.map((copy, i) => (
+                  <li key={i} className="rounded-lg bg-surface-secondary px-3 py-2 text-base font-bold">Rack {copy.rackNo} · Box {copy.boxNo}</li>
+                )) : <li className="text-sm text-muted">Not in library</li>}
               </ul>
-              <p className="mt-2 text-sm">{[detail(row, "quality"), detail(row, "design"), detail(row, "size"), detail(row, "shape")].filter(Boolean).join(" · ")}</p>
-              <p className="text-xs text-muted">Ground {detail(row, "groundColor")} · Border {detail(row, "borderColor")}</p>
-              <p className="text-xs text-muted">{row.productionOrderNo} · {row.rugItemNo} · {row.followUpPerson}</p>
+              <p className="mt-2 text-sm">{[row.quality, row.design, row.size, row.shape].filter(Boolean).join(" · ")}</p>
+              <p className="text-xs text-muted">Ground {row.groundColor} · Border {row.borderColor}</p>
+              <p className="text-xs text-muted">{row.productionOrderNo}</p>
               <div className="mt-3 flex flex-col gap-2">
                 {role !== "sketcher" ? assignControl(row) : null}
                 {statusControl(row)}

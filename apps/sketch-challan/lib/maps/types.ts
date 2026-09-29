@@ -1,32 +1,25 @@
-// Maps tab: which pending orders have their map sitting in the MAP Library (NAV-028, LOC-031),
-// and where every copy is. The manager assigns an order to a sketcher, who collects it and marks it picked up.
+// Maps tab: NAV-145 orders to Print or with a map Available, and where each map copy is in the
+// MAP Library (NAV-028, LOC-031). The manager assigns an order to a sketcher, who collects it and marks it picked up.
 
-// One physical copy in NAV-028, with the same details the MAP Library sheet (Test.xlsx) showed.
+// One physical copy in NAV-028 (LOC-031): only where it is (user, 2026-09-29).
 export interface MapCopy {
-  serialNo: string;
   rackNo: string; // as written in NAV-028
   boxNo: string;
-  mapRemarks: string;
-  quality: string;
-  design: string;
-  groundColor: string;
-  borderColor: string;
-  size: string;
-  shape: string;
 }
 
+// One NAV-145 row whose "Action to be Taken" is Print or Available, with its map looked up in NAV-028.
 export interface MapOrder {
   id: string; // production order + rug item
-  rugItemNo: string;
   productionOrderNo: string;
-  customerNo: string;
-  orderPriority: string;
-  pendingDays: string;
+  quality: string;
+  design: string;
+  size: string;
+  shape: string;
+  groundColor: string;
+  borderColor: string;
   mapItemNo: string;
-  mapDescription: string;
-  followUpPerson: string;
-  required: number; // "Req": pending orders needing this map. "Ava" is copies.length.
-  copies: MapCopy[];
+  action: string; // "Print" or "Available", as written in NAV-145
+  copies: MapCopy[]; // empty when the map has no usable copy in LOC-031
   assignedTo?: string; // sketcher name
   assignedAt?: string;
   pickedUpAt?: string;

@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { DEMO_COOKIE, getDemoSession } from "@/lib/demoAuth";
 import { env } from "@/lib/env";
-import { availableOrders, libraryCopies, mergeMapOrders, sheetRows } from "@/lib/maps/importMaps";
+import { libraryCopies, mapOrders, mergeMapOrders, sheetRows } from "@/lib/maps/importMaps";
 import { updateMaps } from "@/lib/maps/mapsStore";
 
 export const runtime = "nodejs";
@@ -70,7 +70,7 @@ export async function POST() {
     const inventory = await newestExcel(path.join(/*turbopackIgnore: true*/ inboxDir(), "inventory"), "inventory (NAV-028)");
     const ordersFile = await ordersReport();
     const copies = libraryCopies(sheetRows(inventory.bytes, "NAV-028"));
-    const incoming = availableOrders(ordersFile.rows, copies);
+    const incoming = mapOrders(ordersFile.rows, copies);
     const state = await updateMaps((current) => {
       const next = {
         orders: mergeMapOrders(current.orders, incoming),
@@ -79,7 +79,7 @@ export async function POST() {
       };
       return { state: next, result: next };
     });
-    return NextResponse.json({ ...state, available: incoming.length });
+    return NextResponse.json({ ...state, available: incoming.filter((order) => order.copies.length).length });
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     const message = code === "EBUSY" || code === "EPERM"

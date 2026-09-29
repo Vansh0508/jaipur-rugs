@@ -11,6 +11,7 @@ export function applyMapAction(order: MapOrder, action: MapAction, user: ActionU
       if (user.role === "sketcher") throw new Error("Only the Sketching Manager assigns maps.");
       if (order.pickedUpAt) throw new Error("This map was already picked up.");
       if (!DEMO_SKETCHERS.includes(action.sketcherName)) throw new Error("Choose a sketcher from the list.");
+      if (!order.copies.length) throw new Error(`${order.mapItemNo || "This order"} has no copy in the map library (LOC-031).`);
       // One copy serves one order: never send two people for the last copy. Re-assigning uses no extra copy.
       const holders = orders.filter((other) => other.id !== order.id && other.mapItemNo === order.mapItemNo && other.assignedTo);
       if (!order.assignedTo && holders.length >= order.copies.length) {
