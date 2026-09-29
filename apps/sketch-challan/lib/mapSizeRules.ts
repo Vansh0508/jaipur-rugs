@@ -78,6 +78,11 @@ export function formatFeetInches(inches: number): string {
   return rest ? `${feet}'${rest}` : `${feet}`;
 }
 
+// Map width/length for display: 9'8 when the sizes are whole inches (the rounding switch), else the decimal feet.
+export function showMapFeet(feet: number, whole?: boolean): string {
+  return whole && feet ? formatFeetInches(feet * 12) : String(feet);
+}
+
 export function mapSizeFor(rules: MapSizeRules, quality: string, widthIn: number, lengthIn: number): MapSizeResult {
   const order = `${formatFeetInches(widthIn)}X${formatFeetInches(lengthIn)}`;
   const set = ruleSetFor(rules, quality);

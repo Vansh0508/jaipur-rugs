@@ -17,6 +17,7 @@ import { pendingChange } from "@/lib/domain/approval";
 import { challanStatusLabel, shownChallanDate } from "@/lib/domain/assignments";
 import { sortChallans } from "@/lib/domain/challans";
 import { exportChallansToExcel } from "@/lib/exportToExcel";
+import { showMapFeet } from "@/lib/mapSizeRules";
 
 const PARTS = ["Full sketch", "Border", "Bicha", "Central field", "Length", "Width", "Texture / colouring"];
 const PRIORITIES = ["urgent", "high", "normal", "low"];
@@ -55,6 +56,7 @@ function cell(row: SketchChallan, id: ColId): string {
   if (id === "approvalStatus") return pendingChange(row) ? "Pending admin" : "—";
   if (id === "statusLabel") return challanStatusLabel(row);
   if (id === "challanDate") return shownChallanDate(row);
+  if (id === "mapWidthFt" || id === "mapLengthFt") return showMapFeet(row[id], row.mapSizeWhole);
   const value = row[id];
   return value == null || value === "" ? "—" : String(value);
 }

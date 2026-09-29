@@ -6,6 +6,7 @@ import type { ChallanDetailsPatch, SketchChallan } from "@/lib/domain/types";
 import { SKETCH_CATEGORIES } from "@/lib/domain/types";
 import { DEMO_SKETCHERS } from "@/lib/demoData";
 import { shownChallanDate } from "@/lib/domain/assignments";
+import { showMapFeet } from "@/lib/mapSizeRules";
 import { todayInIndia } from "@/lib/domain/workdays";
 
 const PARTS = ["Full sketch", "Border", "Bicha", "Central field", "Length", "Width", "Texture / colouring"];
@@ -92,8 +93,8 @@ export function PaperChallan({
             <tr>
               <td className={cell}><Ink value={row.quality} disabled={!canEdit} onChange={(value) => set({ quality: value }, "Quality changed.")} /></td>
               <td className={cell}><Ink value={row.shape} disabled={!canEdit} onChange={(value) => set({ shape: value }, "Shape changed.")} /></td>
-              <td className={cell}><Ink type="number" value={String(row.mapWidthFt)} disabled={!canEdit} onChange={(value) => set({ mapWidthFt: Number(value) || 0 }, "Width changed.")} /></td>
-              <td className={cell}><Ink type="number" value={String(row.mapLengthFt)} disabled={!canEdit} onChange={(value) => set({ mapLengthFt: Number(value) || 0 }, "Length changed.")} /></td>
+              <td className={cell}><Ink type="number" value={canEdit ? String(row.mapWidthFt) : showMapFeet(row.mapWidthFt, row.mapSizeWhole)} disabled={!canEdit} onChange={(value) => set({ mapWidthFt: Number(value) || 0 }, "Width changed.")} /></td>
+              <td className={cell}><Ink type="number" value={canEdit ? String(row.mapLengthFt) : showMapFeet(row.mapLengthFt, row.mapSizeWhole)} disabled={!canEdit} onChange={(value) => set({ mapLengthFt: Number(value) || 0 }, "Length changed.")} /></td>
               <td className={cell}><Ink type="number" value={String(row.areaSqFt)} disabled={!canEdit} onChange={(value) => set({ areaSqFt: Number(value) || 0 }, "Area changed.")} /></td>
               <td className={cell}><Ink type="number" value={String(row.quantity)} disabled={!canEdit} onChange={(value) => set({ quantity: Number(value) || 0 }, "Quantity changed.")} /></td>
             </tr>

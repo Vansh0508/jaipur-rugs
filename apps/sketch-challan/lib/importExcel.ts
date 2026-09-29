@@ -77,7 +77,7 @@ function cell(value: unknown): string {
 // With rules, NAV "Size" is the order size and map width/length come from the DND map-size rules.
 // NAV-145: only rows whose "Action to be Taken" is Print or Available become challans.
 const TAKEN_ACTIONS = new Set(["print", "available"]);
-const SIZE_FIELDS = ["mapWidthFt", "mapLengthFt", "areaSqFt", "orderSize", "mapSizeNote"] as const;
+const SIZE_FIELDS = ["mapWidthFt", "mapLengthFt", "areaSqFt", "orderSize", "mapSizeNote", "mapSizeWhole"] as const;
 
 export async function challansFromExcel(buffer: ArrayBuffer, rules?: MapSizeRules): Promise<SketchChallan[]> {
   const XLSX = await import("xlsx");
@@ -111,8 +111,13 @@ export function challansFromRows(rows: Record<string, unknown>[], rules?: MapSiz
     if ("action" in mapped && !TAKEN_ACTIONS.has(mapped.action!.toLowerCase())) continue;
     const order = mapped.size ? parseSizeInches(mapped.size) : null;
     const map = order && rules ? mapSizeFor(rules, mapped.quality ?? "", order[0], order[1]) : undefined;
-    const width = Number(mapped.mapWidthFt) || (map ? feet(map.widthIn) : order ? feet(order[0]) : 0);
-    const length = Number(mapped.mapLengthFt) || (map ? feet(map.lengthIn) : order ? feet(order[1]) : 0);
+    // Switch (off by default, 29 Sep meeting): map sizes in whole inches, .5 and up rounds up (9'7.5 -> 9'8).
+    const whole = process.env.SKETCH_CHALLAN_ROUND_MAP_SIZE === "true";
+    const inch = (value: number) => whole ? Math.round(value) : value;
+    const widthIn = map ? inch(map.widthIn) : order ? inch(order[0]) : 0;
+    const lengthIn = map ? inch(map.lengthIn) : order ? inch(order[1]) : 0;
+    const width = Number(mapped.mapWidthFt) || feet(widthIn);
+    const length = Number(mapped.mapLengthFt) || feet(lengthIn);
     // Only filled cells count as Excel-supplied: a blank cell (e.g. NAV's always-empty "Development By") never wipes a value.
     const excelFields = Object.keys(mapped).filter((field) => mapped[field] !== "" && field !== "size" && field !== "action") as (keyof SketchChallan)[];
     if (order) excelFields.push(...SIZE_FIELDS);
@@ -138,8 +143,9 @@ export function challansFromRows(rows: Record<string, unknown>[], rules?: MapSiz
       mapLengthFt: length,
       orderSize: mapped.size || undefined,
       mapSizeNote: map?.note,
+      mapSizeWhole: whole && Boolean(order) ? true : undefined,
       areaSqFt: Number(mapped.areaSqFt)
-        || (map ? Math.round((map.widthIn * map.lengthIn) / 144 * 100) / 100 : Math.round(width * length * 100) / 100),
+        || (map ? Math.round((widthIn * lengthIn) / 144 * 100) / 100 : Math.round(width * length * 100) / 100),
       quantity: Number(mapped.quantity) || 1,
       description: mapped.description ?? "",
       managerRemark1: mapped.managerRemark1 ?? "",

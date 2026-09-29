@@ -82,6 +82,8 @@ export interface SketchChallan {
   mapLengthFt: number;
   orderSize?: string;
   mapSizeNote?: string;
+  /** Map width/length were rounded to whole inches (SKETCH_CHALLAN_ROUND_MAP_SIZE): shown as feet'inches, e.g. 9'8. */
+  mapSizeWhole?: boolean;
   areaSqFt: number;
   quantity: number;
   description: string;
