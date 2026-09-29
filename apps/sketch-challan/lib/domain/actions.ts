@@ -1,6 +1,6 @@
 import { FIELD_LABELS, type ChallanDetailsPatch, type HandoverRequest, type SketchChallan, type SketchTask } from "./types";
 import { requestDetailChange, reviewDetailChange } from "./approval";
-import { challanStage, reviewTask, taskAssignments, transferTask } from "./assignments";
+import { challanStage, reviewTask, shownChallanDate, taskAssignments, transferTask } from "./assignments";
 import { extendDueDateForHold } from "./challans";
 import { nextDate, todayInIndia } from "./workdays";
 import { SKETCHER_ROSTER } from "../sketcherRoster";
@@ -44,6 +44,9 @@ function checkedPatch(patch: unknown): ChallanDetailsPatch {
       ? typeof value === "number" && Number.isFinite(value)
       : typeof value === "string" && (key !== "priority" || PRIORITIES.has(value));
     if (!valid) throw new Error(`${FIELD_LABELS[key as keyof ChallanDetailsPatch]} has an invalid value.`);
+    if (key === "challanDate" && (!/^\d{4}-\d{2}-\d{2}$/.test(value as string) || (value as string) < todayInIndia())) {
+      throw new Error("The challan date can't be before today.");
+    }
   }
   return patch as ChallanDetailsPatch;
 }
@@ -80,6 +83,8 @@ export function applyAction(row: SketchChallan, action: ChallanAction, user: Act
       }
       return {
         ...row,
+        // It goes out today: a new challan's date becomes today unless Karam set a later day.
+        challanDate: allotted ? row.challanDate : shownChallanDate(row),
         tasks: [...row.tasks, ...action.parts.map(({ sketcherName, assignedPart }): SketchTask => ({
           id: newId(), title: assignedPart, assignedPart, sketcherName, status: "assigned",
           assignments: [{ id: newId(), sketcherName, assignedOn: todayInIndia() }],

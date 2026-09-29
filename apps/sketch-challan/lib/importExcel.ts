@@ -26,8 +26,7 @@ const HEADER: Record<string, keyof SketchChallan | "size" | "action" | "skip"> =
   "production order no": "productionOrderNo",
   "production order number": "productionOrderNo",
   "po": "productionOrderNo",
-  "challan date": "challanDate",
-  "date": "challanDate",
+  // No "challan date": it is the day the challan goes out, set by the app (29 Sep meeting).
   "draftsman": "draftsman",
   "drafts man": "draftsman",
   "sketch category": "sketchCategory",
@@ -122,7 +121,7 @@ export function challansFromRows(rows: Record<string, unknown>[], rules?: MapSiz
       productionOrderNo,
       mapNo: mapped.mapNo ?? "",
       excelFields,
-      challanDate: mapped.challanDate ?? "",
+      challanDate: "",
       draftsman: mapped.draftsman ?? "",
       sketchCategory: mapped.sketchCategory ?? "",
       sizeType: mapped.sizeType ?? "",

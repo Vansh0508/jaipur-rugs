@@ -14,7 +14,7 @@ import type { SketchChallan } from "@/lib/domain/types";
 import { SKETCH_CATEGORIES } from "@/lib/domain/types";
 import { DEMO_SKETCHERS } from "@/lib/demoData";
 import { pendingChange } from "@/lib/domain/approval";
-import { challanStatusLabel } from "@/lib/domain/assignments";
+import { challanStatusLabel, shownChallanDate } from "@/lib/domain/assignments";
 import { sortChallans } from "@/lib/domain/challans";
 import { exportChallansToExcel } from "@/lib/exportToExcel";
 
@@ -54,6 +54,7 @@ function cell(row: SketchChallan, id: ColId): string {
   if (id === "assigned") return row.tasks.map((task) => `${task.sketcherName} (${task.assignedPart})`).join(", ") || "—";
   if (id === "approvalStatus") return pendingChange(row) ? "Pending admin" : "—";
   if (id === "statusLabel") return challanStatusLabel(row);
+  if (id === "challanDate") return shownChallanDate(row);
   const value = row[id];
   return value == null || value === "" ? "—" : String(value);
 }
@@ -155,7 +156,7 @@ export function ChallanTable({
     // Default order is the design rule: urgent first, then by due date. Header clicks re-sort.
     return sortChallans(rows)
       .filter((row) => !needle || TABLE_COLUMNS.some((col) => cell(row, col.id).toLowerCase().includes(needle)))
-      .map((row) => ({ ...row, assigned: cell(row, "assigned"), approvalStatus: cell(row, "approvalStatus"), statusLabel: cell(row, "statusLabel") }));
+      .map((row) => ({ ...row, assigned: cell(row, "assigned"), approvalStatus: cell(row, "approvalStatus"), statusLabel: cell(row, "statusLabel"), challanDate: shownChallanDate(row) }));
   }, [rows, query]);
   const cols = TABLE_COLUMNS.filter((col) => visible[col.id]);
   const columns: GridColDef[] = useMemo(() => [...(rowActions ? [{

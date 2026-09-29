@@ -21,6 +21,13 @@ export function challanStage(row: SketchChallan): ChallanStage {
   return "allotted";
 }
 
+// Challan date = the day the challan goes out (29 Sep meeting): a new challan shows today unless Karam set a later
+// day; once allotted it keeps the date it went out on.
+export function shownChallanDate(row: SketchChallan, today = todayInIndia()): string {
+  if (row.tasks.length > 0) return row.challanDate || today;
+  return row.challanDate && row.challanDate > today ? row.challanDate : today;
+}
+
 // The one status word everyone sees, on the challan and in the tables (29 Sep meeting).
 export function challanStatusLabel(row: SketchChallan): string {
   if (row.status === "on_hold") return "On hold";
