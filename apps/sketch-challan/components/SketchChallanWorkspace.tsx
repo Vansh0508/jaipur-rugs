@@ -9,7 +9,7 @@ import { ChallanTable } from "@/components/ChallanTable";
 import { AssignmentHistory, ChallanActivity } from "@/components/AssignmentHistory";
 import { pendingChange } from "@/lib/domain/approval";
 import { applyAction, type ChallanAction } from "@/lib/domain/actions";
-import { challanStage, rowsForSketcher, type ChallanStage } from "@/lib/domain/assignments";
+import { challanStage, challanStatusLabel, rowsForSketcher, type ChallanStage } from "@/lib/domain/assignments";
 import { SketcherDirectory } from "@/components/SketcherDirectory";
 import { HomeCards, type Section } from "@/components/HomeCards";
 import { MapsTab } from "@/components/MapsTab";
@@ -228,7 +228,12 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
             <div className="no-print flex gap-2">
               <Button variant="secondary" onPress={() => setSelectedId(null)}>Back</Button>
               <Button variant="secondary" onPress={() => window.print()}>Print</Button>
+              {/* Hold: the Sketching Manager and Admin only (29 Sep meeting); resuming moves the due date out by the days held. */}
+              {(role === "manager" || role === "admin") && challanStage(selected) !== "approved" ? (selected.status === "on_hold"
+                ? <Button variant="secondary" onPress={() => tryAct({ type: "resume", id: selected.id })}>Resume</Button>
+                : <Button variant="secondary" onPress={() => tryAct({ type: "hold", id: selected.id })}>Put on hold</Button>) : null}
             </div>
+            <p className="no-print text-sm">Status: <strong className={selected.status === "on_hold" ? "text-danger" : undefined}>{challanStatusLabel(selected)}</strong>{selected.status === "on_hold" && selected.heldAt ? ` since ${new Date(selected.heldAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}{selected.dueDate ? ` · Due ${selected.dueDate}` : ""}</p>
             {actionError ? <p className="text-sm text-danger">{actionError}</p> : null}
             {role === "admin" && pending ? (
               <div className="no-print rounded-2xl border border-border bg-surface-secondary p-4">
@@ -285,7 +290,7 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
                 {selected.tasks.filter((task) => task.sketcherName === user.sketcherName && task.status !== "completed").map((task) => (
                   <div key={task.id} className="flex items-center gap-2">
                     <Chip size="sm"><Chip.Label>{task.assignedPart}</Chip.Label></Chip>
-                    {task.status === "submitted" ? <span className="text-sm text-muted">{role === "manager" ? "Submitted: approve it under Check submitted work" : "Sent to the Sketching Manager for checking / जाँच के लिए भेजा"}</span> : (<>
+                    {selected.status === "on_hold" ? <span className="text-sm text-danger">On hold / रोका गया</span> : task.status === "submitted" ? <span className="text-sm text-muted">{role === "manager" ? "Submitted: approve it under Check submitted work" : "Sent to the Sketching Manager for checking / जाँच के लिए भेजा"}</span> : (<>
                       {task.status === "blocked" ? <span className="text-sm text-danger">Blocked / रुका{task.blockedReason ? `: ${task.blockedReason}` : ""}</span> : null}
                       {/* Start once; after that the part just shows as in progress until Done. */}
                       {task.status === "in_progress"

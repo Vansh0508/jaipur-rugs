@@ -90,6 +90,8 @@ export interface SketchChallan {
   sketcherRemark: string;
   dueDate: string;
   status: ChallanStatus;
+  /** When it was put on hold (status on_hold); resuming moves the due date out by the days held. */
+  heldAt?: string;
   priority: ChallanPriority;
   createdAt: string;
   tasks: SketchTask[];

@@ -1,6 +1,7 @@
 import { FIELD_LABELS, type ChallanDetailsPatch, type HandoverRequest, type SketchChallan, type SketchTask } from "./types";
 import { requestDetailChange, reviewDetailChange } from "./approval";
-import { reviewTask, taskAssignments, transferTask } from "./assignments";
+import { challanStage, reviewTask, taskAssignments, transferTask } from "./assignments";
+import { extendDueDateForHold } from "./challans";
 import { nextDate, todayInIndia } from "./workdays";
 import { SKETCHER_ROSTER } from "../sketcherRoster";
 import { newId } from "../newId";
@@ -17,7 +18,9 @@ export type ChallanAction =
   | { type: "requestChange"; id: string; changes: ChallanDetailsPatch; reason: string; handover?: HandoverRequest }
   | { type: "reviewChange"; id: string; requestId: string; approved: boolean; note: string }
   | { type: "reviewTask"; id: string; taskId: string; approved: boolean; note: string }
-  | { type: "handover"; id: string; taskId: string; sketcherName: string; effectiveOn: string; reason: string; excludedDates: string[] };
+  | { type: "handover"; id: string; taskId: string; sketcherName: string; effectiveOn: string; reason: string; excludedDates: string[] }
+  | { type: "hold"; id: string }
+  | { type: "resume"; id: string };
 
 const ASSIGNABLE = new Set<string>(SKETCHER_ROSTER.map((person) => person.name));
 const NUMBER_FIELDS = new Set(["orderCount", "mapWidthFt", "mapLengthFt", "areaSqFt", "quantity"]);
@@ -88,6 +91,7 @@ export function applyAction(row: SketchChallan, action: ChallanAction, user: Act
       const task = row.tasks.find((item) => item.id === action.taskId);
       // Whoever holds the part: a sketcher, or the manager on a part he took himself.
       if (role === "admin" || !task || task.sketcherName !== user.sketcherName) deny();
+      if (row.status === "on_hold") throw new Error("This challan is on hold. Wait until it is resumed.");
       // The holder only starts or submits; "completed" is the manager's approval (reviewTask).
       if (action.status !== "in_progress" && action.status !== "submitted") deny();
       if (task.status === "completed" || task.status === "submitted") throw new Error("This part is already done.");
@@ -120,6 +124,22 @@ export function applyAction(row: SketchChallan, action: ChallanAction, user: Act
     case "reviewTask":
       if (role !== "manager") deny();
       return reviewTask(row, action.taskId, action.approved, action.note, now);
+    // Hold pauses a challan (Sketching Manager and Admin only; a sketcher cannot hold). Resume moves the due date out.
+    case "hold":
+      if (role !== "manager" && role !== "admin") deny();
+      if (row.status === "on_hold") throw new Error("This challan is already on hold.");
+      if (challanStage(row) === "approved") throw new Error("An approved challan can't be put on hold.");
+      return { ...row, status: "on_hold", heldAt: now, activity: log(row, `Put on hold by the ${role === "admin" ? "admin" : "Sketching Manager"}.`, now) };
+    case "resume": {
+      if (role !== "manager" && role !== "admin") deny();
+      if (row.status !== "on_hold") throw new Error("This challan is not on hold.");
+      const dueDate = row.dueDate && row.heldAt ? extendDueDateForHold(row.dueDate, row.heldAt, now) : row.dueDate;
+      const { heldAt: _heldAt, ...rest } = row;
+      return {
+        ...rest, status: "active", dueDate,
+        activity: log(row, `Resumed by the ${role === "admin" ? "admin" : "Sketching Manager"}.${dueDate !== row.dueDate ? ` Due date moved from ${row.dueDate} to ${dueDate}.` : ""}`, now),
+      };
+    }
     case "handover":
       if (role !== "admin") deny();
       return transferTask(row, action.taskId, checkedSketcher(action.sketcherName), action.effectiveOn, action.reason, action.excludedDates, newId(), now);

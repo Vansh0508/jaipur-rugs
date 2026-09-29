@@ -21,6 +21,16 @@ export function challanStage(row: SketchChallan): ChallanStage {
   return "allotted";
 }
 
+// The one status word everyone sees, on the challan and in the tables (29 Sep meeting).
+export function challanStatusLabel(row: SketchChallan): string {
+  if (row.status === "on_hold") return "On hold";
+  const stage = challanStage(row);
+  if (stage === "new") return "New";
+  if (stage === "review") return "Done (waiting for approval)";
+  if (stage === "approved") return "Approved";
+  return row.tasks.some((task) => task.status === "in_progress") ? "In progress" : "Allotted";
+}
+
 // Manager's check of submitted work: approve finalises it, send back returns it to the same sketcher as assigned.
 export function reviewTask(row: SketchChallan, taskId: string, approved: boolean, note: string, now: string): SketchChallan {
   const task = row.tasks.find((item) => item.id === taskId);
