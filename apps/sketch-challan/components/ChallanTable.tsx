@@ -130,12 +130,15 @@ export function ChallanTable({
   onRefreshExcel,
   onPatch,
   onAssign,
+  rowActions,
 }: {
   rows: SketchChallan[];
   onPreview: (id: string) => void;
   onRefreshExcel?: () => Promise<string>;
   onPatch?: (id: string, patch: Partial<SketchChallan>, message: string) => void;
   onAssign?: (id: string, sketcherName: string, assignedPart: string) => void;
+  /** Buttons for the first column (Approve / Send back); clicks there don't open the challan. */
+  rowActions?: (row: SketchChallan) => React.ReactNode;
 }) {
   const [visible, setVisible] = useState<Record<string, boolean>>(() => Object.fromEntries(TABLE_COLUMNS.map((col) => [col.id, true])));
   const [error, setError] = useState("");
@@ -152,12 +155,17 @@ export function ChallanTable({
       .map((row) => ({ ...row, assigned: cell(row, "assigned"), approvalStatus: cell(row, "approvalStatus") }));
   }, [rows, query]);
   const cols = TABLE_COLUMNS.filter((col) => visible[col.id]);
-  const columns: GridColDef[] = useMemo(() => TABLE_COLUMNS.map((col) => ({
+  const columns: GridColDef[] = useMemo(() => [...(rowActions ? [{
+    field: "__actions", headerName: "Action", minWidth: 260, sortable: false, filterable: false, disableColumnMenu: true,
+    renderCell: (params: { row: SketchChallan }) => (
+      <div className="flex h-full flex-wrap items-center gap-1 py-1" onClick={stop} onMouseDown={stop}>{rowActions(params.row)}</div>
+    ),
+  } satisfies GridColDef] : []), ...TABLE_COLUMNS.map((col): GridColDef => ({
     field: col.id,
     headerName: col.label,
     flex: 1,
     minWidth: col.id === "assigned" ? 320 : col.id === "sketchCategory" ? 220 : col.id.includes("Remark") ? 200 : 140,
-    renderCell: !onPatch && !onAssign ? undefined : (params) => {
+    renderCell: !onPatch && !onAssign ? undefined : (params: { row: SketchChallan; value?: unknown }) => {
       const row = params.row as SketchChallan;
       if (col.id === "sketchCategory" && onPatch && row.tasks.length === 0) {
         return (
@@ -182,7 +190,7 @@ export function ChallanTable({
       }
       return params.value == null || params.value === "" ? "—" : String(params.value);
     },
-  })), [onAssign, onPatch]);
+  }))], [onAssign, onPatch, rowActions]);
 
   // Drag anywhere on the rows to scroll (scrollbars are hidden). A drag doesn't count as a row click.
   const wrap = useRef<HTMLDivElement>(null);
@@ -312,7 +320,7 @@ export function ChallanTable({
           disableRowSelectionOnClick
           rowSelectionModel={selection}
           onRowSelectionModelChange={setSelection}
-          getRowHeight={() => onAssign ? 72 : 52}
+          getRowHeight={() => onAssign || rowActions ? 72 : 52}
           getRowClassName={(params) => params.indexRelativeToCurrentPage % 2 === 1 ? "row-even" : "row-odd"}
           sx={{
             border: 0, cursor: "grab", userSelect: "none",
