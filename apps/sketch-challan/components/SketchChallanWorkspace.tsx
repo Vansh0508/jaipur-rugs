@@ -55,11 +55,16 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
     : tab === "sketchers" || tab === "home" || tab === "maps" ? [] : tab === "requests" ? requestRows : byStage[tab];
   const allotted = Boolean(selected && selected.tasks.length > 0);
   const holdsPart = Boolean(selected?.tasks.some((task) => task.sketcherName === user.sketcherName));
-  const TABS: [Section, string][] = [
-    ["new", `New challan (${byStage.new.length})`],
+  // The four stages are tabs inside "Sketch Challan"; the left pane lists the groups (29 Sep meeting).
+  const STAGES: [ChallanStage, string][] = [
+    ["new", `New (${byStage.new.length})`],
     ["allotted", `Allotted (${byStage.allotted.length})`],
     ["review", `Sketch approval (${byStage.review.length})`],
     ["approved", `Approved (${byStage.approved.length})`],
+  ];
+  const inStages = STAGES.some(([id]) => id === tab);
+  const TABS: [Section, string][] = [
+    ["new", `Sketch Challan (${rows.length})`],
     ["requests", `Admin approvals (${requestRows.length})`],
     ["sketchers", "Sketchers"],
     ...(role === "manager" ? [["mine", `My work (${mine.length})`] as [Section, string]] : []),
@@ -200,7 +205,7 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
                 key={id}
                 type="button"
                 onClick={() => openTab(id)}
-                className={"rounded-lg px-3 py-2 text-left text-sm " + (tab === id ? "bg-accent/10 font-semibold text-accent" : "text-foreground hover:bg-surface-secondary")}
+                className={"rounded-lg px-3 py-2 text-left text-sm " + ((id === "new" ? inStages : tab === id) ? "bg-accent/10 font-semibold text-accent" : "text-foreground hover:bg-surface-secondary")}
               >
                 {label}
               </button>
@@ -309,8 +314,22 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
         ) : (
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-semibold">{role === "sketcher" ? "My work / मेरा काम" : tab === "home" ? "Sketch Challan" : TABS.find(([id]) => id === tab)?.[1]}</h1>
+              <h1 className="text-2xl font-semibold">{role === "sketcher" ? "My work / मेरा काम" : tab === "home" || inStages ? "Sketch Challan" : TABS.find(([id]) => id === tab)?.[1]}</h1>
             </div>
+            {role !== "sketcher" && inStages ? (
+              <nav className="flex gap-1 overflow-x-auto border-b border-border">
+                {STAGES.map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => openTab(id)}
+                    className={"shrink-0 border-b-2 px-3 py-2 text-sm " + (tab === id ? "border-accent font-semibold text-accent" : "border-transparent text-muted hover:text-foreground")}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </nav>
+            ) : null}
             {actionError ? <p className="text-sm text-danger">{actionError}</p> : null}
             {role !== "sketcher" && tab === "home" ? <HomeCards sections={{ ...byStage, requests: requestRows }} maps={role === "admin" ? maps.orders : undefined} mine={role === "manager" ? mine : undefined} onOpen={openTab} /> : null}
             {role !== "sketcher" && tab === "home" ? null : role !== "sketcher" && tab === "sketchers" ? <SketcherDirectory rows={rows} onOpen={setSelectedId} picked={directoryPerson} onPick={setDirectoryPerson} /> : <ChallanTable
