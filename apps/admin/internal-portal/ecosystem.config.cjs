@@ -11,7 +11,12 @@
 // Always confirm with `ls -l /proc/$(pm2 pid internal-portal)/exe` — `pm2 describe` reports
 // the configured interpreter, not the binary the process actually landed on.
 const nodeBin = process.env.PM2_NODE_INTERPRETER;
-const NEXT_CLI = "node_modules/next/dist/bin/next";
+// Unlike the DND apps (which have their own fully-hoisted local node_modules), this app
+// is a real pnpm workspace member under node-linker=hoisted: `next` physically lives only
+// in the repo-root node_modules, not a local one. require.resolve follows Node's normal
+// parent-directory walk from this file's own location, so it finds `next` whether it's
+// hoisted locally (DND apps) or only at the workspace root (here) — no hardcoded depth.
+const NEXT_CLI = require.resolve("next/dist/bin/next");
 
 // Already running on the server at 3003 — matches the live deployment, not a fresh pick.
 const PORT = process.env.PORT || 3003;

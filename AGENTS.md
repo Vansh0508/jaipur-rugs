@@ -173,3 +173,23 @@ Do not write frontend code against a schema that hasn't had its RLS policies def
 - ~~Where `db-management` lives~~ — decided in Section 4: Supabase Edge Functions under `supabase/functions/`, called via `packages/db-management-client`.
 - **Every migration that lands must be recorded in `db/MIGRATIONS.md`** (project, version, module, repo file), not just written as a `.sql` file — a `db/<module>/*.sql` file existing on disk is not proof it was ever applied; `db/MIGRATIONS.md` is what confirms that. Treat updating it as part of step 5 of Section 3.1, not an optional afterthought.
 - **RLS helper functions belong in a `private` schema**, not `public` — every function created in `public` is auto-exposed by PostgREST as a callable `/rest/v1/rpc/<fn>` endpoint, which let arbitrary callers probe internal helpers like `employee_has_permission` directly with any ID (caught by the security advisor on the team-members module, fixed by `alter function ... set schema private`). Create new internal-only helper functions directly in `private` from the start; existing RLS policies keep working if a function is moved there later since policy expressions bind to the function's OID, not its schema-qualified name.
+
+---
+
+## 11. Task Isolation — Git Worktrees per Task
+
+Every task (feature, fix, or migration) gets its own worktree and branch, created from the latest `origin/main`. Never build on `main`, and never reuse another agent's worktree or branch. This applies across every coding agent used on this repo (Claude Code, Codex, Cursor, humans) — it's what lets multiple agents work on the same repo in parallel without conflicts.
+
+**Harness deltas:**
+- **Claude Code**: the harness creates and manages worktrees itself (under `.claude/worktrees/<name>`). Don't run `git worktree add`/`remove` by hand — keep the harness-assigned branch name and just follow the sync/scope-check/cleanup steps below.
+- **Cursor-managed worktrees** (branches named `worktree-*`): same idea — keep the assigned branch/worktree, apply the sync, scope-check, and cleanup steps.
+- **Any other harness**: create the worktree manually — `git worktree add <worktrees-dir>/<task-name> -b agent/<task-name> origin/main` from the repo root, using a gitignored worktrees directory (e.g. `.claude/worktrees/` or `.worktrees/`) and the `agent/` branch prefix.
+
+**Steps (all harnesses):**
+1. **Sync**: `git fetch origin` before starting.
+2. **Scope check**: run `gh pr list` and skim open PRs' changed files (`gh pr diff <n> --name-only`). If your task touches files another open PR is editing, stop and ask before proceeding. Also check for uncommitted work in the checkout — another agent may be mid-task.
+3. **Name the task**: lowercase-with-hyphens plus a short unique suffix (e.g. `orders-sync-retry-0916a`). If a worktree/branch with that name already exists, pick a different name — never force or reuse.
+4. **Verify** you're on the new branch, not `main` (`git branch --show-current`), then install dependencies fresh inside the worktree — worktrees don't share `node_modules` — and confirm the runtime version the repo requires before running anything.
+5. **Cleanup**, after the PR is merged or closed: remove the worktree and delete the branch (`git worktree remove ...`, `git branch -D ...` — `-D` is expected, since `-d` refuses after a squash/rebase merge even though the work landed).
+
+**Repo-specific hazard this project adds on top of the generic skill:** per Section 3, there is **one Supabase project** shared by every app and every worktree. A worktree isolates your git checkout, but it does **not** isolate the database: two agents in two worktrees can still collide by writing conflicting migrations against the same live project, or by running a migration against `matnispbauvvlnbsuzxq` while another agent's is mid-flight. Before applying any migration from inside a worktree, re-run the scope check (step 2) specifically against `db/MIGRATIONS.md` and any open PRs touching `db/`, not just against the file tree. The same goes for dev-server ports and the pnpm lockfile (Section 6 of the generic worktree skill) — those are also global across worktrees in this repo, not per-app.

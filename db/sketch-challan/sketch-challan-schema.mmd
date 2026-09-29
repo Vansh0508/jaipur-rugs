@@ -1,0 +1,190 @@
+%% Sketch Challan module ERD — apps/sketch-challan.
+%% Revised 2026-09-28 to match migrations 001-004 and the running app. Design only; not migrated.
+%%
+%% Intake is the live NAV Excel refresh (no PDF upload, no documents). Roles: one Sketching Manager
+%% (the Sketching Manager; he may also hold parts), Sketchers, and the Hub's Admin role. A role counts via
+%% employees.primary_role_id or a current employee_roles row.
+%%
+%% Challans: active/on_hold/completed/cancelled. Tasks: assigned -> in_progress -> submitted (Done)
+%% -> completed (manager approves) or back to assigned (sent back). blocked/clarification_requested
+%% are kept for later. Each task has one active assignment; handovers keep workday credit.
+%%
+%% VERSIONS and ACTIVITY are append-only (no update/delete for anyone; no direct inserts).
+
+erDiagram
+    ROLES ||--o{ EMPLOYEES : "primary role"
+    ROLES ||--o{ EMPLOYEE_ROLES : "assigned through"
+    EMPLOYEES ||--o{ EMPLOYEE_ROLES : "holds"
+    ROLES ||--o| SKETCH_CHALLAN_ROLE_BINDINGS : "is app role"
+    EMPLOYEES ||--o{ SKETCH_CHALLANS : "refreshed by"
+    EMPLOYEES ||--o{ SKETCH_CHALLAN_TASKS : "current holder"
+    EMPLOYEES ||--o{ SKETCH_CHALLAN_TASK_ASSIGNMENTS : "assigned sketcher"
+    EMPLOYEES ||--o{ SKETCH_CHALLAN_CHANGE_REQUESTS : "requests / reviews"
+    EMPLOYEES ||--o{ SKETCH_CHALLAN_VERSIONS : "changes"
+    EMPLOYEES ||--o{ SKETCH_CHALLAN_ACTIVITY : "acts"
+    EMPLOYEES ||--o{ SKETCH_CHALLAN_NOTIFICATIONS : "receives"
+
+    SKETCH_CHALLANS ||--|{ SKETCH_CHALLAN_ITEMS : "line 1 today"
+    SKETCH_CHALLANS ||--o{ SKETCH_CHALLAN_TASKS : "design parts"
+    SKETCH_CHALLAN_TASKS ||--|{ SKETCH_CHALLAN_TASK_ASSIGNMENTS : "assignment history"
+    SKETCH_CHALLANS ||--o{ SKETCH_CHALLAN_CHANGE_REQUESTS : "one pending at a time"
+    SKETCH_CHALLANS ||--|{ SKETCH_CHALLAN_VERSIONS : "immutable versions"
+    SKETCH_CHALLANS ||--o{ SKETCH_CHALLAN_ACTIVITY : "history"
+    SKETCH_CHALLAN_TASKS ||--o{ SKETCH_CHALLAN_ACTIVITY : "task history"
+    SKETCH_CHALLANS ||--o{ SKETCH_CHALLAN_NOTIFICATIONS : "emits"
+
+    EMPLOYEES {
+        uuid id PK
+        text full_name
+        uuid primary_role_id FK "how the Hub assigns roles"
+        enum status
+    }
+
+    ROLES {
+        uuid id PK
+        text name "shared roles table"
+    }
+
+    EMPLOYEE_ROLES {
+        uuid id PK
+        uuid employee_id FK
+        uuid role_id FK
+        date valid_from
+        date valid_to
+    }
+
+    SKETCH_CHALLAN_ROLE_BINDINGS {
+        text role_key PK "sketching_manager / sketcher / admin"
+        uuid role_id FK "unique"
+        timestamptz created_at
+    }
+
+    SKETCH_CHALLANS {
+        uuid id PK
+        enum source_type "excel/api"
+        text external_source_id
+        uuid created_by_employee_id FK
+        text source_actor_label "frozen identity of who refreshed"
+        text production_order_no UK "one challan per production order"
+        text map_no "NAV-145 Map No"
+        jsonb original_source_payload "raw report row"
+        text_array excel_fields "fields the last refresh supplied"
+        date challan_date "nullable"
+        text draftsman
+        text sketch_category "blank or one of 16 office values"
+        text size_type
+        text developer
+        int order_count
+        text design
+        text ground
+        text border
+        text matching_code
+        text substitute_design
+        text order_size "NAV order size"
+        text map_size_note "from the DND map-size rules"
+        text description
+        text design_remarks "app managerRemark1"
+        text substitute_remarks "app managerRemark2"
+        text sketcher_remark "current holder only"
+        enum status "active/on_hold/completed/cancelled"
+        enum priority "urgent/high/normal/low"
+        date due_date "nullable"
+        date original_due_date
+        timestamptz hold_started_at
+        int accumulated_hold_minutes
+        timestamptz completed_at
+        timestamptz cancelled_at
+        timestamptz reopened_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    SKETCH_CHALLAN_ITEMS {
+        uuid id PK
+        uuid challan_id FK
+        int line_no "unique per challan"
+        text quality
+        text shape
+        numeric map_width_ft
+        numeric map_length_ft
+        numeric area_sq_ft
+        int quantity
+    }
+
+    SKETCH_CHALLAN_TASKS {
+        uuid id PK
+        uuid challan_id FK
+        text title
+        text assigned_part
+        enum status "assigned/in_progress/blocked/clarification_requested/submitted/completed"
+        uuid current_sketcher_id FK
+        uuid assigned_by FK
+        timestamptz started_at
+        timestamptz submitted_at
+        timestamptz completed_at
+        text blocked_reason
+    }
+
+    SKETCH_CHALLAN_TASK_ASSIGNMENTS {
+        uuid id PK
+        uuid task_id FK
+        uuid sketcher_id FK
+        uuid assigned_by FK
+        timestamptz assigned_at
+        date assigned_on
+        timestamptz unassigned_at "null means current"
+        date work_started_on "credit starts at Start"
+        date work_ended_on "pauses at submit, ends at handover"
+        date_array excluded_work_dates "leave"
+        text transfer_reason
+    }
+
+    SKETCH_CHALLAN_CHANGE_REQUESTS {
+        uuid id PK
+        uuid challan_id FK
+        uuid requested_by FK
+        text reason
+        jsonb proposed_changes "may be empty"
+        jsonb handover "taskId/sketcherId/effectiveOn/reason/excludedDates"
+        enum status "pending/approved/rejected"
+        uuid reviewed_by FK "never the requester"
+        timestamptz reviewed_at
+        text review_note
+    }
+
+    SKETCH_CHALLAN_VERSIONS {
+        uuid id PK
+        uuid challan_id FK
+        bigint version_no "unique per challan"
+        uuid actor_employee_id FK
+        text actor_label
+        text origin "action name"
+        jsonb snapshot "complete challan row"
+        jsonb changes "action payload"
+        timestamptz created_at
+    }
+
+    SKETCH_CHALLAN_ACTIVITY {
+        uuid id PK
+        uuid challan_id FK
+        uuid task_id FK "nullable"
+        enum activity_type
+        uuid actor_employee_id FK
+        text actor_label
+        text message
+        jsonb metadata
+        timestamptz created_at
+    }
+
+    SKETCH_CHALLAN_NOTIFICATIONS {
+        uuid id PK
+        uuid recipient_employee_id FK
+        uuid challan_id FK
+        uuid task_id FK
+        enum notification_type "assignment/task_update/challan_update/reminder/transfer/system"
+        text title
+        text message
+        text dedupe_key UK
+        timestamptz read_at
+        timestamptz created_at
+    }
