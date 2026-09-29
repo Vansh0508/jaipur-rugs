@@ -1,5 +1,6 @@
 import type { SketchChallan } from "./domain/types";
 import { mapSizeFor, type MapSizeRules } from "./mapSizeRules";
+import { newId } from "./newId";
 
 function norm(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -117,7 +118,7 @@ export function challansFromRows(rows: Record<string, unknown>[], rules?: MapSiz
     const excelFields = Object.keys(mapped).filter((field) => mapped[field] !== "" && field !== "size" && field !== "action") as (keyof SketchChallan)[];
     if (order) excelFields.push(...SIZE_FIELDS);
     out.set(productionOrderNo, {
-      id: crypto.randomUUID(),
+      id: newId(),
       productionOrderNo,
       mapNo: mapped.mapNo ?? "",
       excelFields,
@@ -150,7 +151,7 @@ export function challansFromRows(rows: Record<string, unknown>[], rules?: MapSiz
       priority: "normal",
       createdAt: new Date().toISOString(),
       tasks: [],
-      activity: [{ id: crypto.randomUUID(), message: "Excel refreshed.", at: new Date().toISOString() }],
+      activity: [{ id: newId(), message: "Excel refreshed.", at: new Date().toISOString() }],
     });
   }
   if (out.size === 0) throw new Error("No Production Order rows found in this Excel file.");
@@ -185,7 +186,7 @@ export function mergeExcelRows(current: SketchChallan[], incoming: SketchChallan
       if (LABEL[field]) changes.push(`${LABEL[field]}: ${before ?? "—"} → ${row[field] ?? "—"}`);
     }
     if (changes.length && keep.tasks.length) {
-      next.activity = [{ id: crypto.randomUUID(), message: `Live Excel changed ${changes.join("; ")}.`, at: new Date().toISOString() }, ...keep.activity];
+      next.activity = [{ id: newId(), message: `Live Excel changed ${changes.join("; ")}.`, at: new Date().toISOString() }, ...keep.activity];
     }
     return next;
   })];

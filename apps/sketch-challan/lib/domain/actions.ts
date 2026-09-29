@@ -3,6 +3,7 @@ import { requestDetailChange, reviewDetailChange } from "./approval";
 import { reviewTask, taskAssignments, transferTask } from "./assignments";
 import { nextDate, todayInIndia } from "./workdays";
 import { SKETCHER_ROSTER } from "../sketcherRoster";
+import { newId } from "../newId";
 
 export type ActionUser = { role: "manager" | "sketcher" | "admin"; sketcherName?: string };
 type Part = { sketcherName: string; assignedPart: string };
@@ -27,7 +28,7 @@ function deny(): never {
 }
 
 function log(row: SketchChallan, message: string, now: string): SketchChallan["activity"] {
-  return [{ id: crypto.randomUUID(), message, at: now }, ...row.activity];
+  return [{ id: newId(), message, at: now }, ...row.activity];
 }
 
 // Requests arrive as JSON from the browser, so check them: only form fields, each with the right type.
@@ -77,10 +78,10 @@ export function applyAction(row: SketchChallan, action: ChallanAction, user: Act
       return {
         ...row,
         tasks: [...row.tasks, ...action.parts.map(({ sketcherName, assignedPart }): SketchTask => ({
-          id: crypto.randomUUID(), title: assignedPart, assignedPart, sketcherName, status: "assigned",
-          assignments: [{ id: crypto.randomUUID(), sketcherName, assignedOn: todayInIndia() }],
+          id: newId(), title: assignedPart, assignedPart, sketcherName, status: "assigned",
+          assignments: [{ id: newId(), sketcherName, assignedOn: todayInIndia() }],
         }))],
-        activity: [...action.parts.map((part) => ({ id: crypto.randomUUID(), at: now, message: `Assigned ${part.assignedPart} to ${part.sketcherName}.` })), ...row.activity],
+        activity: [...action.parts.map((part) => ({ id: newId(), at: now, message: `Assigned ${part.assignedPart} to ${part.sketcherName}.` })), ...row.activity],
       };
     }
     case "status": {
@@ -112,7 +113,7 @@ export function applyAction(row: SketchChallan, action: ChallanAction, user: Act
     case "requestChange":
       if (role !== "manager") deny();
       if (action.handover) checkedSketcher(action.handover.sketcherName);
-      return requestDetailChange(row, checkedPatch(action.changes ?? {}), action.reason, now, crypto.randomUUID(), action.handover);
+      return requestDetailChange(row, checkedPatch(action.changes ?? {}), action.reason, now, newId(), action.handover);
     case "reviewChange":
       if (role !== "admin") deny();
       return reviewDetailChange(row, action.requestId, action.approved, now, action.note);
@@ -121,6 +122,6 @@ export function applyAction(row: SketchChallan, action: ChallanAction, user: Act
       return reviewTask(row, action.taskId, action.approved, action.note, now);
     case "handover":
       if (role !== "admin") deny();
-      return transferTask(row, action.taskId, checkedSketcher(action.sketcherName), action.effectiveOn, action.reason, action.excludedDates, crypto.randomUUID(), now);
+      return transferTask(row, action.taskId, checkedSketcher(action.sketcherName), action.effectiveOn, action.reason, action.excludedDates, newId(), now);
   }
 }

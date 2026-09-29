@@ -1,5 +1,6 @@
 import type { SketchChallan, SketchTask } from "./types";
 import { assignmentWorkdays, countWorkdays, todayInIndia } from "./workdays";
+import { newId } from "../newId";
 
 export function taskAssignments(task: SketchTask, row: SketchChallan) {
   return task.assignments?.length ? task.assignments : [{
@@ -36,7 +37,7 @@ export function reviewTask(row: SketchChallan, taskId: string, approved: boolean
       assignments: approved ? assignments : [...assignments.slice(0, -1), { ...active, endedOn: undefined }],
     }),
     activity: [{
-      id: crypto.randomUUID(), at: now,
+      id: newId(), at: now,
       message: approved
         ? `Sketching Manager approved ${task.assignedPart} by ${task.sketcherName}.`
         : `Sketching Manager sent ${task.assignedPart} back to ${task.sketcherName}: ${note.trim()}`,
@@ -88,7 +89,7 @@ export function transferTask(
       ? { ...item, sketcherName: newSketcher, status: "assigned", assignments: updated }
       : item),
     activity: [{
-      id: crypto.randomUUID(), at: now,
+      id: newId(), at: now,
       message: `${task.assignedPart} handed over from ${task.sketcherName} to ${newSketcher}. ${task.sketcherName}: ${days} workday${days === 1 ? "" : "s"}. Reason: ${reason.trim()}`,
     }, ...row.activity],
   };
