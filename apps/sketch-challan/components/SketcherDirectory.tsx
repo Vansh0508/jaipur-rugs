@@ -61,7 +61,7 @@ export function SketcherDirectory({ rows, onOpen, picked, onPick }: {
       <div className="flex flex-col gap-4">
         <div><Button size="sm" variant="secondary" onPress={() => onPick(null)}><ArrowLeft /> All sketchers</Button></div>
         <div>
-          <span className="rounded-md bg-foreground px-2 py-0.5 text-xs font-semibold text-background">{person.machineCentreNo}</span>
+          <span className="rounded-md bg-foreground px-2 py-0.5 text-xs font-semibold text-background">Employee Id {person.employeeId}</span>
           <h2 className="mt-2 text-xl font-semibold">{person.name}</h2>
           <p className="text-sm text-muted">{person.current} current · {person.review} awaiting approval · {person.done} approved · {person.workdays} workdays credited</p>
         </div>
@@ -92,12 +92,12 @@ export function SketcherDirectory({ rows, onOpen, picked, onPick }: {
   }
 
   const needle = query.trim().toLowerCase();
-  const shown = people.filter((item) => !needle || `${item.name} ${item.machineCentreNo}`.toLowerCase().includes(needle));
+  const shown = people.filter((item) => !needle || `${item.name} ${item.employeeId}`.toLowerCase().includes(needle));
   return (
     <div className="flex flex-col gap-4">
       <label className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
         <Magnifier className="text-muted" />
-        <input className="w-full bg-transparent text-sm outline-none" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sketcher name or machine centre" />
+        <input className="w-full bg-transparent text-sm outline-none" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sketcher name or Employee Id" />
       </label>
       <p className="text-sm text-muted">{shown.length} sketcher(s)</p>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -105,7 +105,7 @@ export function SketcherDirectory({ rows, onOpen, picked, onPick }: {
           <StatCard
             key={item.name}
             bar={item.review ? "bg-warning" : item.current ? "bg-accent" : "bg-border"}
-            pill={item.machineCentreNo}
+            pill={item.employeeId ? `ID ${item.employeeId}` : "No ID"}
             title={item.name}
             lines={[
               <><Briefcase /> {item.current} current challan{item.current === 1 ? "" : "s"}</>,

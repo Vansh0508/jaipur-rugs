@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { parseRoster, SKETCHER_ROSTER } from "../lib/sketcherRoster";
 
 describe("sketcher roster", () => {
-  it("reads Name:MC pairs from the env value", () => {
-    expect(parseRoster(" One Name:MC-101 , Two:MC-102,,Three")).toEqual([
-      { name: "One Name", machineCentreNo: "MC-101" }, { name: "Two", machineCentreNo: "MC-102" }, { name: "Three", machineCentreNo: "" },
+  it("reads Name:EmployeeId pairs from the env value", () => {
+    expect(parseRoster(" One Name:1234 , Two:5678,,Three")).toEqual([
+      { name: "One Name", employeeId: "1234" }, { name: "Two", employeeId: "5678" }, { name: "Three", employeeId: "" },
     ]);
   });
 
