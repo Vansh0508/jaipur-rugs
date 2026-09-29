@@ -282,7 +282,7 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
               key={role === "sketcher" ? "mine" : tab}
               rows={tableRows}
               onPreview={setSelectedId}
-              onRefreshExcel={role === "manager" ? refreshExcel : undefined}
+              onRefreshExcel={role === "manager" || role === "admin" ? refreshExcel : undefined}
               onPatch={role === "manager" && tab === "new" ? patch : undefined}
               onAssign={role === "manager" && tab === "new" ? (id, sketcherName, assignedPart) => assign(id, [{ sketcherName, assignedPart }]) : undefined}
             />}

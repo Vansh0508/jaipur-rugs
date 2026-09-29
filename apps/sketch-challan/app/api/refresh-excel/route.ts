@@ -52,11 +52,11 @@ async function reportFiles(dir: string): Promise<string[]> {
 }
 
 export async function POST() {
-  // Only the Sketching Manager refreshes (AGENTS.md). The reply carries every challan, so no one else may call it.
+  // The Sketching Manager and Admin refresh (user, 2026-09-29). The reply carries every challan, so no one else may call it.
   const isManager = env.demoMode
-    ? getDemoSession((await cookies()).get(DEMO_COOKIE)?.value)?.role === "manager"
-    : (await requireSketchChallanAccess(await getServerSupabaseClient())).roleKeys.includes("sketching_manager");
-  if (!isManager) return NextResponse.json({ error: "Only the Sketching Manager can refresh the Excel." }, { status: 403 });
+    ? ["manager", "admin"].includes(getDemoSession((await cookies()).get(DEMO_COOKIE)?.value)?.role ?? "")
+    : (await requireSketchChallanAccess(await getServerSupabaseClient())).roleKeys.some((key) => key === "sketching_manager" || key === "admin");
+  if (!isManager) return NextResponse.json({ error: "Only the Sketching Manager or an admin can refresh the Excel." }, { status: 403 });
   // Supabase mode: the merge still has to be sent to the sketch-challan-create Edge Function (README go-live plan).
   // Until then say so, instead of returning unsaved rows that would replace the real ones on screen.
   if (!env.demoMode) return NextResponse.json({ error: "Refresh is not connected to the database yet." }, { status: 501 });
