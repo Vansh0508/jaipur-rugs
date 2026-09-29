@@ -38,8 +38,8 @@ Local demo: `http://127.0.0.1:3012` (scripts pin `-H 127.0.0.1 -p 3012`). Bind l
 - Sketchers only receive their own rows/tasks (filtered server-side in `app/page.tsx`).
 - Credit panel shows only when a challan has more than one sketcher. Manager/Admin always see the Challan history panel.
 - Grid: universal search, pill rows single-line, drag-to-scroll with scrollbars hidden.
-- Sketcher: own rows, one remark, Start/Done. Second nav item "My maps": own assigned maps, Picked up.
-- Maps: see HANDOFF.md "Maps tab". The manager assigns, sketcher picks up, admin refreshes the maps inbox.
+- Sketcher: own rows, one remark, Start/Done.
+- Maps: see HANDOFF.md "Maps tab". View only; Admin and the rack management login (`role: "rack"`) only; admin refreshes the maps inbox.
 - Admin: full table, preview, no Refresh.
 - Never bento. Never card grids as the primary list. Exception (user-requested 2026-09-24): the Manager/Admin home is a card grid of sections (`components/HomeCards.tsx`, shared `StatCard`), each opening its DataGrid list; the Sketchers tab uses the same cards.
 - Opened challan: paper form + actions on the left, handover/credit + Challan history in a sticky right column (stacks below `xl`).

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { libraryCopies, mapOrders, mergeMapOrders } from "../lib/maps/importMaps";
-import { applyMapAction } from "../lib/maps/actions";
+import { libraryCopies, mapOrders } from "../lib/maps/importMaps";
 
 const INV = ["Item No_", "Serial No_", "Location Code", "Rack No", "Box No", "Destroy Map", "Map Remarks"];
 const ORD = ["Item No_", "Production Order No_", "Customer No_", "Quality", "Design", "Ground Color", "Border Color", "Size", "Shape", "MAP Item No_", "Action to be Taken"];
@@ -38,35 +37,4 @@ describe("maps import", () => {
     expect(() => mapOrders([["Foo"]], copies)).toThrow(/orders file/);
   });
 
-  it("carries assignment across a refresh and drops orders no longer listed, even assigned", () => {
-    const [fresh] = mapOrders([ORD, order("RUG1", "PO1", "MAP1")], copies);
-    const assigned = { ...fresh!, assignedTo: "Alpha", assignedAt: "t" };
-    const gone = { ...fresh!, id: "PO9|RUG9", assignedTo: "Echo" };
-    const merged = mergeMapOrders([assigned, gone], [fresh!]);
-    expect(merged.map((o) => [o.id, o.assignedTo])).toEqual([["PO1|RUG1", "Alpha"]]);
-  });
-
-  it("manager assigns, only the assignee picks up, pickup is final", () => {
-    const [fresh] = mapOrders([ORD, order("RUG1", "PO1", "MAP1")], copies);
-    expect(() => applyMapAction(fresh!, { type: "assign", id: fresh!.id, sketcherName: "Alpha" }, { role: "sketcher", sketcherName: "Alpha" }, "t")).toThrow();
-    expect(() => applyMapAction(fresh!, { type: "assign", id: fresh!.id, sketcherName: "Nobody" }, { role: "manager" }, "t")).toThrow();
-    const assigned = applyMapAction(fresh!, { type: "assign", id: fresh!.id, sketcherName: "Alpha" }, { role: "manager" }, "t1");
-    expect(() => applyMapAction(assigned, { type: "pickup", id: fresh!.id }, { role: "sketcher", sketcherName: "Echo" }, "t")).toThrow();
-    const picked = applyMapAction(assigned, { type: "pickup", id: fresh!.id }, { role: "sketcher", sketcherName: "Alpha" }, "t2");
-    expect(picked.pickedUpAt).toBe("t2");
-    expect(() => applyMapAction(picked, { type: "assign", id: fresh!.id, sketcherName: "Echo" }, { role: "manager" }, "t")).toThrow();
-    expect(() => applyMapAction(picked, { type: "undoPickup", id: fresh!.id }, { role: "sketcher", sketcherName: "Alpha" }, "t")).toThrow();
-    expect(applyMapAction(picked, { type: "undoPickup", id: fresh!.id }, { role: "manager" }, "t").pickedUpAt).toBeUndefined();
-  });
-
-  it("never assigns more orders than copies, and not at all when the map isn't in the library", () => {
-    const [a, b, c, none] = mapOrders([ORD, order("RUG1", "PO1", "MAP1"), order("RUG2", "PO2", "MAP1"), order("RUG3", "PO3", "MAP1"), order("RUG5", "PO5", "MAP9", "Print")], copies);
-    const lead = { role: "manager" as const, sketcherName: "Foxtrot" };
-    const one = applyMapAction(a!, { type: "assign", id: a!.id, sketcherName: "Alpha" }, lead, "t", [a!, b!, c!]);
-    const two = applyMapAction(b!, { type: "assign", id: b!.id, sketcherName: "Foxtrot" }, lead, "t", [one, b!, c!]);
-    expect(() => applyMapAction(c!, { type: "assign", id: c!.id, sketcherName: "Echo" }, lead, "t", [one, two, c!])).toThrow(/all 2 copies/);
-    expect(applyMapAction(one, { type: "assign", id: a!.id, sketcherName: "Echo" }, lead, "t", [one, two, c!]).assignedTo).toBe("Echo");
-    expect(applyMapAction(two, { type: "pickup", id: b!.id }, lead, "t2").pickedUpAt).toBe("t2");
-    expect(() => applyMapAction(none!, { type: "assign", id: none!.id, sketcherName: "Alpha" }, lead, "t")).toThrow(/no copy in the map library/);
-  });
 });

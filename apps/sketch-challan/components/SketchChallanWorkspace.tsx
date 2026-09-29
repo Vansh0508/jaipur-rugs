@@ -38,9 +38,8 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
   // Kept here (not in SketcherDirectory) so Back from a challan returns to the sketcher you were looking at.
   const [directoryPerson, setDirectoryPerson] = useState<string | null>(null);
   const [maps, setMaps] = useState(initialMaps);
-  // Sketchers have no Home: they switch between their challans and their maps.
-  const [sketcherView, setSketcherView] = useState<"challans" | "maps">("challans");
-  const showMaps = role === "sketcher" ? sketcherView === "maps" : tab === "maps";
+  // Maps (where each map sits in the library) is Admin's only; the manager and sketchers don't see it.
+  const showMaps = role === "admin" && tab === "maps";
   const [taskNote, setTaskNote] = useState("");
   const [menuOpen, setMenuOpen] = useState(false); // phone only: the left pane folds into a Menu button
   const byStage = useMemo(() => {
@@ -64,7 +63,7 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
     ["requests", `Admin approvals (${requestRows.length})`],
     ["sketchers", "Sketchers"],
     ...(role === "manager" ? [["mine", `My work (${mine.length})`] as [Section, string]] : []),
-    ["maps", `Maps (${maps.orders.length})`],
+    ...(role === "admin" ? [["maps", `Maps (${maps.orders.length})`] as [Section, string]] : []),
   ];
 
   function openTab(id: Section | "home") {
@@ -181,28 +180,14 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
             ))}
           </nav>
         ) : null}
-        {role === "sketcher" ? (
-          <nav className="mt-2 flex flex-col gap-1">
-            {([["challans", "My work / मेरा काम"], ["maps", "My maps / मेरे नक्शे"]] as const).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => { setMenuOpen(false); setSelectedId(null); setSketcherView(id); }}
-                className={"rounded-lg px-3 py-2 text-left text-sm " + (sketcherView === id ? "bg-accent/10 font-semibold text-accent" : "text-foreground hover:bg-surface-secondary")}
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
-        ) : null}
         <Button size="sm" variant="secondary" className="mt-auto" onPress={() => void signOut()}>Sign out</Button>
       </aside>
       <main className={(menuOpen ? "hidden md:flex" : "flex") + " print-plain min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-surface p-4 md:my-2.5 md:mr-2.5 md:ml-1.5 md:rounded-3xl md:border md:border-border/80 md:p-6 lg:p-7"}>
         {demoMode ? null : <p className="no-print mb-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">Read-only: saving to the database is not connected yet. You can look, search, copy and print.</p>}
         {showMaps ? (
           <div className="flex flex-col gap-4">
-            <h1 className="text-2xl font-semibold">{role === "sketcher" ? "My maps / मेरे नक्शे" : "Maps"}</h1>
-            <MapsTab state={maps} setState={setMaps} user={user} />
+            <h1 className="text-2xl font-semibold">Maps</h1>
+            <MapsTab state={maps} setState={setMaps} canRefresh />
           </div>
         ) : selected ? (
           <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,56rem)_minmax(20rem,1fr)]">
@@ -292,7 +277,7 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-semibold">{role === "sketcher" ? "My work / मेरा काम" : tab === "home" ? "Sketch Challan" : TABS.find(([id]) => id === tab)?.[1]}</h1>
             </div>
-            {role !== "sketcher" && tab === "home" ? <HomeCards sections={{ ...byStage, requests: requestRows }} maps={maps.orders} mine={role === "manager" ? mine : undefined} onOpen={openTab} /> : null}
+            {role !== "sketcher" && tab === "home" ? <HomeCards sections={{ ...byStage, requests: requestRows }} maps={role === "admin" ? maps.orders : undefined} mine={role === "manager" ? mine : undefined} onOpen={openTab} /> : null}
             {role !== "sketcher" && tab === "home" ? null : role !== "sketcher" && tab === "sketchers" ? <SketcherDirectory rows={rows} onOpen={setSelectedId} picked={directoryPerson} onPick={setDirectoryPerson} /> : <ChallanTable
               key={role === "sketcher" ? "mine" : tab}
               rows={tableRows}

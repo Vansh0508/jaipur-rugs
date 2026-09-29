@@ -26,11 +26,11 @@ Open `http://127.0.0.1:3012`. Demo mode on. Last type-check: `tsc --noEmit` exit
 
 ## Maps tab (added 2026-09-28)
 
-- Which pending orders have their map in the MAP Library, and every rack/box copy. The manager assigns an order to a sketcher; the sketcher marks it **Picked up** (final, no manager check). Admin presses **Refresh maps Excel**.
+- View only (user, 2026-09-29): where each map sits in the MAP Library. Nothing is assigned or picked up. Only **Admin** (Maps tab + Home card, presses **Refresh maps Excel**) and the **rack management** login (`role: "rack"`, e.g. username `rackmgmt` in `data/demo-accounts.json`) see it; rack management sees only this screen (`components/RackView.tsx`) and is refused on every challan route. The Sketching Manager and sketchers never receive maps data.
 - Inbox: `data/maps-inbox/inventory/` (NAV-028, sheet `NAV-028`) and `data/maps-inbox/orders/` (orders dump, `MAP Item No_` column). Newest file in each wins; `MAPS_EXCEL_DIR` overrides. 80 MB cap.
-- Rules: `Location Code = LOC-031`; hide `Destroy Map = Yes`, blank Rack, Box blank/`0`; Rack/Box as written. Only orders with ≥1 copy are listed. Refresh keeps assignment/pickup; an order no longer in the dump (map left the library) is removed, even if assigned (user decision 2026-09-28).
+- Rules: `Location Code = LOC-031`; hide `Destroy Map = Yes`, blank Rack, Box blank/`0`; Rack/Box as written. Each refresh replaces the list.
 - Rows: NAV-145 orders whose Action to be Taken is Print or Available (with a Production Order No). Columns (user, 2026-09-29): Prod Order No, Quality, Design, Size, Shape, Ground Color, Border Color, Map Item No, Action to be Taken, then Rack No and Box No of every usable LOC-031 copy looked up in NAV-028 by Map Item No ("Not in library" when none), then Assigned to and Status. A map with no copy can't be assigned.
-- Files: `lib/maps/*`, `components/MapsTab.tsx`, `app/api/maps-refresh`, `app/api/maps-action`, `tests/maps.test.ts`. Store `data/maps-state.json`.
+- Files: `lib/maps/*`, `components/MapsTab.tsx`, `components/RackView.tsx`, `app/api/maps-refresh`, `tests/maps.test.ts`. Store `data/maps-state.json`.
 - Refresh parses the 36 MB NAV-028 in ~25 s and ~2 GB RAM. Fine for admin-only; stream it if the dump grows.
 - Demo-only like challans: no Supabase tables/RLS/Edge Functions for maps yet. Non-demo mode returns 404 for both routes.
 

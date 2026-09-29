@@ -9,18 +9,19 @@ import { DEMO_COOKIE, getDemoSession } from "@/lib/demoAuth";
 import { redirect } from "next/navigation";
 import { rowsForSketcher } from "@/lib/domain/assignments";
 import { loadMaps } from "@/lib/maps/mapsStore";
-import { ordersForSketcher } from "@/lib/maps/actions";
+import { RackView } from "@/components/RackView";
 
 export default async function HomePage() {
   if (env.demoMode) {
     const session = getDemoSession((await cookies()).get(DEMO_COOKIE)?.value);
     if (!session) redirect("/login");
+    // Maps are for Admin and the rack management login only; rack management sees nothing else.
+    if (session.role === "rack") return <RackView initialMaps={await loadMaps()} name={session.name} />;
     // Filter on the server so other sketchers' rows never reach a sketcher's browser.
     const stored = await loadRows();
     const rows = session.role === "sketcher" ? rowsForSketcher(stored, session.sketcherName ?? "") : stored;
-    const maps = await loadMaps();
-    const myMaps = session.role === "sketcher" ? { ...maps, orders: ordersForSketcher(maps.orders, session.sketcherName ?? "") } : maps;
-    return <SketchChallanWorkspace initialChallans={rows} initialMaps={myMaps} user={session} demoMode />;
+    const maps = session.role === "admin" ? await loadMaps() : { orders: [] };
+    return <SketchChallanWorkspace initialChallans={rows} initialMaps={maps} user={{ ...session, role: session.role }} demoMode />;
   }
   // Supabase mode: the role comes from the Hub role bindings (RLS already limits a sketcher's rows). Saving from
   // the screens is not wired to the Edge Functions yet, so the workspace opens read-only (db/sketch-challan/README.md).

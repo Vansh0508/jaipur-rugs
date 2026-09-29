@@ -72,14 +72,3 @@ export function mapOrders(rows: Grid, copies: Map<string, MapCopy[]>): MapOrder[
   }
   return [...byId.values()];
 }
-
-// New dump wins for details and locations; the manager's assignment and the pickup carry over.
-// An order no longer in the dump (no longer Print/Available, or the order is done) is removed, even if assigned
-// (user decision, 2026-09-28).
-export function mergeMapOrders(current: MapOrder[], incoming: MapOrder[]): MapOrder[] {
-  const previous = new Map(current.map((order) => [order.id, order]));
-  return incoming.map((order) => {
-    const keep = previous.get(order.id);
-    return keep ? { ...order, assignedTo: keep.assignedTo, assignedAt: keep.assignedAt, pickedUpAt: keep.pickedUpAt } : order;
-  });
-}

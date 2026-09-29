@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { DEMO_COOKIE, getDemoSession } from "@/lib/demoAuth";
 import { env } from "@/lib/env";
-import { libraryCopies, mapOrders, mergeMapOrders, sheetRows } from "@/lib/maps/importMaps";
+import { libraryCopies, mapOrders, sheetRows } from "@/lib/maps/importMaps";
 import { updateMaps } from "@/lib/maps/mapsStore";
 
 export const runtime = "nodejs";
@@ -73,7 +73,7 @@ export async function POST() {
     const incoming = mapOrders(ordersFile.rows, copies);
     const state = await updateMaps((current) => {
       const next = {
-        orders: mergeMapOrders(current.orders, incoming),
+        orders: incoming, // nothing is assigned, so each refresh simply replaces the list
         refreshedAt: new Date().toISOString(),
         files: { inventory: inventory.name, orders: ordersFile.name },
       };

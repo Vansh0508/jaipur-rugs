@@ -19,7 +19,7 @@ type Account = DemoSession & { password: string };
 const DATA = path.join(/*turbopackIgnore: true*/ process.cwd(), "data"); // runtime data, never part of a build
 
 // Demo logins live in data/demo-accounts.json (git-ignored), never in the source, because the repo is public.
-// Entries: { username, password, name, role: "manager" | "sketcher" | "admin", sketcherName? }. Edits apply on the
+// Entries: { username, password, name, role: "manager" | "sketcher" | "admin" | "rack", sketcherName? }. Edits apply on the
 // next request. No file = nobody can sign in (fail closed). SKETCH_CHALLAN_DEMO_ACCOUNTS points elsewhere (tests).
 let cache: { file: string; mtimeMs: number; accounts: Account[] } | undefined;
 function accounts(): Account[] {
@@ -28,7 +28,7 @@ function accounts(): Account[] {
   try { mtimeMs = statSync(/*turbopackIgnore: true*/ file).mtimeMs; } catch { return []; }
   if (cache?.file !== file || cache.mtimeMs !== mtimeMs) {
     const list = JSON.parse(readFileSync(/*turbopackIgnore: true*/ file, "utf8")) as Account[];
-    cache = { file, mtimeMs, accounts: list.filter((item) => typeof item.username === "string" && typeof item.password === "string" && ["manager", "sketcher", "admin"].includes(item.role)) };
+    cache = { file, mtimeMs, accounts: list.filter((item) => typeof item.username === "string" && typeof item.password === "string" && ["manager", "sketcher", "admin", "rack"].includes(item.role)) };
   }
   return cache.accounts;
 }

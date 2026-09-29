@@ -13,7 +13,8 @@ export function parseRoster(value: string): { name: string; machineCentreNo: str
 
 export const SKETCHER_ROSTER = parseRoster(process.env.NEXT_PUBLIC_SKETCH_CHALLAN_ROSTER || SAMPLE_ROSTER);
 
-export type DemoRole = "manager" | "sketcher" | "admin";
+// "rack" = the rack management login: sees only the Maps screen (user, 2026-09-29).
+export type DemoRole = "manager" | "sketcher" | "admin" | "rack";
 
 export function machineCentreNoFor(name: string): string | undefined {
   return SKETCHER_ROSTER.find((person) => person.name === name)?.machineCentreNo || undefined;

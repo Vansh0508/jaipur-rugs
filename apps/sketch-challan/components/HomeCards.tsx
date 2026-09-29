@@ -24,7 +24,7 @@ function latest(rows: SketchChallan[]) {
 
 export function HomeCards({ sections, maps, mine, onOpen }: {
   sections: Record<Exclude<Section, "sketchers" | "maps" | "mine">, SketchChallan[]>;
-  maps: MapOrder[];
+  maps?: MapOrder[]; // Admin only
   mine?: SketchChallan[]; // The manager's own parts, when he takes sketch work himself
   onOpen: (section: Section) => void;
 }) {
@@ -58,16 +58,16 @@ export function HomeCards({ sections, maps, mine, onOpen }: {
         lines={[<><Person /> {busy.size} with work · {SKETCHER_ROSTER.length - busy.size} free</>, <><Hourglass /> {waiting.size} waiting for approval</>]}
         onView={() => onOpen("sketchers")}
       />
-      <StatCard
+      {maps ? <StatCard
         bar={maps.length ? "bg-success" : "bg-border"}
         pill={`${maps.length} order${maps.length === 1 ? "" : "s"}`}
         title="Maps"
         lines={[
-          <><FileText /> Map is in the MAP Library</>,
-          <><Person /> {maps.filter((order) => !order.assignedTo).length} to assign · {maps.filter((order) => order.assignedTo && !order.pickedUpAt).length} with sketchers · {maps.filter((order) => order.pickedUpAt).length} picked up</>,
+          <><FileText /> Print and Available orders</>,
+          <><Person /> {maps.filter((order) => order.copies.length).length} in the MAP Library · {maps.filter((order) => !order.copies.length).length} not in library</>,
         ]}
         onView={() => onOpen("maps")}
-      />
+      /> : null}
       {mine ? (
         <StatCard
           bar={mine.length ? "bg-accent" : "bg-border"}

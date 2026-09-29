@@ -1,5 +1,5 @@
 // Maps tab: NAV-145 orders to Print or with a map Available, and where each map copy is in the
-// MAP Library (NAV-028, LOC-031). The manager assigns an order to a sketcher, who collects it and marks it picked up.
+// MAP Library (NAV-028, LOC-031). View only: Admin and the rack management login. The manager assigns an order to a sketcher, who collects it and marks it picked up.
 
 // One physical copy in NAV-028 (LOC-031): only where it is (user, 2026-09-29).
 export interface MapCopy {
@@ -20,15 +20,7 @@ export interface MapOrder {
   mapItemNo: string;
   action: string; // "Print" or "Available", as written in NAV-145
   copies: MapCopy[]; // empty when the map has no usable copy in LOC-031
-  assignedTo?: string; // sketcher name
-  assignedAt?: string;
-  pickedUpAt?: string;
 }
-
-export type MapAction =
-  | { type: "assign"; id: string; sketcherName: string }
-  | { type: "pickup"; id: string }
-  | { type: "undoPickup"; id: string };
 
 export interface MapsState {
   orders: MapOrder[];
