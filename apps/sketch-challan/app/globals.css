@@ -1,0 +1,13 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+@import "../../../packages/config/tailwind-theme.css";
+@source "../../../packages/ui-kit/src";
+
+.bg-app { background-color: var(--background); }
+.bg-surface { background-color: var(--surface); }
+
+@media print {
+  .no-print { display: none !important; }
+  /* The app shell is a fixed, scrolling frame; on paper it must flow so the whole challan prints. */
+  .print-plain { position: static !important; display: block !important; overflow: visible !important; height: auto !important; margin: 0 !important; padding: 0 !important; border: 0 !important; }
+}
