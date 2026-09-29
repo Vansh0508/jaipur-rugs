@@ -28,7 +28,7 @@ function TransferControls({ task, onTransfer, label }: { task: SketchTask; onTra
       <label className="text-xs">Effective work date
         <input className="mt-1 w-full rounded-lg border border-border bg-surface p-2 text-sm" type="date" max={todayInIndia()} value={date} onChange={(event) => setDate(event.target.value)} />
       </label>
-      <label className="text-xs sm:col-span-2">Handover reason
+      <label className="text-xs sm:col-span-2">Handover reason (optional)
         <input className="mt-1 w-full rounded-lg border border-border bg-surface p-2 text-sm" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="For example, leave" />
       </label>
       <label className="text-xs sm:col-span-2">Leave or other non-work dates for outgoing sketcher (optional)

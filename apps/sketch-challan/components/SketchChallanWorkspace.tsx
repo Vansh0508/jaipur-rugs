@@ -133,12 +133,6 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
     tryAct({ type: "reviewChange", id: selected.id, requestId: pending.id, approved, note: reviewNote }, () => setReviewNote(""));
   }
 
-  // Allotted challans are locked for the manager, so a handover goes to admin as a request. Errors surface in the form.
-  function requestHandover(taskId: string, sketcherName: string, effectiveOn: string, reason: string, excludedDates: string[]) {
-    if (!selected) return;
-    act({ type: "requestChange", id: selected.id, changes: {}, reason, handover: { taskId, sketcherName, effectiveOn, reason: reason.trim(), excludedDates } });
-  }
-
   function checkTask(taskId: string, approved: boolean) {
     if (!selected) return;
     tryAct({ type: "reviewTask", id: selected.id, taskId, approved, note: taskNote }, () => setTaskNote(""));
@@ -277,8 +271,8 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
               <div className="no-print rounded-2xl border border-border bg-surface-secondary p-4">
                 {pending ? <p className="text-sm">Your request is awaiting admin approval. Current challan details remain unchanged.</p> : (
                   <div className="flex flex-col gap-2">
-                    <p className="text-sm font-medium">This challan is allotted and locked. Edits above stay a draft until the admin approves. To hand a part to someone else, use Hand over below. For an extra part, describe it in the reason.</p>
-                    <input className="rounded-lg border border-border bg-surface p-2 text-sm" value={requestReason} onChange={(event) => setRequestReason(event.target.value)} placeholder="What should change and why (e.g. hand the border to another sketcher, first one on leave)" />
+                    <p className="text-sm font-medium">This challan is allotted and locked. Edits above stay a draft until the admin approves. To hand a part to someone else, use Hand over (it applies at once). For an extra part, describe it in the reason.</p>
+                    <input className="rounded-lg border border-border bg-surface p-2 text-sm" value={requestReason} onChange={(event) => setRequestReason(event.target.value)} placeholder="What should change and why" />
                     <Button size="sm" onPress={submitRequest}>Send change request to admin</Button>
                   </div>
                 )}
@@ -307,8 +301,7 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
           <aside className="flex min-w-0 flex-col gap-4 xl:sticky xl:top-0 xl:max-h-[calc(100vh-5rem)] xl:overflow-y-auto">
             <AssignmentHistory
               row={selected}
-              onTransfer={role === "admin" ? handover : role === "manager" && !pending ? requestHandover : undefined}
-              transferLabel={role === "manager" ? "Send handover request to admin" : "Hand over task"}
+              onTransfer={role === "admin" || role === "manager" ? handover : undefined}
             />
             {role !== "sketcher" ? <ChallanActivity row={selected} /> : null}
           </aside>

@@ -85,7 +85,6 @@ export function transferTask(
   if (!task) throw new Error("Task not found.");
   if (task.status === "completed") throw new Error("A completed task cannot be handed over.");
   if (!newSketcher || newSketcher === task.sketcherName) throw new Error("Choose a different sketcher.");
-  if (!reason.trim()) throw new Error("Enter a handover reason.");
   if (effectiveOn > todayInIndia()) throw new Error("The handover date cannot be in the future.");
   const assignments = taskAssignments(task, row);
   const current = assignments.at(-1)!;
@@ -96,7 +95,7 @@ export function transferTask(
   }
   const updated = [
     ...assignments.slice(0, -1),
-    { ...current, endedOn: effectiveOn, excludedDates, transferReason: reason.trim() },
+    { ...current, endedOn: effectiveOn, excludedDates, transferReason: reason.trim() || "Handed over" },
     { id: newAssignmentId, sketcherName: newSketcher, assignedOn: effectiveOn },
   ];
   const days = assignmentWorkdays(updated[updated.length - 2]!);
@@ -107,7 +106,7 @@ export function transferTask(
       : item),
     activity: [{
       id: newId(), at: now,
-      message: `${task.assignedPart} handed over from ${task.sketcherName} to ${newSketcher}. ${task.sketcherName}: ${days} workday${days === 1 ? "" : "s"}. Reason: ${reason.trim()}`,
+      message: `${task.assignedPart} handed over from ${task.sketcherName} to ${newSketcher}. ${task.sketcherName}: ${days} workday${days === 1 ? "" : "s"}.${reason.trim() ? ` Reason: ${reason.trim()}` : ""}`,
     }, ...row.activity],
   };
 }

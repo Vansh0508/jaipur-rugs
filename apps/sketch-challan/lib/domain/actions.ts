@@ -145,8 +145,9 @@ export function applyAction(row: SketchChallan, action: ChallanAction, user: Act
         activity: log(row, `Resumed by the ${role === "admin" ? "admin" : "Sketching Manager"}.${dueDate !== row.dueDate ? ` Due date moved from ${row.dueDate} to ${dueDate}.` : ""}`, now),
       };
     }
+    // The Sketching Manager hands a part over himself, applied at once (29 Sep meeting); Admin still can too.
     case "handover":
-      if (role !== "admin") deny();
+      if (role !== "admin" && role !== "manager") deny();
       return transferTask(row, action.taskId, checkedSketcher(action.sketcherName), action.effectiveOn, action.reason, action.excludedDates, newId(), now);
   }
 }
