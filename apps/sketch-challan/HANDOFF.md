@@ -26,11 +26,11 @@ Open `http://127.0.0.1:3012`. Demo mode on. Last type-check: `tsc --noEmit` exit
 
 ## Maps tab (added 2026-09-28)
 
-- View only (user, 2026-09-29): where each map sits in the MAP Library. Nothing is assigned or picked up. Only **Admin** (Maps tab + Home card, presses **Refresh maps Excel**) and the **rack management** login (`role: "rack"`, e.g. username `rackmgmt` in `data/demo-accounts.json`) see it; rack management sees only this screen (`components/RackView.tsx`) and is refused on every challan route. The Sketching Manager and sketchers never receive maps data.
+- Maps (29 Sep meeting): Admin and the rack management login (`role: "rack"`) only. Side tabs **In rack** / **Not available** / **Chosen**. Rack management ticks the rack/box copy it pulls for an order: it moves to Chosen and leaves every other order of that map (`lib/maps/choose.ts`, `app/api/maps-action`, ticks kept in `data/maps-state.json` across refreshes). Admin unticks a mistake, refreshes, and can show the hidden columns (Action to be Taken, Quality, rug Item No). Same map rows sit together with "needed · in rack" counts. Rack management also sees New challan and Approved read-only (`components/RackView.tsx`).
 - Inbox: `data/maps-inbox/inventory/` (NAV-028, sheet `NAV-028`) and `data/maps-inbox/orders/` (orders dump, `MAP Item No_` column). Newest file in each wins; `MAPS_EXCEL_DIR` overrides. 80 MB cap.
-- Rules: `Location Code = LOC-031`; hide `Destroy Map = Yes`, blank Rack, Box blank/`0`; Rack/Box as written. Each refresh replaces the list.
+- Rules: `Location Code = LOC-031`; hide `Destroy Map = Yes`, blank Rack, Box blank/`0`; Rack/Box as written. Each refresh replaces the order list; ticked copies stay. Copies are identified by Serial No (not shown).
 - Rows: NAV-145 orders whose Action to be Taken is Print or Available (with a Production Order No). Columns (user, 2026-09-29): Prod Order No, Quality, Design, Size, Shape, Ground Color, Border Color, Map Item No, Action to be Taken, then Rack No and Box No of every usable LOC-031 copy looked up in NAV-028 by Map Item No ("Not in library" when none), then Assigned to and Status. A map with no copy can't be assigned.
-- Files: `lib/maps/*`, `components/MapsTab.tsx`, `components/RackView.tsx`, `app/api/maps-refresh`, `tests/maps.test.ts`. Store `data/maps-state.json`.
+- Files: `lib/maps/*`, `components/MapsTab.tsx`, `components/RackView.tsx`, `app/api/maps-refresh`, `app/api/maps-action`, `tests/maps*.test.ts`. Store `data/maps-state.json`.
 - Refresh parses the 36 MB NAV-028 in ~25 s and ~2 GB RAM. Fine for admin-only; stream it if the dump grows.
 - Demo-only like challans: no Supabase tables/RLS/Edge Functions for maps yet. Non-demo mode returns 404 for both routes.
 

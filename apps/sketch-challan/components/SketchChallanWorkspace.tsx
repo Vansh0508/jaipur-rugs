@@ -214,7 +214,7 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
         {showMaps ? (
           <div className="flex flex-col gap-4">
             <h1 className="text-2xl font-semibold">Maps</h1>
-            <MapsTab state={maps} setState={setMaps} canRefresh />
+            <MapsTab state={maps} setState={setMaps} canRefresh role="admin" />
           </div>
         ) : selected ? (
           <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,56rem)_minmax(20rem,1fr)]">

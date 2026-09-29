@@ -83,7 +83,8 @@ export async function POST() {
     }
     const state = await updateMaps((current) => {
       const next = {
-        orders: incoming, // nothing is assigned, so each refresh simply replaces the list
+        orders: incoming, // the order list follows NAV; ticked copies stay
+        chosen: current.chosen ?? [],
         refreshedAt: new Date().toISOString(),
         files,
       };

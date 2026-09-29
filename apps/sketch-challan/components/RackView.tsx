@@ -47,7 +47,7 @@ export function RackView({ initialMaps, challans, name }: { initialMaps: MapsSta
           </button>
         ))}
       </nav>
-      {view === "maps" ? <MapsTab state={maps} setState={setMaps} canRefresh={false} /> : open ? (
+      {view === "maps" ? <MapsTab state={maps} setState={setMaps} canRefresh={false} role="rack" /> : open ? (
         <div className="flex flex-col gap-4">
           <div><Button variant="secondary" onPress={() => setOpenId(null)}>Back</Button></div>
           <PaperChallan row={open} mode="view" />
