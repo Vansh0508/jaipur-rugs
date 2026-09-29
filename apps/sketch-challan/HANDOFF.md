@@ -1,70 +1,82 @@
 # Sketch Challan handoff
 
-Local-only notes for the next session. App: `apps/sketch-challan`. Repo: `C:\Users\daksh.j\jaipur-rugs` → `https://github.com/Vansh0508/jaipur-rugs.git`. Branch `main` @ `6a1e89a`. **Uncommitted.** Do not push unless asked.
+Notes for the next session. App: `apps/sketch-challan` in `https://github.com/Vansh0508/jaipur-rugs.git`, branch
+`main`. **Live** on the office server: `http://192.168.0.18:3012` (PM2 `sketch-challan`, `~/apps/jaipur-rugs`).
+Rules: `AGENTS.md` (this folder) binds; read it first. Updated 2026-09-29.
 
-## Run
+## Where the code lives
+
+- Push from a clean clone of GitHub `main` (`C:\Users\daksh.j\jaipur-rugs-push` on the dev PC). The other copy,
+  `C:\Users\daksh.j\jaipur-rugs`, is not a git repo and holds other people's unpushed work: keep the two in sync, but
+  never push from it. Match each file's line endings to `main` when committing.
+- Staff names and employee codes never go in git (the repo is public): they live only in the git-ignored
+  `.env.local` (roster), `data/people.csv`, `data/roster.env` and `data/demo-accounts.json`.
+
+## Run / check
 
 ```
-npx --yes pnpm@10.15.1 --filter @jaipur-rugs/sketch-challan dev
+npx next dev -p 3012            # in apps/sketch-challan; open http://localhost:3012
+npx tsc --noEmit && npx vitest run --dir tests && npx next build
 ```
 
-Open `http://127.0.0.1:3012`. Demo mode on. Last type-check: `tsc --noEmit` exit 0.
+## Server
 
-## Done (demo UI)
+- Deploy/update: `deploy/sketch-challan/office-deploy.md`; one-time setup `deploy/sketch-challan/setup-server.sh`.
+- Update: `cd ~/apps/jaipur-rugs && git pull && cd apps/sketch-challan && pnpm build && pm2 restart sketch-challan`.
+  If `git pull` stops on `next-env.d.ts`, `git stash push -- '*next-env.d.ts'` first. Browsers: Ctrl+F5.
+- Plain http: browser APIs that need https (`crypto.randomUUID`, clipboard) are missing. Use `lib/newId.ts` for ids.
+- Data files (whole state): `data/demo-state.json` (challans, history) and `data/maps-state.json` (maps + ticks).
+  To wipe a day of testing, move `demo-state.json` aside, restart, Refresh Excel.
 
-- Four-role workspace collapsed to **manager / sketcher / admin**. Default manager.
-- Local demo sign-in replaces the unrestricted role switcher. Logins (Sketching Manager, Admin, one per sketcher) live only in `data/demo-accounts.json` (git-ignored; the repo is public, so never put passwords in source or docs). Copy that file to the server by hand; with no file nobody can sign in. On the server, passwords are checked against its own Supabase (`SKETCH_CHALLAN_AUTH_URL` + `SKETCH_CHALLAN_AUTH_ANON_KEY`, self-hosted at 192.168.0.18:8000): the file then only maps each email to a role, with no passwords (user, 2026-09-29; the Hub's role tables are not used). See deploy/sketch-challan/office-deploy.md "Accounts". The login cookie is signed (`username.HMAC`; secret `SKETCH_CHALLAN_DEMO_SECRET` or the generated `data/demo-secret`). Demo mode is the server-only `SKETCH_CHALLAN_DEMO_MODE`, read at runtime. The manager is also the manager on the roster: he can take parts and maps himself (Start/Done, Picked up) and approves his own submitted parts as manager.
-- Excel-like **MUI DataGrid**: copy TSV, hide/show filter bubbles, header sort, checkboxes, PO click → paper form.
-- Header sort cues and subtle alternating light-grey rows are visible in the DataGrid.
-- After allotment, manager detail edits stay in a draft until submitted for Admin approval; Admin approve applies the exact patch, reject requires a note. Demo requests remain in React state only.
-- Task handover records previous/current Sketchers, a reason, optional excluded leave dates and calculated workday credit (Monday–Saturday; Sunday excluded). Credit starts when the Sketcher starts the task.
-- Paper preview with in-form dropdowns/text; 2 manager remarks + 1 sketcher remark.
-- Manager in-grid: category, priority, sketcher+part Assign.
-- **Refresh Excel** = POST `/api/refresh-excel` → newest Excel in `data/excel-inbox/` (seeds demo file if empty). Merge keeps remarks/assignments. Response `{ file, rows }`.
-- Categories = 16 office Excel names as written.
-- Parser page-box fix (height-before-width). Fixture: `PDMAP2627/023693`, Length Adjustment, 9×13.
+## Sign-in and roles
 
-## Maps tab (added 2026-09-28)
+- Employee code + password. The password is checked against the server's own Supabase (self-hosted,
+  `192.168.0.18:8000`; login `<code>@sketch.jaipurrugs.local`); `data/demo-accounts.json` maps each code to a role.
+- Accounts: write `data/people.csv` (`code,name,role[,sketcherName]`), then
+  `python3 scripts/create_accounts.py data/people.csv [--name-passwords]` and rebuild. It creates missing Supabase
+  users, (with the flag) sets everyone's password to `firstname@dnd`, writes the role file and rebuilds the roster.
+  The temporary `firstname@dnd` passwords are still in use (2026-09-29): change them, admins first (Studio →
+  Authentication → Users).
+- Roles: `manager` (Sketching Manager; also takes parts), `sketcher`, `admin`, `rack` (New challan + Approved
+  read-only, Maps with ticking). Current people: 8 sketchers + the manager, 2 admins, 2 rack logins. Four roster
+  sketchers have no account yet (no employee codes).
 
-- Maps (29 Sep meeting): Admin and the rack management login (`role: "rack"`) only. Side tabs **In rack** / **Not available** / **Chosen**. Rack management ticks the rack/box copy it pulls for an order: it moves to Chosen and leaves every other order of that map (`lib/maps/choose.ts`, `app/api/maps-action`, ticks kept in `data/maps-state.json` across refreshes). Admin unticks a mistake, refreshes, and can show the hidden columns (Action to be Taken, Quality, rug Item No). Same map rows sit together with "needed · in rack" counts. Rack management also sees New challan and Approved read-only (`components/RackView.tsx`).
-- Inbox: `data/maps-inbox/inventory/` (NAV-028, sheet `NAV-028`) and `data/maps-inbox/orders/` (orders dump, `MAP Item No_` column). Newest file in each wins; `MAPS_EXCEL_DIR` overrides. 80 MB cap.
-- Rules: `Location Code = LOC-031`; hide `Destroy Map = Yes`, blank Rack, Box blank/`0`; Rack/Box as written. Each refresh replaces the order list; ticked copies stay. Copies are identified by Serial No (not shown).
-- Rows: NAV-145 orders whose Action to be Taken is Print or Available (with a Production Order No). Columns (user, 2026-09-29): Prod Order No, Quality, Design, Size, Shape, Ground Color, Border Color, Map Item No, Action to be Taken, then Rack No and Box No of every usable LOC-031 copy looked up in NAV-028 by Map Item No ("Not in library" when none), then Assigned to and Status. A map with no copy can't be assigned.
-- Files: `lib/maps/*`, `components/MapsTab.tsx`, `components/RackView.tsx`, `app/api/maps-refresh`, `app/api/maps-action`, `tests/maps*.test.ts`. Store `data/maps-state.json`.
-- Refresh parses the 36 MB NAV-028 in ~25 s and ~2 GB RAM. Fine for admin-only; stream it if the dump grows.
-- Demo-only like challans: no Supabase tables/RLS/Edge Functions for maps yet. Non-demo mode returns 404 for both routes.
+## Challans (what the app does)
 
-## Audit fixes (2026-09-28)
+- Intake: NAV-160 and NAV-145. **Refresh Excel** (manager or admin) reads the `nav_mirror` tables in the server's
+  Supabase when `NAV_DB_URL` is set (`lib/nav/mirror.ts`, read-only login `sketch_challan_reader`), else the Excel
+  inbox. NAV-145 rows: only Action to be Taken = Print/Available; that column is computed like the sheet's formula
+  (`lib/nav/actionToBeTaken.ts`, checked 133/133 against the sheet). Map sizes from the DND rule workbooks.
+- Navigation: Home cards Sketch Challan / Admin approvals / Sketchers / My work / Maps; stages are tabs inside
+  Sketch Challan.
+- Flow: New → allot (manager) → sketcher Start / Done → Sketch approval (manager Approve / Send back, also from the
+  table row) → Approved. After allotment, detail changes go to Admin approval (Approve / Reject, also from the row).
+- Handover: manager or admin, applied at once, reason optional; workday credit kept per sketcher.
+- Hold / Resume: manager or admin; resume moves the due date out by the days held; a held challan can't be worked.
+- Status column everywhere: New · Allotted · In progress · On hold · Done (waiting for approval) · Approved.
+- Challan date: the day it goes out (today in New; fixed at allotment; never before today).
+- Whole-inch map sizes: built, **off** (`SKETCH_CHALLAN_ROUND_MAP_SIZE=true` + restart + Refresh Excel turns it on;
+  waiting for the Sketching Manager to ask).
 
-Full audit and status: `G:\map-locator\AUDIT.md`. Server-side `applyAction` now rejects non-form patch keys, wrong types, sketcher self-"completed", a second Start, unknown/duplicate assignees, and remark edits by a former holder. Refresh Excel is manager-only. Paper inputs save on blur. Grid Assign asks for confirmation. Copy for Excel reports success/failure (http fallback). API calls without a session get a JSON 401.
+## Maps
 
-## Not done
+- Admin and rack management only. Side tabs **In rack** / **Not available** / **Chosen**. Rack management ticks the
+  rack/box copy it pulls for an order; it moves to Chosen and leaves every other order of that map
+  (`lib/maps/choose.ts`, `app/api/maps-action`); Admin unticks a mistake. Ticks survive refreshes.
+- Rows: NAV-145 Print/Available orders with a Production Order No. Columns: Prod Order No and Map No (bold, coloured),
+  Design, Size, Shape, Ground, Border, Rack No, Box No; same map grouped with "needed · in rack". Action to be Taken,
+  Quality and rug Item No are hidden (admins can show them).
+- Copies: NAV-028 `Location Code = LOC-031`; hide Destroy Map = Yes, blank rack, box blank/0; rack/box as written;
+  each copy is identified by its Serial No (not shown). **Refresh maps Excel** (admin) reads the NAV database when
+  `NAV_DB_URL` is set, else `data/maps-inbox/`.
 
-- SQL 001–003 not applied; types not regenerated; Edge Functions unused by UI.
-- SQL 001–003 and the update Edge Function now include the drafted approval path and assignment work dates; these remain un-applied and un-deployed. The live UI still needs real role binding and API wiring.
-- Demo writes stay in React state.
-- No Hub employee list, hold/extend, transfer, blocked/clarification, 3-1-0 reminders, `/api/force-logout` wired into a real login path for demo, `ecosystem.config`, office deploy.
-- Drop the office Excel into `data/excel-inbox/` and press Refresh Excel. On the server the inboxes are dedicated local folders that the NAV reports are copied into (`SKETCH_CHALLAN_EXCEL_DIR`, `SKETCH_CHALLAN_MAP_RULES_DIR`, `MAPS_EXCEL_DIR`), never the shared Jvault folder (user decision 2026-09-28).
-- Monorepo root has no `package.json` / `pnpm-workspace.yaml` / lockfile / `.git`; `next.config.js` pins `turbopack.root`. Run `npm run dev` inside the app.
-- Later (server push): role bindings + real roles in UI, SQL 003 task/transfer checks, SQL drafts revised 2026-09-28 (Excel intake, no PDF tables; due reminders are now pg_cron in `db/sketch-challan/004`, replacing `scripts/maintenance.ts`). `xlsx` stays on 0.18.5 (user decision 2026-09-28).
-- No commit/PR.
+## Not done / next
 
-## Touch these files
-
-| File | Why |
-|---|---|
-| `components/SketchChallanWorkspace.tsx` | roles, refresh, assign, preview |
-| `components/ChallanTable.tsx` | DataGrid |
-| `components/PaperChallan.tsx` | paper form |
-| `lib/importExcel.ts` | parse + merge |
-| `app/api/refresh-excel/route.ts` | backend dump |
-| `lib/domain/types.ts` | categories + remarks |
-| `lib/demoData.ts` | demo rows / sketcher names |
-| `db/sketch-challan/` | schema not live |
-
-## Continue from
-
-1. Put the real refreshable dump on the backend path.
-2. Apply migrations only after explicit OK.
-3. Swap fake roles for Hub + RLS.
-4. Then commit/push for the office server `git pull`.
+- Four sketchers on the old roster have no account yet (no employee codes): add them when the codes arrive (append
+  to `data/people.csv`, rerun the account script, rebuild).
+- Change the temporary passwords.
+- Later: an RPA bot fills Approved challans into NAV nightly (input format to agree; the app has Download Excel).
+- The Supabase write path for challans (`db/sketch-challan/001`–`004`, `supabase/functions/sketch-challan-*`) is
+  drafted, **not applied**. Data stays in the JSON files. Apply migrations only after an explicit OK.
+- Open data questions for the business: 2 Make-to-Stock NAV-145 rows without a Production Order; Sumak has no
+  map-size rule; NAV-160 Map No is always empty; MAP1155424 "Print" although the library has copies.
