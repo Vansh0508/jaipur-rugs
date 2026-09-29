@@ -11,8 +11,16 @@
 //   3. No row at all -> open signup: allocate an employee_code and create a fresh row.
 // Either way this never issues a session — the client calls signInWithPassword itself
 // right after, mirroring how every other write function here stays session-free.
+//
+// In practice the only live caller today is apps/atlas's own /signup (apps/hub has never
+// been deployed anywhere reachable — see that page's own comment), which is why the
+// Slack ping below (Ayaan, 2026-09-28: "update me whenever a user creates new account")
+// reads as an Atlas-only notification even though this function is nominally shared. Sent
+// best-effort, after the account is already fully created — a Slack failure must never
+// undo or fail a real signup.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { notifySlack } from "../_shared/notifySlack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -81,6 +89,7 @@ Deno.serve(async (req) => {
       if (linkError) {
         return jsonResponse({ error: linkError.message }, 500);
       }
+      await notifySlack(supabaseAdmin, `🆕 New Atlas account created: *${fullName}* (${email})`);
       return jsonResponse({ employeeId: existing.id }, 200);
     }
 
@@ -105,6 +114,8 @@ Deno.serve(async (req) => {
     if (insertError || !employee) {
       return jsonResponse({ error: insertError?.message ?? "insert failed" }, 500);
     }
+
+    await notifySlack(supabaseAdmin, `🆕 New Atlas account created: *${fullName}* (${email})`);
 
     return jsonResponse({ employeeId: employee.id }, 201);
   } catch (err) {

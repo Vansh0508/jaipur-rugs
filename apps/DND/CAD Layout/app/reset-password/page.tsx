@@ -7,8 +7,15 @@ import { ResetPasswordForm } from "./ResetPasswordForm";
 // run into the normal active-employee check before the visitor can set a new password.
 //
 // `code` is read here as a server-side prop rather than via useSearchParams() in the
-// client component, so that component doesn't need its own Suspense boundary.
-export default async function ResetPasswordPage({ searchParams }: { searchParams: Promise<{ code?: string }> }) {
+// client component, so that component doesn't need its own Suspense boundary. `error`/
+// `error_description` cover the query-string failure shape Supabase can send instead of
+// `code` (e.g. an expired link, or a redirect_to the project's Auth allow-list rejects);
+// the hash-based failure shape is only visible client-side — see ResetPasswordForm.
+export default async function ResetPasswordPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ code?: string; error?: string; error_description?: string }>;
+}) {
   const params = await searchParams;
 
   return (
@@ -17,7 +24,7 @@ export default async function ResetPasswordPage({ searchParams }: { searchParams
         <h1 className="text-2xl font-semibold">Reset your password</h1>
         <p className="text-sm text-muted">Choose a new password for your Jaipur Rugs account.</p>
       </div>
-      <ResetPasswordForm code={params.code} />
+      <ResetPasswordForm code={params.code} urlError={params.error} urlErrorDescription={params.error_description} />
     </main>
   );
 }

@@ -1133,11 +1133,42 @@ lives in `apps/atlas/components/shell/SessionTracker.tsx` (mounted once in
 
 All three `supabase/functions/login-sessions-*` Edge Functions are deployed and ACTIVE on
 `matnispbauvvlnbsuzxq` (`login-sessions-start`, `login-sessions-heartbeat`,
-`login-sessions-end`, all `verify_jwt: true`). **Still open**: nothing server-side — this
-only starts recording real sign-in data once `apps/atlas` itself is rebuilt/redeployed
-with this change (both the Hostinger VPS and the internal office server instance), since
-`SessionTracker.tsx`/`UserMenu.tsx` are what actually call these functions. Until that
-next deploy, `/admin/users` will just show zero sessions for everyone, not an error.
+`login-sessions-end`, all `verify_jwt: true`). **Deployed to the office server**
+(`192.168.0.18:3001`, PM2) 2026-09-27 — rebuilt against Node 22.23.2, restarted, verified
+(`/admin/users` returns the expected 307, no errors in `pm2 logs atlas`). **Still open**:
+the public VPS (`atlas.jaipurrugsai.cloud`) hasn't had this deployed yet — run
+`deploy/atlas/deploy-atlas.bat` to pick it up there.
+
+## Slack notifications for new accounts / logins — APPLIED (2026-09-28)
+
+`db/user-activity/003_slack_notifications.sql`, applied to `matnispbauvvlnbsuzxq` as
+`user_activity_slack_notifications`; advisor-clean (only the same pre-existing,
+unrelated findings as before). Direct request, Ayaan: "update me in slack whenever a
+user creates new account or existing user login."
+
+Adds one function, `get_atlas_slack_webhook_url()` — deliberately `public` (not
+`private`, unlike every other internal helper in this repo) so it's reachable via the
+service-role client's `.rpc()` from an Edge Function, but `EXECUTE` is revoked from
+`anon`/`authenticated` and granted only to `service_role`, so no ordinary RLS-scoped
+client (even an admin) can call it. The actual webhook URL was set separately via
+`vault.create_secret('...', 'atlas_slack_webhook_url', ...)` run directly through
+`execute_sql` — **not** written to any file in this repo, and never will be; this
+migration file only contains the secret-free accessor function.
+
+New shared helper `supabase/functions/_shared/notifySlack.ts` (same
+cross-function-import convention as `_shared/authz.ts`) wraps reading that secret and
+POSTing `{ text }` to it, swallowing all errors — a Slack outage must never fail the
+real operation. Wired into two existing functions (redeployed the same session):
+- `employee-signup` — fires on both an open new signup and claiming a pre-invited row
+  (either way, a login now exists that didn't before).
+- `login-sessions-start` — fires only when it creates a genuinely NEW session (not a
+  reused one), so roughly once per real sign-in, not once per tab/page load.
+
+**Atlas-only by construction**, not by an explicit scope check: these are the only two
+functions Atlas's own code calls (`employee-signup` is nominally shared with `apps/hub`
+too, but Hub has never been deployed anywhere reachable, so in practice it's Atlas-only
+today). Verified live: `get_atlas_slack_webhook_url()` round-trips the correct URL, and
+a direct `curl` POST to the webhook was confirmed delivered before wiring it in.
 
 ## Cars/drivers parity with Admin-Driver-App — APPLIED (2026-09-28)
 
