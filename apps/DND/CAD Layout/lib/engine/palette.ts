@@ -1,4 +1,5 @@
-import { toHex, type BmpImage } from "./bmp";
+import type { BmpImage } from "./bmp";
+import { countColours } from "./image";
 
 export interface PaletteColour {
   hex: string;
@@ -43,13 +44,14 @@ export function analyseTikni(image: BmpImage): TikniAnalysis {
   const legend = detectLegendStrip(image);
   const designHeight = legend ? legend.top : image.height;
 
-  const counts = new Map<string, number>();
   const { width, rgb } = image;
   const end = designHeight * width * 3;
-  for (let p = 0; p < end; p += 3) {
-    const hex = toHex(rgb[p]!, rgb[p + 1]!, rgb[p + 2]!);
-    counts.set(hex, (counts.get(hex) ?? 0) + 1);
-  }
+  // Same exact-then-quantize counting a JPG/PNG gets in image.ts — a raw per-pixel exact
+  // scan here would defeat that quantization the moment a legend-strip crop applied
+  // (2026-09-28: a photographic JPEG reached the app as a 299,022-"colour" palette
+  // because this used to always count exactly, regardless of continuous-tone input).
+  // For a real indexed BMP, colour counts stay small and this still comes back exact.
+  const counts = countColours(rgb.subarray(0, end));
   const total = designHeight * width;
   const legendIndex = new Map<string, number>();
   legend?.order.forEach((hex, i) => legendIndex.set(hex, i + 1));

@@ -22,6 +22,11 @@ export function LayoutForm() {
 
   function updateOption(index: number, next: DesignOptionState) {
     setOptions((prev) => prev.map((o, i) => (i === index ? next : o)));
+    // A previous Generate attempt's result/error no longer describes what's on the form —
+    // seen for real 2026-09-28, where a stale "Failed to fetch" from an earlier attempt sat
+    // next to a fresh, unrelated file-format error and read as one confusing double failure.
+    setResult(null);
+    setError(null);
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -62,7 +67,7 @@ export function LayoutForm() {
       if (!res.ok || !json) throw new Error(json?.error ?? `Generation failed (HTTP ${res.status})`);
       setResult(json);
     } catch (err) {
-      setError((err as Error).message);
+      setError(err instanceof TypeError ? "Could not reach the server. Check your connection and try again." : (err as Error).message);
     } finally {
       setSubmitting(false);
     }
@@ -100,11 +105,22 @@ export function LayoutForm() {
             maxSlots={maxSlots}
             canRemove={options.length > 1}
             onChange={(next) => updateOption(i, next)}
-            onRemove={() => setOptions((prev) => prev.filter((_, j) => j !== i))}
+            onRemove={() => {
+              setOptions((prev) => prev.filter((_, j) => j !== i));
+              setResult(null);
+              setError(null);
+            }}
           />
         ))}
         <div>
-          <Button variant="secondary" onPress={() => setOptions((prev) => [...prev, newOption()])}>
+          <Button
+            variant="secondary"
+            onPress={() => {
+              setOptions((prev) => [...prev, newOption()]);
+              setResult(null);
+              setError(null);
+            }}
+          >
             Add another design option
           </Button>
         </div>
@@ -115,7 +131,7 @@ export function LayoutForm() {
           <Button type="submit" isPending={submitting} isDisabled={!ready}>
             Generate PPTX + PDF
           </Button>
-          {!ready ? <span className="text-sm text-muted">Upload a Tikni BMP for every design option first.</span> : null}
+          {!ready ? <span className="text-sm text-muted">Upload a design file for every design option first.</span> : null}
         </div>
         {error ? <p className="text-sm text-danger">{error}</p> : null}
         {result ? (
