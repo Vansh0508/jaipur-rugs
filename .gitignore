@@ -9,3 +9,8 @@ build
 .env.*.local
 .DS_Store
 .vercel
+
+# server-local files
+roster.env
+people.csv
+logs/
