@@ -69,6 +69,36 @@ scp "apps/sketch-challan/data/map-size-rules/"*.xlsx idmt@192.168.0.18:~/apps/ja
 `data/demo-secret` is generated on first use. Don't copy the PC's own copy, so the server signs its own
 cookies.
 
+## Accounts (Supabase sign-in, roles by hand)
+
+Everyone signs in with an **email and password stored in the server's own Supabase** (http://192.168.0.18:8000).
+Which role each person has is kept by hand on the server in `data/demo-accounts.json`; the Hub's role tables are not
+used. The file holds no passwords.
+
+1. **Create each person's login in Supabase.** Studio (http://192.168.0.18:8000) → **Authentication** → **Users** →
+   **Add user** → **Create new user**: their email, a password, tick **Auto Confirm User**. Repeat for everyone.
+2. **Point the app at that Supabase.** In `apps/sketch-challan/.env.local` add (anon key: Studio → Project Settings → API):
+   ```ini
+   SKETCH_CHALLAN_AUTH_URL=http://192.168.0.18:8000
+   SKETCH_CHALLAN_AUTH_ANON_KEY=<anon key>
+   ```
+3. **Give each email a role** in `apps/sketch-challan/data/demo-accounts.json` (`chmod 600` it):
+   ```json
+   [
+     { "username": "admin@example.com", "name": "Admin", "role": "admin" },
+     { "username": "rack@example.com", "name": "Rack Management", "role": "rack" },
+     { "username": "manager@example.com", "name": "Karam", "role": "manager", "sketcherName": "<his name as in the roster>" },
+     { "username": "sketcher@example.com", "name": "<name>", "role": "sketcher", "sketcherName": "<name exactly as in the roster>" }
+   ]
+   ```
+   Roles: `admin` (everything + Maps), `rack` (only the Map Library screen), `manager` (Sketching Manager), `sketcher`
+   (own work only). `sketcherName` must match the roster line in `.env.local` exactly.
+4. `pnpm build && pm2 restart sketch-challan` once after changing `.env.local`. Later edits to the JSON file apply on the
+   next sign-in without a restart.
+
+A person with a Supabase login but no line in the file is told "Your account isn't set up for Sketch Challan yet".
+Removing their line (or the Supabase user) takes access away at their next request.
+
 ## 3. Where the reports go (the RPA bot)
 
 | Report | Folder | Used by |

@@ -21,12 +21,12 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-8 px-6 py-12">
       <div className="flex flex-col gap-1 text-center">
         <h1 className="text-2xl font-semibold">Sketch Challan — Staff sign in</h1>
-        <p className="text-sm text-muted">{env.demoMode ? "Use your temporary Sketch Challan login." : "Use your existing Hub account."}</p>
+        <p className="text-sm text-muted">{env.demoMode && !env.authUrl ? "Use your temporary Sketch Challan login." : "Sign in with your email and password."}</p>
       </div>
       {errorMessage ? (
         <p className="rounded-lg border-2 border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">{errorMessage}</p>
       ) : null}
-      <LoginForm demoMode={env.demoMode} />
+      <LoginForm demoMode={env.demoMode} emailLogin={!env.demoMode || Boolean(env.authUrl)} />
       </div>
     </main>
   );

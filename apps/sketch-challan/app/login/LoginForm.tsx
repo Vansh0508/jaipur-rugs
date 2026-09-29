@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, TextField } from "@jaipur-rugs/ui-kit";
 import { getBrowserSupabaseClient } from "@/lib/supabaseClient.browser";
 
-export function LoginForm({ demoMode = false }: { demoMode?: boolean }) {
+export function LoginForm({ demoMode = false, emailLogin = !demoMode }: { demoMode?: boolean; emailLogin?: boolean }) {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -40,7 +40,7 @@ export function LoginForm({ demoMode = false }: { demoMode?: boolean }) {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      <TextField label={demoMode ? "Username" : "Email"} type={demoMode ? "text" : "email"} value={username} onChange={setUsername} isRequired autoFocus fullWidth />
+      <TextField label={emailLogin ? "Email" : "Username"} type={emailLogin ? "email" : "text"} value={username} onChange={setUsername} isRequired autoFocus fullWidth />
       <TextField label="Password" type="password" value={password} onChange={setPassword} isRequired fullWidth />
       {error ? <p className="text-sm text-danger">{error}</p> : null}
       <Button type="submit" isPending={submitting} fullWidth>Sign in</Button>
