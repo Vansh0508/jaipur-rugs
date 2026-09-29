@@ -11,12 +11,14 @@ writeFileSync(accountsFile, JSON.stringify([
   { username: "alpha", password: "z", name: "Alpha", role: "sketcher", sketcherName: "Alpha" },
   { username: "bad", password: "b", name: "Bad", role: "owner" },
   { username: "Rack@Example.com", name: "Rack Management", role: "rack" }, // Supabase login: no password in the file
+  { username: "JR0042", name: "Sample Sketcher", role: "sketcher", sketcherName: "Alpha" }, // employee code
 ]));
 process.env.SKETCH_CHALLAN_DEMO_SECRET = "test-secret";
 process.env.SKETCH_CHALLAN_DEMO_ACCOUNTS = accountsFile;
 const { authenticate, demoCookieValue, getDemoSession } = await import("../lib/demoAuth");
-const FILE_ONLY = { url: "", anonKey: "" };
-const SUPABASE = { url: "http://supabase.test", anonKey: "anon" };
+const FILE_ONLY = { url: "", anonKey: "", emailDomain: "" };
+const SUPABASE = { url: "http://supabase.test", anonKey: "anon", emailDomain: "" };
+const BY_CODE = { ...SUPABASE, emailDomain: "sketch.test" };
 
 describe("sign in", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -35,6 +37,14 @@ describe("sign in", () => {
     expect(fetch.mock.calls[0]![0]).toBe("http://supabase.test/auth/v1/token?grant_type=password");
     expect(await authenticate("rack@example.com", "wrong", SUPABASE)).toBeUndefined();
     expect(await authenticate("stranger@example.com", "right", SUPABASE)).toBe("no-access"); // real account, not added to the file
+  });
+
+  it("employee codes sign in to Supabase as code@domain; the file keeps the bare code", async () => {
+    const fetch = vi.fn(async (_url: string, init: RequestInit) => new Response("{}", { status: JSON.parse(String(init.body)).email === "jr0042@sketch.test" ? 200 : 400 }));
+    vi.stubGlobal("fetch", fetch);
+    expect(await authenticate(" jr0042 ", "pw", BY_CODE)).toMatchObject({ username: "jr0042", sketcherName: "Alpha" });
+    expect(await authenticate("JR0042@sketch.test", "pw", BY_CODE)).toMatchObject({ username: "jr0042" });
+    expect(await authenticate("jr0099", "pw", BY_CODE)).toBeUndefined(); // Supabase says no
   });
 
   it("accepts only a cookie the server signed", () => {

@@ -21,8 +21,9 @@ const DATA = path.join(/*turbopackIgnore: true*/ process.cwd(), "data"); // runt
 
 // Who may sign in, and as what, lives in data/demo-accounts.json (git-ignored), never in the source (the repo is public).
 // Entries: { username, name, role: "manager" | "sketcher" | "admin" | "rack", sketcherName?, password? }.
-// With SKETCH_CHALLAN_AUTH_URL set, username is the person's email and the password is checked against that Supabase
-// (the file then holds no passwords); without it, the file's own password is used (local dev, tests).
+// With SKETCH_CHALLAN_AUTH_URL set, the password is checked against that Supabase (the file then holds no passwords).
+// username is the employee code (user, 2026-09-29: not everyone has email); the Supabase login is
+// code@SKETCH_CHALLAN_AUTH_EMAIL_DOMAIN. Without the URL, the file's own password is used (local dev, tests).
 // Edits apply on the next request. No file = nobody can sign in (fail closed). SKETCH_CHALLAN_DEMO_ACCOUNTS points elsewhere (tests).
 let cache: { file: string; mtimeMs: number; accounts: Account[] } | undefined;
 function accounts(): Account[] {
@@ -71,15 +72,18 @@ function publicSession(account: Account): DemoSession {
 }
 
 // "no-access": the password was right (Supabase) but the email isn't in the file, so the admin still has to add it.
-export async function authenticate(username: string, password: string, auth = { url: env.authUrl, anonKey: env.authAnonKey }): Promise<DemoSession | "no-access" | undefined> {
-  const name = username.trim().toLowerCase();
+export async function authenticate(username: string, password: string, auth = { url: env.authUrl, anonKey: env.authAnonKey, emailDomain: env.authEmailDomain }): Promise<DemoSession | "no-access" | undefined> {
+  const typed = username.trim().toLowerCase();
+  // "jr1234@domain" and "jr1234" are the same person; the file keeps the bare code.
+  const name = auth.emailDomain && typed.endsWith(`@${auth.emailDomain}`) ? typed.slice(0, -auth.emailDomain.length - 1) : typed;
+  const email = name.includes("@") || !auth.emailDomain ? name : `${name}@${auth.emailDomain}`;
   if (!name || !password) return undefined;
   const account = accounts().find((item) => item.username.toLowerCase() === name);
   if (!auth.url) return account?.password && account.password === password ? publicSession(account) : undefined;
   // Supabase Auth password grant; the tokens are dropped, the app keeps its own signed cookie.
   const response = await fetch(`${auth.url}/auth/v1/token?grant_type=password`, {
     method: "POST", headers: { apikey: auth.anonKey, "content-type": "application/json" },
-    body: JSON.stringify({ email: name, password }), signal: AbortSignal.timeout(10_000),
+    body: JSON.stringify({ email, password }), signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) return undefined;
   return account ? publicSession(account) : "no-access";

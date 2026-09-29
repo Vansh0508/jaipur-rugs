@@ -5,7 +5,8 @@ import { NextResponse } from "next/server";
 import { DEMO_COOKIE, getDemoSession } from "@/lib/demoAuth";
 import * as XLSX from "xlsx";
 import { env } from "@/lib/env";
-import { challansFromExcel, mergeExcelRows } from "@/lib/importExcel";
+import { challansFromExcel, challansFromRows, mergeExcelRows } from "@/lib/importExcel";
+import { mirrorEnabled, nav145Rows, nav160Rows } from "@/lib/nav/mirror";
 import type { SketchChallan } from "@/lib/domain/types";
 import { updateRows } from "@/lib/demoStore";
 import { addRulesFromWorkbook, emptyRules, type MapSizeRules } from "@/lib/mapSizeRules";
@@ -60,11 +61,20 @@ export async function POST() {
   // Until then say so, instead of returning unsaved rows that would replace the real ones on screen.
   if (!env.demoMode) return NextResponse.json({ error: "Refresh is not connected to the database yet." }, { status: 501 });
   try {
-    const dir = inboxDir();
     const rules = await loadMapSizeRules();
     const byPo = new Map<string, SketchChallan>();
     const used: string[] = [];
-    for (const name of await reportFiles(dir)) {
+    // The NAV database (nav_mirror) when it is set up, else the Excel inbox. NAV-145 is read last, so it wins a shared PO.
+    const reports = mirrorEnabled() ? [["NAV-160", nav160Rows], ["NAV-145", nav145Rows]] as const : [];
+    for (const [label, load] of reports) {
+      const { rows: source } = await load();
+      let rows: SketchChallan[] = [];
+      try { rows = challansFromRows(source, rules); } catch { /* no Production Order rows in this report right now */ }
+      used.push(`${label} (${rows.length})`);
+      for (const row of rows) byPo.set(row.productionOrderNo, row);
+    }
+    const dir = inboxDir();
+    for (const name of mirrorEnabled() ? [] : await reportFiles(dir)) {
       const full = path.join(/*turbopackIgnore: true*/ dir, name);
       if ((await stat(/*turbopackIgnore: true*/ full)).size > MAX_EXCEL_BYTES) throw new Error(`${name} is larger than 150 MB.`);
       let rows: SketchChallan[];
@@ -77,9 +87,9 @@ export async function POST() {
       used.push(`${name} (${rows.length})`);
       for (const row of rows) byPo.set(row.productionOrderNo, row);
     }
-    if (!byPo.size) throw new Error("No Production Order rows found in the Excel inbox.");
+    if (!byPo.size) throw new Error(mirrorEnabled() ? "No Production Order rows in NAV-160 or NAV-145 right now." : "No Production Order rows found in the Excel inbox.");
     const incoming = [...byPo.values()];
-    const file = used.join(", ");
+    const file = (mirrorEnabled() ? "NAV database: " : "") + used.join(", ");
     // Demo: merge into the shared store so every login sees the same refreshed rows.
     const rows = await updateRows((current) => { const merged = mergeExcelRows(current, incoming); return { rows: merged, result: merged }; });
     return NextResponse.json({ file, rows, read: incoming.length });

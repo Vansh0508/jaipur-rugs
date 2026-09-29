@@ -69,37 +69,54 @@ scp "apps/sketch-challan/data/map-size-rules/"*.xlsx idmt@192.168.0.18:~/apps/ja
 `data/demo-secret` is generated on first use. Don't copy the PC's own copy, so the server signs its own
 cookies.
 
-## Accounts (Supabase sign-in, roles by hand)
+## Accounts (employee code + Supabase password, roles by hand)
 
-Everyone signs in with an **email and password stored in the server's own Supabase** (http://192.168.0.18:8000).
-Which role each person has is kept by hand on the server in `data/demo-accounts.json`; the Hub's role tables are not
-used. The file holds no passwords.
+People sign in with their **employee code** and a password kept in the server's own Supabase (http://192.168.0.18:8000).
+Supabase logins must be emails, so the app signs in as `<code>@<SKETCH_CHALLAN_AUTH_EMAIL_DOMAIN>` (not a real mailbox).
+Roles are kept by hand in `data/demo-accounts.json` (no passwords there); the Hub's role tables are not used.
 
-1. **Create each person's login in Supabase.** Studio (http://192.168.0.18:8000) → **Authentication** → **Users** →
-   **Add user** → **Create new user**: their email, a password, tick **Auto Confirm User**. Repeat for everyone.
-2. **Point the app at that Supabase.** In `apps/sketch-challan/.env.local` add (anon key: Studio → Project Settings → API):
+1. `.env.local`:
    ```ini
    SKETCH_CHALLAN_AUTH_URL=http://192.168.0.18:8000
-   SKETCH_CHALLAN_AUTH_ANON_KEY=<anon key>
+   SKETCH_CHALLAN_AUTH_ANON_KEY=<anon key: Studio -> Project Settings -> API>
+   SKETCH_CHALLAN_AUTH_EMAIL_DOMAIN=sketch.jaipurrugs.local
    ```
-3. **Give each email a role** in `apps/sketch-challan/data/demo-accounts.json` (`chmod 600` it):
-   ```json
-   [
-     { "username": "admin@example.com", "name": "Admin", "role": "admin" },
-     { "username": "rack@example.com", "name": "Rack Management", "role": "rack" },
-     { "username": "manager@example.com", "name": "Karam", "role": "manager", "sketcherName": "<his name as in the roster>" },
-     { "username": "sketcher@example.com", "name": "<name>", "role": "sketcher", "sketcherName": "<name exactly as in the roster>" }
-   ]
+2. A list `people.csv` (no header): `employee_code,name,role[,sketcherName]`, role = `admin` | `rack` | `manager` | `sketcher`;
+   `sketcherName` exactly as in the roster. E.g. `admin,Admin,admin` and `rackmgmt,Rack Management,rack`.
+3. Create the logins and the role file in one go (service role key from the Supabase docker `.env`, `SERVICE_ROLE_KEY=`):
+   ```bash
+   SERVICE_ROLE_KEY=<key> python3 scripts/create_accounts.py people.csv
    ```
-   Roles: `admin` (everything + Maps), `rack` (only the Map Library screen), `manager` (Sketching Manager), `sketcher`
-   (own work only). `sketcherName` must match the roster line in `.env.local` exactly.
-4. `pnpm build && pm2 restart sketch-challan` once after changing `.env.local`. Later edits to the JSON file apply on the
-   next sign-in without a restart.
+   It creates each Supabase user with a random password (leaves existing ones alone), writes `data/demo-accounts.json`
+   (chmod 600) and prints each code and password once: hand them out privately.
+4. `pnpm build && pm2 restart sketch-challan`. Later edits to the JSON file apply on the next sign-in.
 
-A person with a Supabase login but no line in the file is told "Your account isn't set up for Sketch Challan yet".
-Removing their line (or the Supabase user) takes access away at their next request.
+A code with a Supabase login but no line in the file is told "Your account isn't set up for Sketch Challan yet".
 
-## 3. Where the reports go (the RPA bot)
+## NAV data from the database (instead of the Excel inbox)
+
+`/home/idmt/scheduler.py` copies the NAV reports into the server's Supabase, schema `nav_mirror`, several times a day
+(full replace each time). With `NAV_DB_URL` set, **Refresh Excel** (challans) and **Refresh maps Excel** (Maps) read
+those tables instead of the Excel folders. "Action to be Taken" is not a NAV field: the app works it out like the
+NAV-145 sheet's formula (`lib/nav/actionToBeTaken.ts`). Map-size rule sheets stay as files.
+
+1. Table names and owner: `docker exec supabase-db psql -U postgres -c "select tablename, tableowner from pg_tables where schemaname = 'nav_mirror' order by 1;"`.
+   If a name differs from the defaults in `lib/nav/mirror.ts`, set `NAV_TABLE_145`, `NAV_TABLE_160`, `NAV_TABLE_028` or `NAV_TABLE_028_LIBRARY`.
+2. A read-only login (replace `postgres` in the last line with the table owner from step 1 if different):
+   ```bash
+   PW=$(openssl rand -hex 16); echo "Save this password: $PW"
+   docker exec -i supabase-db psql -U postgres -v ON_ERROR_STOP=1 <<SQL
+   create role sketch_challan_reader login password '$PW';
+   grant usage on schema nav_mirror to sketch_challan_reader;
+   grant select on all tables in schema nav_mirror to sketch_challan_reader;
+   alter default privileges for role postgres in schema nav_mirror grant select on tables to sketch_challan_reader;
+   SQL
+   ```
+   The last line keeps access after each copy recreates the tables.
+3. `.env.local`: `NAV_DB_URL=postgresql://sketch_challan_reader.<POOLER_TENANT_ID>:<password>@127.0.0.1:6543/postgres`, then `pnpm build && pm2 restart sketch-challan`.
+4. Check: Refresh Excel should say "NAV database: NAV-160 (…), NAV-145 (…)"; the day after, check again (the tables are recreated overnight).
+
+## 3. Where the reports go (only without NAV_DB_URL) (the RPA bot)
 
 | Report | Folder | Used by |
 |---|---|---|

@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   try { session = await authenticate(String(body.username ?? ""), String(body.password ?? "")); }
   catch { return NextResponse.json({ error: "The sign-in server isn't answering. Try again in a minute." }, { status: 503 }); }
   if (session === "no-access") return NextResponse.json({ error: "Your account isn't set up for Sketch Challan yet. Ask the admin to add you." }, { status: 403 });
-  if (!session) return NextResponse.json({ error: env.authUrl ? "Incorrect email or password." : "Incorrect username or password." }, { status: 401 });
+  if (!session) return NextResponse.json({ error: env.authUrl && !env.authEmailDomain ? "Incorrect email or password." : env.authEmailDomain ? "Incorrect employee code or password." : "Incorrect username or password." }, { status: 401 });
   const response = NextResponse.json({ session });
   // Secure only over https: on a plain-http office server (http://192.168.x.x) browsers drop Secure cookies, so a
   // build-time flag left at its default would make every login bounce back to /login.

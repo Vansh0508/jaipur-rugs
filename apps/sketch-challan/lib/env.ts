@@ -8,6 +8,8 @@ export const env = {
   // Sign-in passwords are checked against this Supabase (the server's own, e.g. http://192.168.0.18:8000) when set.
   // Who may use the app, and as what, is still the hand-kept data/demo-accounts.json (user, 2026-09-29).
   get authUrl() { return (process.env.SKETCH_CHALLAN_AUTH_URL || "").replace(/\/+$/, ""); },
+  // People sign in with their employee code (not everyone has email): the Supabase login is code@this domain.
+  get authEmailDomain() { return (process.env.SKETCH_CHALLAN_AUTH_EMAIL_DOMAIN || "").trim().toLowerCase().replace(/^@/, ""); },
   get authAnonKey() { return process.env.SKETCH_CHALLAN_AUTH_ANON_KEY || ""; },
   get secureCookies() { return process.env.NEXT_PUBLIC_COOKIE_SECURE !== "false"; },
 };

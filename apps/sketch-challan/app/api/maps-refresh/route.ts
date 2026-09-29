@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { DEMO_COOKIE, getDemoSession } from "@/lib/demoAuth";
 import { env } from "@/lib/env";
+import { libraryLocationRows, mirrorEnabled, nav145Rows, toGrid } from "@/lib/nav/mirror";
 import { libraryCopies, mapOrders, sheetRows } from "@/lib/maps/importMaps";
 import { updateMaps } from "@/lib/maps/mapsStore";
 
@@ -67,15 +68,24 @@ export async function POST() {
   if (running) return NextResponse.json({ error: "A maps refresh is already running. Try again in a minute." }, { status: 409 });
   running = true;
   try {
-    const inventory = await newestExcel(path.join(/*turbopackIgnore: true*/ inboxDir(), "inventory"), "inventory (NAV-028)");
-    const ordersFile = await ordersReport();
-    const copies = libraryCopies(sheetRows(inventory.bytes, "NAV-028"));
-    const incoming = mapOrders(ordersFile.rows, copies);
+    // The NAV database (nav_mirror) when it is set up, else the Excel inbox.
+    let copies, incoming, files;
+    if (mirrorEnabled()) {
+      copies = libraryCopies(toGrid(await libraryLocationRows()));
+      incoming = mapOrders(toGrid(await nav145Rows()), copies);
+      files = { inventory: "NAV database: NAV-028 Map Serial Inventory", orders: "NAV-145" };
+    } else {
+      const inventory = await newestExcel(path.join(/*turbopackIgnore: true*/ inboxDir(), "inventory"), "inventory (NAV-028)");
+      const ordersFile = await ordersReport();
+      copies = libraryCopies(sheetRows(inventory.bytes, "NAV-028"));
+      incoming = mapOrders(ordersFile.rows, copies);
+      files = { inventory: inventory.name, orders: ordersFile.name };
+    }
     const state = await updateMaps((current) => {
       const next = {
         orders: incoming, // nothing is assigned, so each refresh simply replaces the list
         refreshedAt: new Date().toISOString(),
-        files: { inventory: inventory.name, orders: ordersFile.name },
+        files,
       };
       return { state: next, result: next };
     });

@@ -85,7 +85,11 @@ export async function challansFromExcel(buffer: ArrayBuffer, rules?: MapSizeRule
   const book = XLSX.read(buffer, { type: "array", cellDates: true, dense: true, sheets: 0 });
   const name = book.SheetNames[0];
   if (!name) throw new Error("The Excel file has no sheets.");
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(book.Sheets[name]!, { defval: "" });
+  return challansFromRows(XLSX.utils.sheet_to_json<Record<string, unknown>>(book.Sheets[name]!, { defval: "" }), rules);
+}
+
+// Rows keyed by NAV column name: from an Excel sheet, or straight from the nav_mirror tables (same names).
+export function challansFromRows(rows: Record<string, unknown>[], rules?: MapSizeRules): SketchChallan[] {
   // The map inventory (NAV-028) also has a "Production Order No" column; if it lands in this inbox it must not turn
   // 130k map copies into challans. Serial No + Location Code only appear in inventory reports.
   const headers = new Set(Object.keys(rows[0] ?? {}).map(norm));
