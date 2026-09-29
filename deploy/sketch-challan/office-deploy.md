@@ -69,6 +69,23 @@ scp "apps/sketch-challan/data/map-size-rules/"*.xlsx idmt@192.168.0.18:~/apps/ja
 `data/demo-secret` is generated on first use. Don't copy the PC's own copy, so the server signs its own
 cookies.
 
+## Server setup (one script)
+
+`deploy/sketch-challan/setup-server.sh` does the "Accounts" and "NAV data from the database" steps below in one go:
+checks the four nav_mirror tables, creates the read-only login `sketch_challan_reader` (read-only is tested), writes
+`.env.local`, creates everyone's sign-in from `people.csv`, builds and restarts. It prints each employee code with its
+new password once. Safe to run again.
+
+1. From the dev PC, copy the two git-ignored files (staff names and employee codes):
+   ```bash
+   scp apps/sketch-challan/data/people.csv apps/sketch-challan/data/roster.env idmt@192.168.0.18:~/apps/jaipur-rugs/apps/sketch-challan/data/
+   ```
+2. On the server:
+   ```bash
+   cd ~/apps/jaipur-rugs && git pull && bash deploy/sketch-challan/setup-server.sh
+   ```
+3. Hand each person their code and password privately. Admins see everything including Maps; `rackmgmt` sees only Maps.
+
 ## Accounts (employee code + Supabase password, roles by hand)
 
 People sign in with their **employee code** and a password kept in the server's own Supabase (http://192.168.0.18:8000).
