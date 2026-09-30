@@ -1,4 +1,5 @@
 import type { SketchChallan } from "./domain/types";
+import { challanStatusLabel } from "./domain/assignments";
 
 export async function exportChallansToExcel(rows: SketchChallan[]) {
   const XLSX = await import("xlsx");
@@ -18,7 +19,7 @@ export async function exportChallansToExcel(rows: SketchChallan[]) {
     "Map Length (ft)": row.mapLengthFt,
     "Area (sq ft)": row.areaSqFt,
     Quantity: row.quantity,
-    Status: row.status,
+    Status: challanStatusLabel(row),
     Priority: row.priority,
     "Due Date": row.dueDate,
     Sketchers: row.tasks.map((task) => task.sketcherName).join(", "),

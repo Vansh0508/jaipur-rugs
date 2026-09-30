@@ -71,7 +71,7 @@ export function UserMenu({ fullName, email, expanded }: { fullName: string; emai
                     {/* A plain Button + the render-prop `close()`, not AlertDialog.CloseTrigger:
                         CloseTrigger renders as the dialog's corner "×" icon button, so text put
                         inside it lands squeezed into the top-right corner, not the footer.
-                        Same approach as components/cars/CarStatusControls.tsx. */}
+                        Same approach as components/shared/ActionDialog.tsx. */}
                     <Button variant="secondary" onPress={close}>
                       Cancel
                     </Button>

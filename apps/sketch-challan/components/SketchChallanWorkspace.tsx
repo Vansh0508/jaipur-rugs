@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Button } from "@jaipur-rugs/ui-kit";
 import { Chip } from "@heroui/react";
 import { FIELD_LABELS, type ChallanDetailsPatch, type SketchChallan } from "@/lib/domain/types";
@@ -9,7 +9,7 @@ import { ChallanTable } from "@/components/ChallanTable";
 import { AssignmentHistory, ChallanActivity } from "@/components/AssignmentHistory";
 import { pendingChange } from "@/lib/domain/approval";
 import { applyAction, type ChallanAction } from "@/lib/domain/actions";
-import { challanStage, rowsForSketcher, type ChallanStage } from "@/lib/domain/assignments";
+import { challanStage, challanStatusLabel, rowsForSketcher, type ChallanStage } from "@/lib/domain/assignments";
 import { SketcherDirectory } from "@/components/SketcherDirectory";
 import { HomeCards, type Section } from "@/components/HomeCards";
 import { MapsTab } from "@/components/MapsTab";
@@ -55,11 +55,16 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
     : tab === "sketchers" || tab === "home" || tab === "maps" ? [] : tab === "requests" ? requestRows : byStage[tab];
   const allotted = Boolean(selected && selected.tasks.length > 0);
   const holdsPart = Boolean(selected?.tasks.some((task) => task.sketcherName === user.sketcherName));
-  const TABS: [Section, string][] = [
-    ["new", `New challan (${byStage.new.length})`],
+  // The four stages are tabs inside "Sketch Challan"; the left pane lists the groups (29 Sep meeting).
+  const STAGES: [ChallanStage, string][] = [
+    ["new", `New (${byStage.new.length})`],
     ["allotted", `Allotted (${byStage.allotted.length})`],
     ["review", `Sketch approval (${byStage.review.length})`],
     ["approved", `Approved (${byStage.approved.length})`],
+  ];
+  const inStages = STAGES.some(([id]) => id === tab);
+  const TABS: [Section, string][] = [
+    ["new", `Sketch Challan (${rows.length})`],
     ["requests", `Admin approvals (${requestRows.length})`],
     ["sketchers", "Sketchers"],
     ...(role === "manager" ? [["mine", `My work (${mine.length})`] as [Section, string]] : []),
@@ -133,16 +138,43 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
     tryAct({ type: "reviewChange", id: selected.id, requestId: pending.id, approved, note: reviewNote }, () => setReviewNote(""));
   }
 
-  // Allotted challans are locked for the manager, so a handover goes to admin as a request. Errors surface in the form.
-  function requestHandover(taskId: string, sketcherName: string, effectiveOn: string, reason: string, excludedDates: string[]) {
-    if (!selected) return;
-    act({ type: "requestChange", id: selected.id, changes: {}, reason, handover: { taskId, sketcherName, effectiveOn, reason: reason.trim(), excludedDates } });
-  }
-
   function checkTask(taskId: string, approved: boolean) {
     if (!selected) return;
     tryAct({ type: "reviewTask", id: selected.id, taskId, approved, note: taskNote }, () => setTaskNote(""));
   }
+
+  // From a table row: approve straight away; sending back or rejecting needs a note, so it opens the challan.
+  const rowActions = useCallback((row: SketchChallan) => {
+    const button = "rounded-md px-2 py-1 text-xs font-semibold";
+    if (tab === "review") {
+      const submitted = row.tasks.filter((task) => task.status === "submitted");
+      if (role !== "manager") return <span className="text-xs text-muted">Waiting for the Sketching Manager</span>;
+      return (<>
+        {submitted.map((task) => (
+          <span key={task.id} className="flex items-center gap-1">
+            <span className="text-xs">{task.assignedPart} · {task.sketcherName}</span>
+            <button type="button" className={button + " bg-accent text-white"} onClick={() => tryAct({ type: "reviewTask", id: row.id, taskId: task.id, approved: true, note: "" })}>Approve</button>
+          </span>
+        ))}
+        <button type="button" className={button + " bg-surface-secondary"} onClick={() => setSelectedId(row.id)}>Send back…</button>
+      </>);
+    }
+    if (tab === "requests") {
+      const request = pendingChange(row);
+      if (!request) return null;
+      const what = request.handover ? `Handover to ${request.handover.sketcherName}`
+        : Object.keys(request.changes).length ? Object.keys(request.changes).map((field) => FIELD_LABELS[field as keyof ChallanDetailsPatch] ?? field).join(", ")
+        : "Extra part (see reason)";
+      if (role !== "admin") return <span className="text-xs text-muted">Waiting for admin · {what}</span>;
+      return (<>
+        <span className="w-full truncate text-xs" title={request.reason}>{what}</span>
+        <button type="button" className={button + " bg-accent text-white"} onClick={() => tryAct({ type: "reviewChange", id: row.id, requestId: request.id, approved: true, note: "" })}>Approve</button>
+        <button type="button" className={button + " bg-surface-secondary"} onClick={() => setSelectedId(row.id)}>Reject…</button>
+      </>);
+    }
+    return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tryAct reads the latest rows through this dependency
+  }, [tab, role, rows]);
 
   function handover(taskId: string, sketcherName: string, effectiveOn: string, reason: string, excludedDates: string[]) {
     if (!selected) return;
@@ -173,7 +205,7 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
                 key={id}
                 type="button"
                 onClick={() => openTab(id)}
-                className={"rounded-lg px-3 py-2 text-left text-sm " + (tab === id ? "bg-accent/10 font-semibold text-accent" : "text-foreground hover:bg-surface-secondary")}
+                className={"rounded-lg px-3 py-2 text-left text-sm " + ((id === "new" ? inStages : tab === id) ? "bg-accent/10 font-semibold text-accent" : "text-foreground hover:bg-surface-secondary")}
               >
                 {label}
               </button>
@@ -187,7 +219,7 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
         {showMaps ? (
           <div className="flex flex-col gap-4">
             <h1 className="text-2xl font-semibold">Maps</h1>
-            <MapsTab state={maps} setState={setMaps} canRefresh />
+            <MapsTab state={maps} setState={setMaps} canRefresh role="admin" />
           </div>
         ) : selected ? (
           <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,56rem)_minmax(20rem,1fr)]">
@@ -195,26 +227,13 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
             <div className="no-print flex gap-2">
               <Button variant="secondary" onPress={() => setSelectedId(null)}>Back</Button>
               <Button variant="secondary" onPress={() => window.print()}>Print</Button>
+              {/* Hold: the Sketching Manager and Admin only (29 Sep meeting); resuming moves the due date out by the days held. */}
+              {(role === "manager" || role === "admin") && challanStage(selected) !== "approved" ? (selected.status === "on_hold"
+                ? <Button variant="secondary" onPress={() => tryAct({ type: "resume", id: selected.id })}>Resume</Button>
+                : <Button variant="secondary" onPress={() => tryAct({ type: "hold", id: selected.id })}>Put on hold</Button>) : null}
             </div>
-            <PaperChallan
-              row={role === "manager" && allotted ? { ...selected, ...selectedDraft } : selected}
-              // A sketcher writes the remark only while holding a part; after a handover it belongs to the new holder.
-              mode={role === "manager" && !pending ? "edit" : role === "sketcher" && holdsPart ? "remarks" : "view"}
-              onPatch={role === "manager" ? patchSelected : (change, message) => patch(selected.id, change, message)}
-              // Manager allots only new challans; after that, extra parts are the admin's call.
-              onAssign={(role === "manager" && !allotted) || (role === "admin" && allotted) ? (parts) => assign(selected.id, parts) : undefined}
-            />
-            {role === "manager" && allotted ? (
-              <div className="no-print rounded-2xl border border-border bg-surface-secondary p-4">
-                {pending ? <p className="text-sm">Your request is awaiting admin approval. Current challan details remain unchanged.</p> : (
-                  <div className="flex flex-col gap-2">
-                    <p className="text-sm font-medium">This challan is allotted and locked. Edits above stay a draft until the admin approves. To hand a part to someone else, use Hand over below. For an extra part, describe it in the reason.</p>
-                    <input className="rounded-lg border border-border bg-surface p-2 text-sm" value={requestReason} onChange={(event) => setRequestReason(event.target.value)} placeholder="What should change and why (e.g. hand the border to another sketcher, first one on leave)" />
-                    <Button size="sm" onPress={submitRequest}>Send change request to admin</Button>
-                  </div>
-                )}
-              </div>
-            ) : null}
+            <p className="no-print text-sm">Status: <strong className={selected.status === "on_hold" ? "text-danger" : undefined}>{challanStatusLabel(selected)}</strong>{selected.status === "on_hold" && selected.heldAt ? ` since ${new Date(selected.heldAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}{selected.dueDate ? ` · Due ${selected.dueDate}` : ""}</p>
+            {actionError ? <p className="text-sm text-danger">{actionError}</p> : null}
             {role === "admin" && pending ? (
               <div className="no-print rounded-2xl border border-border bg-surface-secondary p-4">
                 <h2 className="font-semibold">Pending detail change</h2>
@@ -242,14 +261,35 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
                 ))}
               </div>
             ) : null}
-            {actionError ? <p className="text-sm text-danger">{actionError}</p> : null}
+            {/* Approvals first, so whoever must act sees it without scrolling; everyone else sees who it waits for. */}
+            {pending && role !== "admin" && role !== "manager" ? <p className="no-print rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">Waiting for admin approval.</p> : null}
+            {role !== "manager" && selected.tasks.some((task) => task.status === "submitted") ? <p className="no-print rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">Done by the sketcher. Waiting for the Sketching Manager to approve.</p> : null}
+            <PaperChallan
+              row={role === "manager" && allotted ? { ...selected, ...selectedDraft } : selected}
+              // A sketcher writes the remark only while holding a part; after a handover it belongs to the new holder.
+              mode={role === "manager" && !pending ? "edit" : role === "sketcher" && holdsPart ? "remarks" : "view"}
+              onPatch={role === "manager" ? patchSelected : (change, message) => patch(selected.id, change, message)}
+              // Manager allots only new challans; after that, extra parts are the admin's call.
+              onAssign={(role === "manager" && !allotted) || (role === "admin" && allotted) ? (parts) => assign(selected.id, parts) : undefined}
+            />
+            {role === "manager" && allotted ? (
+              <div className="no-print rounded-2xl border border-border bg-surface-secondary p-4">
+                {pending ? <p className="text-sm">Your request is awaiting admin approval. Current challan details remain unchanged.</p> : (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-sm font-medium">This challan is allotted and locked. Edits above stay a draft until the admin approves. To hand a part to someone else, use Hand over (it applies at once). For an extra part, describe it in the reason.</p>
+                    <input className="rounded-lg border border-border bg-surface p-2 text-sm" value={requestReason} onChange={(event) => setRequestReason(event.target.value)} placeholder="What should change and why" />
+                    <Button size="sm" onPress={submitRequest}>Send change request to admin</Button>
+                  </div>
+                )}
+              </div>
+            ) : null}
             {/* Start / Done for whoever holds the part: a sketcher, or the manager on a part he took himself. */}
             {user.sketcherName ? (
               <div className="no-print flex flex-wrap gap-2">
                 {selected.tasks.filter((task) => task.sketcherName === user.sketcherName && task.status !== "completed").map((task) => (
                   <div key={task.id} className="flex items-center gap-2">
                     <Chip size="sm"><Chip.Label>{task.assignedPart}</Chip.Label></Chip>
-                    {task.status === "submitted" ? <span className="text-sm text-muted">{role === "manager" ? "Submitted: approve it under Check submitted work" : "Sent to the Sketching Manager for checking / जाँच के लिए भेजा"}</span> : (<>
+                    {selected.status === "on_hold" ? <span className="text-sm text-danger">On hold / रोका गया</span> : task.status === "submitted" ? <span className="text-sm text-muted">{role === "manager" ? "Submitted: approve it under Check submitted work" : "Sent to the Sketching Manager for checking / जाँच के लिए भेजा"}</span> : (<>
                       {task.status === "blocked" ? <span className="text-sm text-danger">Blocked / रुका{task.blockedReason ? `: ${task.blockedReason}` : ""}</span> : null}
                       {/* Start once; after that the part just shows as in progress until Done. */}
                       {task.status === "in_progress"
@@ -266,8 +306,7 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
           <aside className="flex min-w-0 flex-col gap-4 xl:sticky xl:top-0 xl:max-h-[calc(100vh-5rem)] xl:overflow-y-auto">
             <AssignmentHistory
               row={selected}
-              onTransfer={role === "admin" ? handover : role === "manager" && !pending ? requestHandover : undefined}
-              transferLabel={role === "manager" ? "Send handover request to admin" : "Hand over task"}
+              onTransfer={role === "admin" || role === "manager" ? handover : undefined}
             />
             {role !== "sketcher" ? <ChallanActivity row={selected} /> : null}
           </aside>
@@ -275,8 +314,23 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
         ) : (
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-semibold">{role === "sketcher" ? "My work / मेरा काम" : tab === "home" ? "Sketch Challan" : TABS.find(([id]) => id === tab)?.[1]}</h1>
+              <h1 className="text-2xl font-semibold">{role === "sketcher" ? "My work / मेरा काम" : tab === "home" || inStages ? "Sketch Challan" : TABS.find(([id]) => id === tab)?.[1]}</h1>
             </div>
+            {role !== "sketcher" && inStages ? (
+              <nav className="flex gap-1 overflow-x-auto border-b border-border">
+                {STAGES.map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => openTab(id)}
+                    className={"shrink-0 border-b-2 px-3 py-2 text-sm " + (tab === id ? "border-accent font-semibold text-accent" : "border-transparent text-muted hover:text-foreground")}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </nav>
+            ) : null}
+            {actionError ? <p className="text-sm text-danger">{actionError}</p> : null}
             {role !== "sketcher" && tab === "home" ? <HomeCards sections={{ ...byStage, requests: requestRows }} maps={role === "admin" ? maps.orders : undefined} mine={role === "manager" ? mine : undefined} onOpen={openTab} /> : null}
             {role !== "sketcher" && tab === "home" ? null : role !== "sketcher" && tab === "sketchers" ? <SketcherDirectory rows={rows} onOpen={setSelectedId} picked={directoryPerson} onPick={setDirectoryPerson} /> : <ChallanTable
               key={role === "sketcher" ? "mine" : tab}
@@ -285,6 +339,7 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
               onRefreshExcel={role === "manager" || role === "admin" ? refreshExcel : undefined}
               onPatch={role === "manager" && tab === "new" ? patch : undefined}
               onAssign={role === "manager" && tab === "new" ? (id, sketcherName, assignedPart) => assign(id, [{ sketcherName, assignedPart }]) : undefined}
+              rowActions={role !== "sketcher" && (tab === "review" || tab === "requests") ? rowActions : undefined}
             />}
           </div>
         )}

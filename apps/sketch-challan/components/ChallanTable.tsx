@@ -14,8 +14,10 @@ import type { SketchChallan } from "@/lib/domain/types";
 import { SKETCH_CATEGORIES } from "@/lib/domain/types";
 import { DEMO_SKETCHERS } from "@/lib/demoData";
 import { pendingChange } from "@/lib/domain/approval";
+import { challanStatusLabel, shownChallanDate } from "@/lib/domain/assignments";
 import { sortChallans } from "@/lib/domain/challans";
 import { exportChallansToExcel } from "@/lib/exportToExcel";
+import { showMapFeet } from "@/lib/mapSizeRules";
 
 const PARTS = ["Full sketch", "Border", "Bicha", "Central field", "Length", "Width", "Texture / colouring"];
 const PRIORITIES = ["urgent", "high", "normal", "low"];
@@ -23,6 +25,7 @@ const PRIORITIES = ["urgent", "high", "normal", "low"];
 export const TABLE_COLUMNS = [
   { id: "productionOrderNo", label: "Prod. Order No" },
   { id: "mapNo", label: "Map No" },
+  { id: "statusLabel", label: "Status" },
   { id: "challanDate", label: "Challan Date" },
   { id: "draftsman", label: "DraftsMan" },
   { id: "sketchCategory", label: "Sketch Category" },
@@ -51,6 +54,9 @@ type ColId = (typeof TABLE_COLUMNS)[number]["id"];
 function cell(row: SketchChallan, id: ColId): string {
   if (id === "assigned") return row.tasks.map((task) => `${task.sketcherName} (${task.assignedPart})`).join(", ") || "—";
   if (id === "approvalStatus") return pendingChange(row) ? "Pending admin" : "—";
+  if (id === "statusLabel") return challanStatusLabel(row);
+  if (id === "challanDate") return shownChallanDate(row);
+  if (id === "mapWidthFt" || id === "mapLengthFt") return showMapFeet(row[id], row.mapSizeWhole);
   const value = row[id];
   return value == null || value === "" ? "—" : String(value);
 }
@@ -130,12 +136,15 @@ export function ChallanTable({
   onRefreshExcel,
   onPatch,
   onAssign,
+  rowActions,
 }: {
   rows: SketchChallan[];
   onPreview: (id: string) => void;
   onRefreshExcel?: () => Promise<string>;
   onPatch?: (id: string, patch: Partial<SketchChallan>, message: string) => void;
   onAssign?: (id: string, sketcherName: string, assignedPart: string) => void;
+  /** Buttons for the first column (Approve / Send back); clicks there don't open the challan. */
+  rowActions?: (row: SketchChallan) => React.ReactNode;
 }) {
   const [visible, setVisible] = useState<Record<string, boolean>>(() => Object.fromEntries(TABLE_COLUMNS.map((col) => [col.id, true])));
   const [error, setError] = useState("");
@@ -149,15 +158,20 @@ export function ChallanTable({
     // Default order is the design rule: urgent first, then by due date. Header clicks re-sort.
     return sortChallans(rows)
       .filter((row) => !needle || TABLE_COLUMNS.some((col) => cell(row, col.id).toLowerCase().includes(needle)))
-      .map((row) => ({ ...row, assigned: cell(row, "assigned"), approvalStatus: cell(row, "approvalStatus") }));
+      .map((row) => ({ ...row, assigned: cell(row, "assigned"), approvalStatus: cell(row, "approvalStatus"), statusLabel: cell(row, "statusLabel"), challanDate: shownChallanDate(row) }));
   }, [rows, query]);
   const cols = TABLE_COLUMNS.filter((col) => visible[col.id]);
-  const columns: GridColDef[] = useMemo(() => TABLE_COLUMNS.map((col) => ({
+  const columns: GridColDef[] = useMemo(() => [...(rowActions ? [{
+    field: "__actions", headerName: "Action", minWidth: 260, sortable: false, filterable: false, disableColumnMenu: true,
+    renderCell: (params: { row: SketchChallan }) => (
+      <div className="flex h-full flex-wrap items-center gap-1 py-1" onClick={stop} onMouseDown={stop}>{rowActions(params.row)}</div>
+    ),
+  } satisfies GridColDef] : []), ...TABLE_COLUMNS.map((col): GridColDef => ({
     field: col.id,
     headerName: col.label,
     flex: 1,
     minWidth: col.id === "assigned" ? 320 : col.id === "sketchCategory" ? 220 : col.id.includes("Remark") ? 200 : 140,
-    renderCell: !onPatch && !onAssign ? undefined : (params) => {
+    renderCell: !onPatch && !onAssign ? undefined : (params: { row: SketchChallan; value?: unknown }) => {
       const row = params.row as SketchChallan;
       if (col.id === "sketchCategory" && onPatch && row.tasks.length === 0) {
         return (
@@ -182,7 +196,7 @@ export function ChallanTable({
       }
       return params.value == null || params.value === "" ? "—" : String(params.value);
     },
-  })), [onAssign, onPatch]);
+  }))], [onAssign, onPatch, rowActions]);
 
   // Drag anywhere on the rows to scroll (scrollbars are hidden). A drag doesn't count as a row click.
   const wrap = useRef<HTMLDivElement>(null);
@@ -312,7 +326,7 @@ export function ChallanTable({
           disableRowSelectionOnClick
           rowSelectionModel={selection}
           onRowSelectionModelChange={setSelection}
-          getRowHeight={() => onAssign ? 72 : 52}
+          getRowHeight={() => onAssign || rowActions ? 72 : 52}
           getRowClassName={(params) => params.indexRelativeToCurrentPage % 2 === 1 ? "row-even" : "row-odd"}
           sx={{
             border: 0, cursor: "grab", userSelect: "none",

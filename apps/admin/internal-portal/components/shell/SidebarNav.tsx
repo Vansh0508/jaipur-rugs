@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { CarsIcon, ChevronIcon, DashboardIcon, DriversIcon, JourneysIcon } from "./icons";
+import { CarsIcon, ChevronIcon, ConferenceIcon, DashboardIcon, DriversIcon, JourneysIcon } from "./icons";
 
 // Hero UI v3 removed Navbar entirely (its own migration guide says to hand-build
 // navigation with native <nav>/Tailwind) — this is that hand-built nav, not a workaround.
@@ -27,6 +27,7 @@ const NAV_LINKS: NavLink[] = [
   { href: "/journeys", label: "Journeys", icon: JourneysIcon },
   { href: "/cars", label: "Cars", icon: CarsIcon },
   { href: "/drivers", label: "Drivers", icon: DriversIcon },
+  { href: "/conference", label: "Conference", icon: ConferenceIcon },
 ];
 
 export function SidebarNav({ expanded, onToggleExpanded }: { expanded: boolean; onToggleExpanded: () => void }) {

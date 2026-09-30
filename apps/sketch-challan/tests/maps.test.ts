@@ -17,7 +17,7 @@ describe("maps import", () => {
   ]);
 
   it("keeps only rack and box of usable LOC-031 copies", () => {
-    expect(copies.get("MAP1")).toEqual([{ rackNo: "23 - OLD", boxNo: "D" }, { rackNo: "7 - OLD", boxNo: "E" }]);
+    expect(copies.get("MAP1")).toEqual([{ serialNo: "1", rackNo: "23 - OLD", boxNo: "D" }, { serialNo: "2", rackNo: "7 - OLD", boxNo: "E" }]);
     expect(copies.has("MAP2")).toBe(false);
     expect(copies.has("MAP3")).toBe(false);
   });

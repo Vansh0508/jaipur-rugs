@@ -48,6 +48,27 @@ export async function getCarById(supabase: SupabaseClient, id: string) {
   return data as Car | null;
 }
 
+/** One car in the list's shape (derived "on trip" status), for the detail page's header and ⋮ menu. */
+export async function getCarListItemById(supabase: SupabaseClient, id: string): Promise<CarListItem | null> {
+  const nowIso = new Date().toISOString();
+  const [car, { data: active, error }] = await Promise.all([
+    getCarById(supabase, id),
+    supabase
+      .from("journeys")
+      .select("id")
+      .eq("vehicle_id", id)
+      .neq("status", "cancelled")
+      .lte("first_pickup_at", nowIso)
+      .gte("last_drop_at", nowIso)
+      .limit(1),
+  ]);
+  if (error) throw error;
+  if (!car) return null;
+
+  const activeJourneyId = (active?.[0]?.id as string | undefined) ?? null;
+  return { ...car, displayStatus: activeJourneyId ? "on_trip" : car.status, activeJourneyId };
+}
+
 export interface CarAvailability {
   id: string;
   name: string;

@@ -39,3 +39,41 @@ export async function searchEmployeeCandidates(supabase: SupabaseClient, query: 
     departmentName: e.department?.name ?? null,
   }));
 }
+
+export interface EmployeeByCode {
+  id: string;
+  fullName: string;
+  employeeCode: string;
+  departmentName: string | null;
+  /** Only an `active` employee can be booked for — the form explains why otherwise. */
+  isActive: boolean;
+}
+
+/**
+ * The conference booking form's "Employee ID" lookup: one employee by exact employee code
+ * (case-insensitive), or null when there's no such code. Readable to Internal Portal admins
+ * via employees_select (db/journeys/011).
+ */
+export async function findEmployeeByCode(supabase: SupabaseClient, code: string): Promise<EmployeeByCode | null> {
+  const trimmed = code.trim();
+  if (!trimmed) return null;
+  // ilike without wildcards = case-insensitive equality; escape the ones a code could contain.
+  const exact = trimmed.replace(/[\\%_]/g, "\\$&");
+  const { data, error } = await supabase
+    .from("employees")
+    .select("id, full_name, employee_code, status, department:departments!employees_department_id_fkey(name)")
+    .ilike("employee_code", exact)
+    .limit(1);
+  if (error) throw error;
+  const row = (data ?? [])[0] as unknown as
+    | { id: string; full_name: string; employee_code: string; status: string; department: { name: string } | null }
+    | undefined;
+  if (!row) return null;
+  return {
+    id: row.id,
+    fullName: row.full_name,
+    employeeCode: row.employee_code,
+    departmentName: row.department?.name ?? null,
+    isActive: row.status === "active",
+  };
+}

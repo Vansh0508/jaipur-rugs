@@ -52,23 +52,50 @@ export async function listDriversWithStats(supabase: SupabaseClient): Promise<Dr
   }
   const activeByDriver = new Map((active ?? []).map((j) => [j.driver_id as string, j.id as string]));
 
-  return drivers.map((driver) => {
-    const s = stats.get(driver.id);
-    const activeJourneyId = activeByDriver.get(driver.id) ?? null;
-    return {
-      ...driver,
-      displayStatus: activeJourneyId && driver.status === "active" ? "on_trip" : driver.status,
-      activeJourneyId,
-      avgRating: s ? Math.round((s.sum / s.count) * 10) / 10 : null,
-      reviewCount: s?.count ?? 0,
-    };
-  });
+  return drivers.map((driver) => toListItem(driver, stats.get(driver.id), activeByDriver.get(driver.id) ?? null));
+}
+
+function toListItem(driver: Driver, stats: { count: number; sum: number } | undefined, activeJourneyId: string | null): DriverListItem {
+  return {
+    ...driver,
+    displayStatus: activeJourneyId && driver.status === "active" ? "on_trip" : driver.status,
+    activeJourneyId,
+    avgRating: stats ? Math.round((stats.sum / stats.count) * 10) / 10 : null,
+    reviewCount: stats?.count ?? 0,
+  };
 }
 
 export async function getDriverById(supabase: SupabaseClient, id: string) {
   const { data, error } = await supabase.from("drivers").select("*").eq("id", id).maybeSingle();
   if (error) throw error;
   return data as Driver | null;
+}
+
+/**
+ * One driver in the list's shape (derived "on trip" status + approved-review stats), for
+ * the detail page's header and ⋮ menu — the same numbers the list row for this driver shows.
+ */
+export async function getDriverListItemById(supabase: SupabaseClient, id: string): Promise<DriverListItem | null> {
+  const nowIso = new Date().toISOString();
+  const [driver, { data: feedback, error: feedbackError }, { data: active, error: activeError }] = await Promise.all([
+    getDriverById(supabase, id),
+    supabase.from("feedback").select("rating").eq("driver_id", id).eq("review_status", "approved"),
+    supabase
+      .from("journeys")
+      .select("id")
+      .eq("driver_id", id)
+      .neq("status", "cancelled")
+      .lte("first_pickup_at", nowIso)
+      .gte("last_drop_at", nowIso)
+      .limit(1),
+  ]);
+  if (feedbackError) throw feedbackError;
+  if (activeError) throw activeError;
+  if (!driver) return null;
+
+  const ratings = feedback ?? [];
+  const stats = ratings.length > 0 ? { count: ratings.length, sum: ratings.reduce((sum, r) => sum + r.rating, 0) } : undefined;
+  return toListItem(driver, stats, (active?.[0]?.id as string | undefined) ?? null);
 }
 
 export interface DriverAvailability {

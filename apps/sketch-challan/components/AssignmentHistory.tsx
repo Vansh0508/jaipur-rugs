@@ -6,7 +6,7 @@ import type { SketchChallan, SketchTask } from "@/lib/domain/types";
 import { taskAssignments } from "@/lib/domain/assignments";
 import { assignmentWorkdays, todayInIndia } from "@/lib/domain/workdays";
 import { DEMO_SKETCHERS } from "@/lib/demoData";
-import { machineCentreNoFor } from "@/lib/sketcherRoster";
+import { employeeIdFor } from "@/lib/sketcherRoster";
 
 type Transfer = (taskId: string, sketcher: string, date: string, reason: string, excludedDates: string[]) => void;
 
@@ -28,7 +28,7 @@ function TransferControls({ task, onTransfer, label }: { task: SketchTask; onTra
       <label className="text-xs">Effective work date
         <input className="mt-1 w-full rounded-lg border border-border bg-surface p-2 text-sm" type="date" max={todayInIndia()} value={date} onChange={(event) => setDate(event.target.value)} />
       </label>
-      <label className="text-xs sm:col-span-2">Handover reason
+      <label className="text-xs sm:col-span-2">Handover reason (optional)
         <input className="mt-1 w-full rounded-lg border border-border bg-surface p-2 text-sm" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="For example, leave" />
       </label>
       <label className="text-xs sm:col-span-2">Leave or other non-work dates for outgoing sketcher (optional)
@@ -84,7 +84,7 @@ export function AssignmentHistory({ row, onTransfer, transferLabel = "Hand over 
             {shared ? <div className="mt-2 space-y-1">
               {taskAssignments(task, row).map((assignment) => (
                 <div key={assignment.id} className="flex flex-wrap justify-between gap-2 rounded-lg bg-surface-secondary px-3 py-2 text-sm">
-                  <span>{assignment.sketcherName}{machineCentreNoFor(assignment.sketcherName) ? ` (${machineCentreNoFor(assignment.sketcherName)})` : ""} · {assignment.startedOn ?? "Not started"} {assignment.endedOn ? `to ${assignment.endedOn} (handover)` : "to present"}</span>
+                  <span>{assignment.sketcherName}{employeeIdFor(assignment.sketcherName) ? ` (${employeeIdFor(assignment.sketcherName)})` : ""} · {assignment.startedOn ?? "Not started"} {assignment.endedOn ? `to ${assignment.endedOn} (handover)` : "to present"}</span>
                   <strong>{assignmentWorkdays(assignment)} workday{assignmentWorkdays(assignment) === 1 ? "" : "s"}</strong>
                   {assignment.transferReason ? <span className="w-full text-xs text-muted">Handover: {assignment.transferReason}</span> : null}
                 </div>

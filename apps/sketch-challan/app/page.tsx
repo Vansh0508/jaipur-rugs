@@ -7,7 +7,7 @@ import { SketchChallanWorkspace } from "@/components/SketchChallanWorkspace";
 import { cookies } from "next/headers";
 import { DEMO_COOKIE, getDemoSession } from "@/lib/demoAuth";
 import { redirect } from "next/navigation";
-import { rowsForSketcher } from "@/lib/domain/assignments";
+import { challanStage, rowsForSketcher } from "@/lib/domain/assignments";
 import { loadMaps } from "@/lib/maps/mapsStore";
 import { RackView } from "@/components/RackView";
 
@@ -15,10 +15,13 @@ export default async function HomePage() {
   if (env.demoMode) {
     const session = getDemoSession((await cookies()).get(DEMO_COOKIE)?.value);
     if (!session) redirect("/login");
-    // Maps are for Admin and the rack management login only; rack management sees nothing else.
-    if (session.role === "rack") return <RackView initialMaps={await loadMaps()} name={session.name} />;
     // Filter on the server so other sketchers' rows never reach a sketcher's browser.
     const stored = await loadRows();
+    // Rack management: New challan and Approved (read only) and the Maps screen, nothing else (29 Sep meeting).
+    if (session.role === "rack") {
+      const visible = stored.filter((row) => ["new", "approved"].includes(challanStage(row)));
+      return <RackView initialMaps={await loadMaps()} challans={visible} name={session.name} />;
+    }
     const rows = session.role === "sketcher" ? rowsForSketcher(stored, session.sketcherName ?? "") : stored;
     const maps = session.role === "admin" ? await loadMaps() : { orders: [] };
     return <SketchChallanWorkspace initialChallans={rows} initialMaps={maps} user={{ ...session, role: session.role }} demoMode />;

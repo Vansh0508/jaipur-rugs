@@ -1,5 +1,6 @@
 import { FIELD_LABELS, type ChallanChangeRequest, type ChallanDetailsPatch, type HandoverRequest, type SketchChallan } from "./types";
 import { transferTask } from "./assignments";
+import { newId } from "../newId";
 
 // What an allotted-challan change request may touch: every form field except the sketcher's own remark.
 const DETAIL_FIELDS = new Set(Object.keys(FIELD_LABELS).filter((key) => key !== "sketcherRemark"));
@@ -28,14 +29,14 @@ export function requestDetailChange(
   return {
     ...row,
     changeRequests: [{ id, requestedAt: now, changes: changed, reason: reason.trim(), status: "pending", handover }, ...(row.changeRequests ?? [])],
-    activity: [{ id: crypto.randomUUID(), at: now, message: handover
+    activity: [{ id: newId(), at: now, message: handover
       ? `Sketching Manager requested admin approval to hand over to ${handover.sketcherName}.`
       : "Sketching Manager requested admin approval for a challan detail change." }, ...row.activity],
   };
 }
 
 function applyHandover(row: SketchChallan, handover: HandoverRequest, now: string) {
-  return transferTask(row, handover.taskId, handover.sketcherName, handover.effectiveOn, handover.reason, handover.excludedDates, crypto.randomUUID(), now);
+  return transferTask(row, handover.taskId, handover.sketcherName, handover.effectiveOn, handover.reason, handover.excludedDates, newId(), now);
 }
 
 export function reviewDetailChange(
@@ -55,6 +56,6 @@ export function reviewDetailChange(
     changeRequests: row.changeRequests?.map((item) => item.id === requestId
       ? { ...item, status: approved ? "approved" as const : "rejected" as const, reviewedAt: now, reviewNote: note.trim() }
       : item),
-    activity: [{ id: crypto.randomUUID(), at: now, message: `Admin ${approved ? "approved and applied" : "rejected"} the challan detail request${note.trim() ? `: ${note.trim()}` : "."}` }, ...base.activity],
+    activity: [{ id: newId(), at: now, message: `Admin ${approved ? "approved and applied" : "rejected"} the challan detail request${note.trim() ? `: ${note.trim()}` : "."}` }, ...base.activity],
   };
 }

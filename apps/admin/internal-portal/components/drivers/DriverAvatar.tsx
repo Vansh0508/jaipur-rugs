@@ -1,6 +1,6 @@
 import { resolvePhotoUrl } from "@/lib/env";
 
-const SIZE_CLASS = { sm: "size-8 text-[10px]", md: "size-11 text-sm" } as const;
+const SIZE_CLASS = { sm: "size-8 text-[10px]", md: "size-11 text-sm", lg: "size-16 text-xl" } as const;
 
 /** Driver photo from the driver-photos bucket, or up-to-two-letter initials without one. */
 export function DriverAvatar({

@@ -35,7 +35,7 @@ export function sheetRows(buffer: ArrayBuffer, sheet?: string): Grid {
 // are hidden.
 export function libraryCopies(rows: Grid): Map<string, MapCopy[]> {
   const [header = [], ...body] = rows;
-  const c = columns(header, { item: "Item No_", location: "Location Code", rack: "Rack No", box: "Box No", destroy: "Destroy Map" }, "The inventory file");
+  const c = columns(header, { item: "Item No_", serial: "Serial No_", location: "Location Code", rack: "Rack No", box: "Box No", destroy: "Destroy Map" }, "The inventory file");
   const byMap = new Map<string, MapCopy[]>();
   for (const row of body) {
     if (text(row[c.location]) !== MAP_LIBRARY_LOCATION || text(row[c.destroy]) === "Yes") continue;
@@ -43,7 +43,7 @@ export function libraryCopies(rows: Grid): Map<string, MapCopy[]> {
     const boxNo = text(row[c.box]);
     const item = text(row[c.item]);
     if (!rackNo || !boxNo || boxNo === "0" || !item) continue;
-    byMap.set(item, [...(byMap.get(item) ?? []), { rackNo, boxNo }]);
+    byMap.set(item, [...(byMap.get(item) ?? []), { serialNo: text(row[c.serial]) || `${rackNo}|${boxNo}`, rackNo, boxNo }]);
   }
   return byMap;
 }
@@ -65,7 +65,7 @@ export function mapOrders(rows: Grid, copies: Map<string, MapCopy[]>): MapOrder[
     const mapItemNo = text(row[c.map]);
     const id = `${productionOrderNo}|${text(row[c.rug])}`;
     byId.set(id, {
-      id, productionOrderNo, mapItemNo, action, copies: copies.get(mapItemNo) ?? [],
+      id, productionOrderNo, rugItemNo: text(row[c.rug]), mapItemNo, action, copies: copies.get(mapItemNo) ?? [],
       quality: text(row[c.quality]), design: text(row[c.design]), size: text(row[c.size]), shape: text(row[c.shape]),
       groundColor: text(row[c.ground]), borderColor: text(row[c.border]),
     });

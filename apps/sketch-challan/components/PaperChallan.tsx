@@ -5,6 +5,9 @@ import { Button } from "@jaipur-rugs/ui-kit";
 import type { ChallanDetailsPatch, SketchChallan } from "@/lib/domain/types";
 import { SKETCH_CATEGORIES } from "@/lib/domain/types";
 import { DEMO_SKETCHERS } from "@/lib/demoData";
+import { shownChallanDate } from "@/lib/domain/assignments";
+import { showMapFeet } from "@/lib/mapSizeRules";
+import { todayInIndia } from "@/lib/domain/workdays";
 
 const PARTS = ["Full sketch", "Border", "Bicha", "Central field", "Length", "Width", "Texture / colouring"];
 const ink = "w-full min-w-0 border-0 border-b border-black/50 bg-transparent px-0 py-0.5 text-[12px] text-black outline-none";
@@ -62,8 +65,8 @@ export function PaperChallan({
             {pair("Map No", <span>{row.mapNo ?? ""}</span>)}
             {pair("DraftsMan", <Ink value={row.draftsman} disabled={!canEdit} onChange={(value) => set({ draftsman: value }, "DraftsMan changed.")} />)}
             {pair("Challan Date", canEdit
-              ? <Ink type="date" value={row.challanDate} onChange={(value) => set({ challanDate: value }, "Challan date changed.")} />
-              : <span>{showDate(row.challanDate)}</span>)}
+              ? <Ink type="date" min={todayInIndia()} value={shownChallanDate(row)} onChange={(value) => set({ challanDate: value }, `Challan date set to ${value}.`)} />
+              : <span>{showDate(shownChallanDate(row))}</span>)}
             {pair("Sketch Category", <Pick value={row.sketchCategory} options={[...SKETCH_CATEGORIES]} disabled={!canEdit} onChange={(value) => set({ sketchCategory: value }, `Category changed to ${value}.`)} />)}
             {pair("Type Of Size", <Ink value={row.sizeType} disabled={!canEdit} onChange={(value) => set({ sizeType: value }, "Type of size changed.")} />)}
             {pair("Developer", <Ink value={row.developer} disabled={!canEdit} onChange={(value) => set({ developer: value }, "Developer changed.")} />)}
@@ -90,8 +93,8 @@ export function PaperChallan({
             <tr>
               <td className={cell}><Ink value={row.quality} disabled={!canEdit} onChange={(value) => set({ quality: value }, "Quality changed.")} /></td>
               <td className={cell}><Ink value={row.shape} disabled={!canEdit} onChange={(value) => set({ shape: value }, "Shape changed.")} /></td>
-              <td className={cell}><Ink type="number" value={String(row.mapWidthFt)} disabled={!canEdit} onChange={(value) => set({ mapWidthFt: Number(value) || 0 }, "Width changed.")} /></td>
-              <td className={cell}><Ink type="number" value={String(row.mapLengthFt)} disabled={!canEdit} onChange={(value) => set({ mapLengthFt: Number(value) || 0 }, "Length changed.")} /></td>
+              <td className={cell}><Ink type="number" value={canEdit ? String(row.mapWidthFt) : showMapFeet(row.mapWidthFt, row.mapSizeWhole)} disabled={!canEdit} onChange={(value) => set({ mapWidthFt: Number(value) || 0 }, "Width changed.")} /></td>
+              <td className={cell}><Ink type="number" value={canEdit ? String(row.mapLengthFt) : showMapFeet(row.mapLengthFt, row.mapSizeWhole)} disabled={!canEdit} onChange={(value) => set({ mapLengthFt: Number(value) || 0 }, "Length changed.")} /></td>
               <td className={cell}><Ink type="number" value={String(row.areaSqFt)} disabled={!canEdit} onChange={(value) => set({ areaSqFt: Number(value) || 0 }, "Area changed.")} /></td>
               <td className={cell}><Ink type="number" value={String(row.quantity)} disabled={!canEdit} onChange={(value) => set({ quantity: Number(value) || 0 }, "Quantity changed.")} /></td>
             </tr>
@@ -152,12 +155,13 @@ export function PaperChallan({
 
 // Saves when you leave the field (or press Enter), not on every keystroke: one save and one history line per edit.
 function Ink({
-  value, onChange, disabled, type = "text",
+  value, onChange, disabled, type = "text", min,
 }: {
   value: string;
   onChange?: (value: string) => void;
   disabled?: boolean;
   type?: string;
+  min?: string;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   if (disabled || !onChange) return <span>{value || ""}</span>;
@@ -165,6 +169,7 @@ function Ink({
     <input
       className={ink}
       type={type}
+      min={min}
       value={draft ?? value}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={() => { if (draft !== null && draft !== value) onChange(draft); setDraft(null); }}
