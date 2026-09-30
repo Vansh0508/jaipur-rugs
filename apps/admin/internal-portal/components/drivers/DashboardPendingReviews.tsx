@@ -20,9 +20,9 @@ import { AvailableIcon, DeactivateIcon, ViewIcon } from "@/components/shared/ico
 // the ⋮ quick-action menu + Hero UI confirm dialog to approve or reject in place. A row
 // click opens the driver. Paginated client-side (the full list is already loaded and is
 // small — most reviews are auto-approved), so a long queue never stretches the dashboard;
-// deciding a review drops it from state and the next one slides into the page. Columns are
-// not sortable on purpose: sorting within a page of a paginated list would mislead, and the
-// queue's natural order (newest first, from the query) is the useful one.
+// deciding a review drops it from state and the next one slides into the page. Ordered
+// alphabetically by driver name; column headers aren't sortable on purpose, since sorting
+// within one page of a paginated list would mislead.
 
 const PAGE_SIZE = 8;
 
@@ -40,9 +40,15 @@ const SECTIONS: ActionSection[] = [
   },
 ];
 
+function byDriverName(a: FeedbackRow, b: FeedbackRow) {
+  return a.driverName.localeCompare(b.driverName, undefined, { sensitivity: "base" }) || b.createdAt.localeCompare(a.createdAt);
+}
+
 export function DashboardPendingReviews({ reviews }: { reviews: FeedbackRow[] }) {
   const router = useRouter();
-  const [pending, setPending] = useState(reviews);
+  // A–Z by driver name (then newest first within a driver), sorted once up front so the
+  // pages are slices of one stable order; removing a decided review keeps that order.
+  const [pending, setPending] = useState(() => [...reviews].sort(byDriverName));
   const [page, setPage] = useState(1);
   const [confirm, setConfirm] = useState<{ review: FeedbackRow; decision: Decision } | null>(null);
   const [error, setError] = useState<string | null>(null);
