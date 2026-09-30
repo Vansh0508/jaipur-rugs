@@ -30,6 +30,7 @@ export function DataTable<T>({
   rows,
   getRowId,
   rowHref,
+  onRowAction,
   emptyMessage,
   initialSort,
 }: {
@@ -38,6 +39,8 @@ export function DataTable<T>({
   rows: T[];
   getRowId: (row: T) => string;
   rowHref?: (row: T) => string;
+  /** Row click / Enter handler, for rows that open something in place (a dialog) rather than navigate. */
+  onRowAction?: (row: T) => void;
   emptyMessage: string;
   initialSort?: SortDescriptor;
 }) {
@@ -91,12 +94,13 @@ export function DataTable<T>({
           <Table.Body renderEmptyState={() => <p className="py-10 text-center text-sm text-muted">{emptyMessage}</p>}>
             {sortedRows.map((row) => {
               const href = rowHref?.(row);
+              const action = href ? () => router.push(href) : onRowAction ? () => onRowAction(row) : undefined;
               return (
                 <Table.Row
                   key={getRowId(row)}
                   id={getRowId(row)}
-                  onAction={href ? () => router.push(href) : undefined}
-                  className={href ? "cursor-pointer" : undefined}
+                  onAction={action}
+                  className={action ? "cursor-pointer" : undefined}
                 >
                   {columns.map((column) => (
                     <Table.Cell key={column.id} className={column.className}>

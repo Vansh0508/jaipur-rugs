@@ -1,6 +1,7 @@
 import {
   LayoutHeaderCellsLarge,
   Route,
+  Calendar,
   Car,
   PersonWorker,
   Person,
@@ -29,6 +30,11 @@ export function CarsIcon({ className }: IconProps) {
 // PersonWorker, not Person — Person is already the signed-in user's icon in UserMenu.
 export function DriversIcon({ className }: IconProps) {
   return <PersonWorker className={`${base} ${className ?? ""}`} width={20} height={20} />;
+}
+
+// Conference room booking — the calendar is the feature's main surface.
+export function ConferenceIcon({ className }: IconProps) {
+  return <Calendar className={`${base} ${className ?? ""}`} width={20} height={20} />;
 }
 
 export function UserIcon({ className }: IconProps) {

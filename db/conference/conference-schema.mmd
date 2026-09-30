@@ -1,0 +1,70 @@
+%% Conference module ERD — Internal Portal (apps/admin/internal-portal), admin-only.
+%%
+%% Two new tables: CONFERENCE_ROOMS (the venues — manageable: created, renamed, and
+%% "removed") and CONFERENCE_BOOKINGS (one row per booked slot in one room).
+%%
+%% Double-booking is prevented by the database, not by the UI: an EXCLUDE constraint (GiST) on
+%% (room_id, `during`) rejects two confirmed bookings of the same room whose time ranges
+%% overlap. `during` is a generated tstzrange(starts_at, ends_at, '[)') — HALF-OPEN, unlike
+%% journeys' closed '[]' window — so a meeting ending at 11:00 and another starting at 11:00
+%% are back-to-back, not a conflict (the normal case for a meeting room). Cancelled
+%% bookings are excluded from the constraint (`where status = 'confirmed'`) so a cancelled
+%% slot can be re-booked. Same mechanism as db/journeys/002 (journeys_vehicle_no_overlap).
+%%
+%% Rooms are soft-deleted (`status = 'inactive'`), never hard-deleted — bookings (and so the
+%% calendar history) keep a foreign key to the room, exactly as cars do (vehicles.status =
+%% 'inactive'). An inactive room can't take new bookings, and can't be removed while it still
+%% has confirmed bookings that haven't finished.
+%%
+%% A booking is FOR an employee (`employee_id` — entered on the form as their employee code;
+%% their name and department are read from EMPLOYEES/DEPARTMENTS, not copied onto the
+%% booking, so they can't go stale) and is ENTERED BY an admin (`created_by`). They are
+%% usually different people: an Internal Portal admin books on behalf of a colleague.
+%%
+%% Reads are gated to Internal Portal admins via private.is_internal_portal_admin. There is
+%% no INSERT/UPDATE/DELETE policy on either table — every write goes through a service-role
+%% Edge Function (conference-room-create/-update, conference-booking-create/-update/-cancel).
+
+erDiagram
+    EMPLOYEES ||--o{ CONFERENCE_BOOKINGS : "booked for"
+    EMPLOYEES ||--o{ CONFERENCE_BOOKINGS : "entered by"
+    DEPARTMENTS ||--o{ EMPLOYEES : "belongs to"
+    CONFERENCE_ROOMS ||--o{ CONFERENCE_BOOKINGS : "hosts"
+
+    CONFERENCE_ROOMS {
+        uuid id PK
+        text name UK "case-insensitive unique (lower(name))"
+        int capacity "nullable; seating limit, enforced by conference-booking-create"
+        enum status "conference_room_status: active / inactive (soft-delete)"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    CONFERENCE_BOOKINGS {
+        uuid id PK
+        uuid room_id FK
+        uuid employee_id FK "who the booking is for"
+        timestamptz starts_at
+        timestamptz ends_at "CHECK ends_at > starts_at"
+        tstzrange during "generated [starts_at, ends_at) — the EXCLUDE constraint's range"
+        int seating_count "CHECK > 0; sitting arrangement"
+        text event_name
+        text event_details "nullable"
+        enum status "conference_booking_status: confirmed / cancelled"
+        uuid created_by FK "admin who entered the booking"
+        timestamptz cancelled_at "nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    EMPLOYEES {
+        uuid id PK
+        text employee_code UK "what the booking form asks for"
+        text full_name
+        uuid department_id FK
+    }
+
+    DEPARTMENTS {
+        uuid id PK
+        text name
+    }
