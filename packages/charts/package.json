@@ -5,13 +5,31 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "peerDependencies": {
-    "react": "^18.3.0",
-    "react-dom": "^18.3.0"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@jaipur-rugs/config": "workspace:*",
-    "@types/react": "^18.3.0",
-    "@types/react-dom": "^18.3.0",
+    "@types/d3-array": "^3.2.2",
+    "@types/d3-shape": "^3.2.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
     "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "@number-flow/react": "^0.6.2",
+    "@visx/event": "4.0.1-alpha.0",
+    "@visx/gradient": "4.0.1-alpha.0",
+    "@visx/grid": "4.0.1-alpha.0",
+    "@visx/group": "4.0.1-alpha.0",
+    "@visx/pattern": "4.0.1-alpha.0",
+    "@visx/responsive": "4.0.1-alpha.0",
+    "@visx/scale": "4.0.1-alpha.0",
+    "@visx/shape": "4.0.1-alpha.0",
+    "clsx": "^2.1.1",
+    "d3-array": "^3.2.4",
+    "d3-shape": "^3.2.0",
+    "motion": "^13.4.6",
+    "tailwind-merge": "^3.7.0"
   }
 }

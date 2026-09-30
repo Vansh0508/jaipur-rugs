@@ -4,6 +4,7 @@ const nextConfig = {
   // needs to transpile them itself rather than expecting pre-built JS.
   transpilePackages: [
     "@jaipur-rugs/auth",
+    "@jaipur-rugs/charts",
     "@jaipur-rugs/db-management-client",
     "@jaipur-rugs/supabase-client",
     "@jaipur-rugs/ui-kit",

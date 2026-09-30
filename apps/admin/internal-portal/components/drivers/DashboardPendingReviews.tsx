@@ -144,8 +144,8 @@ export function DashboardPendingReviews({ reviews }: { reviews: FeedbackRow[] })
   const isApprove = confirm?.decision === "approved";
 
   return (
-    <Card className="lg:col-span-3">
-      <Card.Header className="flex items-center gap-2">
+    <Card className="lg:col-span-2">
+      <Card.Header className="flex-row items-center gap-2">
         <Card.Title>Unverified reviews</Card.Title>
         {pending.length > 0 ? (
           <span className="rounded-full bg-warning px-2 py-0.5 text-[10px] font-bold text-white">{pending.length}</span>

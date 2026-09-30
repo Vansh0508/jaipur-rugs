@@ -1,0 +1,32 @@
+/*
+ * Bklit chart theme — Bklit styles everything through `--chart-*` CSS variables (the
+ * shadcn registry ships them in a theme block we don't copy). Here they're mapped onto
+ * Hero UI's tokens instead, so every chart follows the app's light/dark theme without a
+ * second palette to maintain. Imported once per app, next to @heroui/styles:
+ *
+ *   @import "@jaipur-rugs/charts/src/chart-theme.css";
+ *
+ * The app's globals.css must also `@source` packages/charts/src so Tailwind v4 sees the
+ * utility classes used inside the vendored Bklit components (same as for ui-kit).
+ */
+:root {
+  --chart-background: var(--surface);
+  --chart-foreground: var(--foreground);
+  --chart-foreground-muted: var(--muted);
+  --chart-label: var(--muted);
+  --chart-grid: var(--border);
+  --chart-crosshair: var(--border);
+  --chart-line-primary: var(--accent);
+  --chart-line-secondary: var(--muted);
+  --chart-tooltip-background: var(--overlay);
+  --chart-indicator-color: var(--border);
+  --chart-indicator-secondary-color: var(--muted);
+
+  /* Default series palette — charts here pass explicit status colours where the colour
+     carries meaning (success / warning / danger), these only back un-coloured series. */
+  --chart-1: var(--accent);
+  --chart-2: var(--success);
+  --chart-3: var(--warning);
+  --chart-4: var(--danger);
+  --chart-5: var(--muted);
+}
