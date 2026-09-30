@@ -1,0 +1,81 @@
+%% Booking-requests module ERD — employee-side requests (apps/admin/employee-portal), approved
+%% by an Internal Portal admin (apps/admin/internal-portal).
+%%
+%% An employee opens the employee portal (no login) and asks for a conference room or a
+%% journey. That creates a REQUEST, never a booking: nothing is reserved until an admin
+%% approves it, and approving creates the real CONFERENCE_BOOKINGS / JOURNEYS row through the
+%% exact same rules as an admin-entered one (the room/car/driver EXCLUDE constraints, capacity,
+%% active employees). So two pending requests for the same slot are allowed; the second
+%% approval is the one that fails, with the usual conflict message.
+%%
+%% Who asked: `requested_by` — the employee code typed on the form, matched to an active
+%% EMPLOYEES row by the create function. There is no session behind it (the portal has no
+%% login, by product decision), so it is a label an admin sees and judges, the same trust level
+%% as the feedback app's employee-code sign-in (db/feedback/006). Every request still needs an
+%% admin's approval before anything happens.
+%%
+%% CONFERENCE_BOOKING_REQUESTS mirrors CONFERENCE_BOOKINGS column for column (room, window,
+%% seats, event) plus the decision. JOURNEY_REQUESTS keeps the proposed trip as `trip` jsonb —
+%% exactly the create_journey payload's { guests, stops } (db/journeys/011), minus the car and
+%% driver, which the admin picks when approving. Deliberately not normalised into request_stops
+%% / request_guests tables: a request is a proposal snapshot that is never queried by stop,
+%% and on approval it is handed verbatim to create_journey, which does the normalised writes
+%% and every validation. Guests named on a request are not created in GUESTS until approval.
+%% first_pickup_at / last_drop_at / route_summary / passenger_count are copied out of `trip`
+%% at insert time so lists can sort and show it without parsing jsonb.
+%%
+%% Decision: status pending → approved | rejected, once (booking_request_status). An approved
+%% request points at what it created (booking_id / journey_id, unique); a CHECK keeps
+%% status, decided_by/decided_at and that link consistent. Decisions go through
+%% public.decide_conference_request / public.decide_journey_request (security definer,
+%% service_role only), which lock the request row so two admins can't both approve it.
+%%
+%% Reads: Internal Portal admins only (private.is_internal_portal_admin). The employee portal
+%% reads nothing directly — it has no session — and gets only what it needs (active rooms,
+%% busy time ranges with no names, one employee by exact code) from its Edge Functions. No
+%% INSERT/UPDATE/DELETE policy on either table: every write is an Edge Function.
+
+erDiagram
+    EMPLOYEES ||--o{ CONFERENCE_BOOKING_REQUESTS : "requested by"
+    EMPLOYEES ||--o{ CONFERENCE_BOOKING_REQUESTS : "decided by"
+    CONFERENCE_ROOMS ||--o{ CONFERENCE_BOOKING_REQUESTS : "for room"
+    CONFERENCE_BOOKINGS |o--o| CONFERENCE_BOOKING_REQUESTS : "created on approval"
+    EMPLOYEES ||--o{ JOURNEY_REQUESTS : "requested by"
+    EMPLOYEES ||--o{ JOURNEY_REQUESTS : "decided by"
+    JOURNEYS |o--o| JOURNEY_REQUESTS : "created on approval"
+
+    CONFERENCE_BOOKING_REQUESTS {
+        uuid id PK
+        uuid room_id FK "conference_rooms"
+        uuid requested_by FK "employees — the employee code typed on the form"
+        timestamptz starts_at
+        timestamptz ends_at "> starts_at; same IST day (checked by the create function)"
+        int seating_count "> 0"
+        text event_name "1-200 chars"
+        text event_details "nullable, <= 2000 chars"
+        enum status "booking_request_status: pending / approved / rejected"
+        uuid decided_by FK "employees — the admin; null while pending"
+        timestamptz decided_at "null while pending"
+        text decision_note "nullable; e.g. why it was rejected"
+        uuid booking_id FK "conference_bookings, unique; set only when approved"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    JOURNEY_REQUESTS {
+        uuid id PK
+        uuid requested_by FK "employees"
+        jsonb trip "create_journey payload { guests, stops } — no car / driver"
+        timestamptz first_pickup_at "copied from trip"
+        timestamptz last_drop_at "copied from trip; > first_pickup_at"
+        text route_summary "copied from trip: origin → … → destination"
+        int passenger_count "copied from trip; > 0"
+        text notes "nullable, <= 2000 chars"
+        enum status "booking_request_status"
+        uuid decided_by FK "employees; null while pending"
+        timestamptz decided_at
+        text decision_note
+        uuid journey_id FK "journeys, unique; set only when approved"
+        timestamptz created_at
+        timestamptz updated_at
+    }

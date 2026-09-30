@@ -19,7 +19,9 @@ import {
   type ConferenceView,
 } from "@/lib/conference/calendar";
 import type { ConferenceBooking, ConferenceRoom } from "@/lib/queries/conference";
+import type { ConferenceRequest } from "@/lib/queries/bookingRequests";
 import { ActionDialog } from "@/components/shared/ActionDialog";
+import { RequestsPanel } from "@/components/requests/RequestsPanel";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { BookingDetailsDialog } from "./BookingDetailsDialog";
@@ -31,8 +33,9 @@ import { RoomsManager } from "./RoomsManager";
 import { TimeGrid, type SlotSelection } from "./TimeGrid";
 import { TimelineView } from "./TimelineView";
 
-// Conference booking: three sections as Hero UI secondary tabs — Calendar (Day / Week / Month
-// / Timeline, with stretch-to-resize), Bookings (the list) and Rooms (manage venues). The
+// Conference booking: four sections as Hero UI secondary tabs — Calendar (Day / Week / Month
+// / Timeline, with stretch-to-resize), Bookings (the list), Requests (employees' requests from
+// the employee portal, to approve or reject) and Rooms (manage venues). The
 // calendar's view, date and room filter live in the URL (?view=&date=&room=), so the server
 // page fetches exactly the bookings around what's on screen and a link to a day is shareable;
 // everything else is local state.
@@ -41,7 +44,7 @@ import { TimelineView } from "./TimelineView";
 // once (optimistic), conference-booking-update is called, and if the server refuses (most
 // often another booking in the way) the booking snaps back and the reason is shown.
 
-type Section = "calendar" | "bookings" | "rooms";
+type Section = "calendar" | "bookings" | "requests" | "rooms";
 
 const VIEW_LABEL: Record<ConferenceView, string> = { day: "Day", week: "Week", month: "Month", timeline: "Timeline" };
 
@@ -59,6 +62,7 @@ function defaultSlot(date: string): { startMin: number; endMin: number } {
 export function ConferenceWorkspace({
   rooms,
   bookings: serverBookings,
+  requests,
   view,
   date,
   roomFilter,
@@ -66,6 +70,8 @@ export function ConferenceWorkspace({
   rooms: ConferenceRoom[];
   /** Confirmed and cancelled bookings around the visible range. */
   bookings: ConferenceBooking[];
+  /** Pending employee requests, earliest slot first. */
+  requests: ConferenceRequest[];
   view: ConferenceView;
   date: string;
   /** "all" or a room id. */
@@ -207,6 +213,10 @@ export function ConferenceWorkspace({
               Bookings
               <Tabs.Indicator />
             </Tabs.Tab>
+            <Tabs.Tab id="requests">
+              Requests{requests.length > 0 ? ` (${requests.length})` : ""}
+              <Tabs.Indicator />
+            </Tabs.Tab>
             <Tabs.Tab id="rooms">
               Rooms ({activeRooms.length})
               <Tabs.Indicator />
@@ -288,6 +298,14 @@ export function ConferenceWorkspace({
             roomColors={roomColors}
             onOpen={(b) => setSelectedId(b.id)}
             onCancel={(b) => setCancelTarget(b)}
+          />
+        </Tabs.Panel>
+
+        <Tabs.Panel id="requests" className="pt-4">
+          <RequestsPanel
+            requests={requests}
+            title="Conference requests"
+            description="Rooms employees have asked for. Approving books the room exactly as requested."
           />
         </Tabs.Panel>
 

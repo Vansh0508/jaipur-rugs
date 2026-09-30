@@ -67,6 +67,9 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | `20260928073957` | `journey_employee_passengers` | journeys | `db/journeys/011_journey_employee_passengers.sql` |
 | `20260930063613` | `conference_schema` | conference | `db/conference/001_conference_schema.sql` |
 | `20260930063641` | `conference_rls` | conference | `db/conference/002_conference_rls.sql` |
+| — (written, NOT applied — awaiting approval) | `booking_requests_schema` | booking-requests | `db/booking-requests/001_booking_requests_schema.sql` |
+| — (written, NOT applied — awaiting approval) | `booking_requests_rls` | booking-requests | `db/booking-requests/002_booking_requests_rls.sql` |
+| — (written, NOT applied — awaiting approval) | `booking_requests_decide_functions` | booking-requests | `db/booking-requests/003_booking_requests_decide_functions.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
@@ -96,6 +99,28 @@ with stand-ins for `employees`/`departments`/the `private` helpers) and every ru
 exercised. After applying: security + performance advisors re-run — no findings on the new
 tables beyond INFO `unused_index` (brand-new, no traffic yet); `packages/supabase-client/src/types.ts`
 regenerated.
+
+**Booking-requests module (2026-09-30, written — NOT YET APPLIED to `matnispbauvvlnbsuzxq`):**
+`db/booking-requests/001`–`003`, backing the new no-login `apps/admin/employee-portal` and the
+Internal Portal's approval screens (Dashboard, Journeys, Conference → Requests). Adds
+`conference_booking_requests` and `journey_requests` (the latter keeps the proposed trip as
+`trip` jsonb in create_journey's `{ guests, stops }` shape — see the ERD for why), one shared
+`booking_request_status` enum (`pending` / `approved` / `rejected`), and two security-definer
+functions, `decide_conference_request` / `decide_journey_request`, EXECUTE for `service_role`
+only, that approve in one transaction (lock the request, re-check, create the booking /
+journey, link it). Reads admin-only (`private.is_internal_portal_admin`), no write policy.
+Six Edge Functions, **also written, not deployed**: public (`verify_jwt = false` — the portal
+has no session) `employee-lookup-by-code`, `conference-availability`,
+`conference-request-create`, `journey-request-create`; admin `conference-request-decide`,
+`journey-request-decide`. Before applying, the SQL was run in PGlite on top of the real
+`db/conference/001`–`002` (stand-ins for `employees`/`private` helpers/`create_journey`) and
+36 checks passed: approve/reject/decide-twice, EXCLUDE clash on approval (request stays
+pending), back-to-back allowed, past/over-capacity/removed-room/inactive-employee refusals,
+journey approve passing trip + car + driver to create_journey, conflict rollback, every CHECK,
+RLS (admin reads; non-admin and anon read nothing; direct inserts refused) and the EXECUTE
+grants. The trip validator (`supabase/functions/_shared/bookingRequests.ts`) passed 20 cases
+under Deno. Still to do once approved, per `AGENTS.md` §3.1: apply, run advisors, deploy the six
+functions, regenerate `packages/supabase-client/src/types.ts`, flip the three rows above.
 
 Current live schema (as of the last migration above): `departments`, `roles`,
 `employees`, `employee_roles`, `department_access_grants`, `apps`, `permissions`,
