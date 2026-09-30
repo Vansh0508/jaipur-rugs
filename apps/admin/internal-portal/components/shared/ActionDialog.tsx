@@ -17,6 +17,7 @@ export function ActionDialog({
   cancelLabel,
   onConfirm,
   isPending,
+  tone = "danger",
 }: {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
@@ -26,6 +27,8 @@ export function ActionDialog({
   cancelLabel?: string;
   onConfirm?: () => void | Promise<void>;
   isPending?: boolean;
+  /** "danger" (default) for destructive confirms; "success" for a positive one like Approve. */
+  tone?: "danger" | "success";
 }) {
   return (
     <AlertDialog.Root isOpen={isOpen} onOpenChange={onOpenChange}>
@@ -34,7 +37,7 @@ export function ActionDialog({
           <AlertDialog.Dialog>
             {({ close }) => (
               <>
-                <AlertDialog.Icon status="danger" />
+                <AlertDialog.Icon status={tone} />
                 <AlertDialog.Header>
                   <AlertDialog.Heading>{heading}</AlertDialog.Heading>
                 </AlertDialog.Header>
@@ -45,7 +48,7 @@ export function ActionDialog({
                       <Button variant="secondary" onPress={close}>
                         {cancelLabel ?? "Cancel"}
                       </Button>
-                      <Button variant="danger" isPending={isPending} onPress={onConfirm}>
+                      <Button variant={tone === "danger" ? "danger" : "primary"} isPending={isPending} onPress={onConfirm}>
                         {confirmLabel ?? "Confirm"}
                       </Button>
                     </>
