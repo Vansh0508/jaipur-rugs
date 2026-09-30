@@ -1,7 +1,6 @@
 // Generated from project matnispbauvvlnbsuzxq via mcp Supabase generate_typescript_types,
-// regenerated 2026-09-28 (see db/MIGRATIONS.md for every migration this reflects) — this
-// refresh folds in db/journeys/009-011 (cars/drivers parity enum values; journey_guests
-// employee passengers).
+// regenerated 2026-09-30 (see db/MIGRATIONS.md for every migration this reflects) — this
+// refresh folds in db/conference/001-002 (conference_rooms, conference_bookings).
 
 export type Json =
   | string
@@ -159,6 +158,120 @@ export type Database = {
           purpose?: string
           scope?: Database["public"]["Enums"]["auth_limit_scope"]
           subject?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      conference_bookings: {
+        Row: {
+          cancelled_at: string | null
+          created_at: string
+          created_by: string
+          during: unknown
+          employee_id: string
+          ends_at: string
+          event_details: string | null
+          event_name: string
+          id: string
+          room_id: string
+          seating_count: number
+          starts_at: string
+          status: Database["public"]["Enums"]["conference_booking_status"]
+          updated_at: string
+        }
+        Insert: {
+          cancelled_at?: string | null
+          created_at?: string
+          created_by: string
+          during?: unknown
+          employee_id: string
+          ends_at: string
+          event_details?: string | null
+          event_name: string
+          id?: string
+          room_id: string
+          seating_count: number
+          starts_at: string
+          status?: Database["public"]["Enums"]["conference_booking_status"]
+          updated_at?: string
+        }
+        Update: {
+          cancelled_at?: string | null
+          created_at?: string
+          created_by?: string
+          during?: unknown
+          employee_id?: string
+          ends_at?: string
+          event_details?: string | null
+          event_name?: string
+          id?: string
+          room_id?: string
+          seating_count?: number
+          starts_at?: string
+          status?: Database["public"]["Enums"]["conference_booking_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conference_bookings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conference_bookings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "conference_bookings_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conference_bookings_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "conference_bookings_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "conference_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conference_rooms: {
+        Row: {
+          capacity: number | null
+          created_at: string
+          id: string
+          name: string
+          status: Database["public"]["Enums"]["conference_room_status"]
+          updated_at: string
+        }
+        Insert: {
+          capacity?: number | null
+          created_at?: string
+          id?: string
+          name: string
+          status?: Database["public"]["Enums"]["conference_room_status"]
+          updated_at?: string
+        }
+        Update: {
+          capacity?: number | null
+          created_at?: string
+          id?: string
+          name?: string
+          status?: Database["public"]["Enums"]["conference_room_status"]
           updated_at?: string
         }
         Relationships: []
@@ -3132,6 +3245,7 @@ export type Database = {
         Args: { p_employee_id: string; p_mail_id: string }
         Returns: Json
       }
+      get_atlas_slack_webhook_url: { Args: never; Returns: string }
       get_orders_sync_secret: { Args: never; Returns: string }
       list_deletable_documents: { Args: { p_limit?: number }; Returns: Json }
       list_folders_to_refresh: { Args: { p_limit?: number }; Returns: Json }
@@ -3276,6 +3390,8 @@ export type Database = {
       auth_limit_scope: "email" | "ip" | "username"
       check_status: "pending" | "approved" | "rejected"
       column_request_status: "pending" | "added" | "declined" | "approved"
+      conference_booking_status: "confirmed" | "cancelled"
+      conference_room_status: "active" | "inactive"
       courier: "dhl" | "fedex"
       document_kind:
         | "planning_mail"
@@ -3498,6 +3614,8 @@ export const Constants = {
       auth_limit_scope: ["email", "ip", "username"],
       check_status: ["pending", "approved", "rejected"],
       column_request_status: ["pending", "added", "declined", "approved"],
+      conference_booking_status: ["confirmed", "cancelled"],
+      conference_room_status: ["active", "inactive"],
       courier: ["dhl", "fedex"],
       document_kind: [
         "planning_mail",

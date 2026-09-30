@@ -65,8 +65,8 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | `20260928043603` | `cars_drivers_parity_enums` | journeys | `db/journeys/009_cars_drivers_parity_enums.sql` |
 | `20260928043624` | `cars_drivers_parity_rules` | journeys | `db/journeys/010_cars_drivers_parity_rules.sql` |
 | `20260928073957` | `journey_employee_passengers` | journeys | `db/journeys/011_journey_employee_passengers.sql` |
-| — (written, NOT applied — awaiting approval) | `conference_schema` | conference | `db/conference/001_conference_schema.sql` |
-| — (written, NOT applied — awaiting approval) | `conference_rls` | conference | `db/conference/002_conference_rls.sql` |
+| `20260930063613` | `conference_schema` | conference | `db/conference/001_conference_schema.sql` |
+| `20260930063641` | `conference_rls` | conference | `db/conference/002_conference_rls.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
@@ -79,25 +79,23 @@ global Auth setting, not a per-migration schema issue, and out of scope for this
 flagged here for whoever owns project-wide Auth configuration). Both modules are
 advisor-clean at the WARN/ERROR level for anything schema-related.
 
-**Conference module (2026-09-30, written — NOT YET APPLIED to `matnispbauvvlnbsuzxq`):**
-`db/conference/001`–`002`, backing the Internal Portal's new Conference booking page
-(`apps/admin/internal-portal`, `/conference`). Adds `conference_rooms` (manageable venues;
-"remove" is a soft-delete to `status = 'inactive'`, like cars) and `conference_bookings`
-(one row per booked slot, for an employee, entered by an admin). Double-booking is the same
-mechanism as `journeys`: a GiST `EXCLUDE` on `(room_id, during)` where `status = 'confirmed'`
-— but `during` is a **half-open** `[start, end)` range so back-to-back bookings are allowed.
-Reads are admin-only via `private.is_internal_portal_admin`; there is no write policy, every
-write goes through five new service-role Edge Functions (`supabase/functions/conference-room-create`,
-`-room-update`, `-booking-create`, `-booking-update`, `-booking-cancel`) — **also written, not
-deployed.** Before applying, the SQL was run against a disposable Postgres (PGlite, with
-stand-ins for `employees`/`departments`/the `private` helpers) and every rule above exercised:
-overlap rejected (head/tail/inside/containing/identical), back-to-back allowed, cancelled slots
-reusable, resize-into-a-neighbour refused on UPDATE, all CHECKs, case-insensitive room names,
-FKs, and RLS (admin reads; non-admin and anon read nothing; direct writes refused even for an
-admin). That is a check of the SQL, not of the live project — still to do once applied, per
-`AGENTS.md` §3.1: run the security + performance advisors, regenerate
-`packages/supabase-client/src/types.ts`, deploy the five functions and confirm with
-`list_edge_functions`, then flip the two rows above to applied with their real versions.
+**Conference module (2026-09-30, applied to `matnispbauvvlnbsuzxq`):**
+`db/conference/001`–`002`, backing the Internal Portal's Conference booking page
+(`apps/admin/internal-portal`, `/conference`). Applied as versions `20260930063613`
+(`conference_schema`) and `20260930063641` (`conference_rls`). Adds `conference_rooms`
+(manageable venues; "remove" is a soft-delete to `status = 'inactive'`, like cars) and
+`conference_bookings` (one row per booked slot, for an employee, entered by an admin).
+Double-booking is the same mechanism as `journeys`: a GiST `EXCLUDE` on `(room_id, during)`
+where `status = 'confirmed'` — but `during` is a **half-open** `[start, end)` range so
+back-to-back bookings are allowed. Reads are admin-only via `private.is_internal_portal_admin`;
+there is no write policy, every write goes through five service-role Edge Functions
+(`conference-room-create`, `-room-update`, `-booking-create`, `-booking-update`,
+`-booking-cancel`), all deployed (`verify_jwt = true`, version 1) and ACTIVE per
+`list_edge_functions`. Before applying, the SQL was run against a disposable Postgres (PGlite,
+with stand-ins for `employees`/`departments`/the `private` helpers) and every rule above
+exercised. After applying: security + performance advisors re-run — no findings on the new
+tables beyond INFO `unused_index` (brand-new, no traffic yet); `packages/supabase-client/src/types.ts`
+regenerated.
 
 Current live schema (as of the last migration above): `departments`, `roles`,
 `employees`, `employee_roles`, `department_access_grants`, `apps`, `permissions`,
