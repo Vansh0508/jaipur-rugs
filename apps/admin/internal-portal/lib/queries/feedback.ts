@@ -7,10 +7,25 @@ export interface FeedbackRow {
   rating: number;
   description: string | null;
   travelDate: string;
+  createdAt: string;
   reviewStatus: "pending" | "approved" | "rejected";
+  /** Set when the review is tied to a planned ride; null for an unplanned ("direct") review. */
+  journeyId: string | null;
+  /** Who left it — a guest or an employee; "Unknown reviewer" if neither row is readable. */
+  reviewerName: string;
+  reviewerKind: "guest" | "employee" | null;
+  /** Guests only — shown on the moderation card so an admin can recognise the reviewer. */
+  reviewerPhone: string | null;
 }
 
-const FEEDBACK_SELECT = "id, driver_id, rating, description, travel_date, review_status, drivers(full_name)";
+// feedback has two FKs to employees (employee_id = the reviewer, reviewed_by = the
+// moderating admin), so the reviewer embed needs the constraint name to disambiguate.
+const FEEDBACK_SELECT = `
+  id, driver_id, rating, description, travel_date, created_at, review_status, journey_id,
+  drivers(full_name),
+  guest:guests(full_name, phone),
+  employee:employees!feedback_employee_id_fkey(full_name)
+`;
 
 interface RawFeedbackRow {
   id: string;
@@ -18,8 +33,12 @@ interface RawFeedbackRow {
   rating: number;
   description: string | null;
   travel_date: string;
+  created_at: string;
   review_status: "pending" | "approved" | "rejected";
+  journey_id: string | null;
   drivers: { full_name: string } | null;
+  guest: { full_name: string; phone: string } | null;
+  employee: { full_name: string } | null;
 }
 
 function toFeedbackRow(row: RawFeedbackRow): FeedbackRow {
@@ -30,7 +49,12 @@ function toFeedbackRow(row: RawFeedbackRow): FeedbackRow {
     rating: row.rating,
     description: row.description,
     travelDate: row.travel_date,
+    createdAt: row.created_at,
     reviewStatus: row.review_status,
+    journeyId: row.journey_id,
+    reviewerName: row.employee?.full_name ?? row.guest?.full_name ?? "Unknown reviewer",
+    reviewerKind: row.employee ? "employee" : row.guest ? "guest" : null,
+    reviewerPhone: row.guest?.phone ?? null,
   };
 }
 
@@ -45,25 +69,17 @@ export async function listRecentFeedback(supabase: SupabaseClient, limit = 5) {
   return ((data ?? []) as unknown as RawFeedbackRow[]).map(toFeedbackRow);
 }
 
-export async function listPlannedFeedbackForDriver(supabase: SupabaseClient, driverId: string) {
+/**
+ * Every review of a driver, newest first — approved, pending and rejected. The driver
+ * page splits them: approved ones count toward the rating, pending unplanned ones wait in
+ * the moderation queue, rejected ones are dropped.
+ */
+export async function listFeedbackForDriver(supabase: SupabaseClient, driverId: string) {
   const { data, error } = await supabase
     .from("feedback")
     .select(FEEDBACK_SELECT)
     .eq("driver_id", driverId)
-    .not("journey_id", "is", null)
-    .order("travel_date", { ascending: false });
-  if (error) throw error;
-  return ((data ?? []) as unknown as RawFeedbackRow[]).map(toFeedbackRow);
-}
-
-export async function listPendingFeedbackForDriver(supabase: SupabaseClient, driverId: string) {
-  const { data, error } = await supabase
-    .from("feedback")
-    .select(FEEDBACK_SELECT)
-    .eq("driver_id", driverId)
-    .is("journey_id", null)
-    .eq("review_status", "pending")
-    .order("travel_date", { ascending: false });
+    .order("created_at", { ascending: false });
   if (error) throw error;
   return ((data ?? []) as unknown as RawFeedbackRow[]).map(toFeedbackRow);
 }
