@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card } from "@heroui/react";
@@ -11,16 +11,20 @@ import type { FeedbackRow } from "@/lib/queries/feedback";
 import { formatDate } from "@/lib/format";
 import { ActionsMenu, type ActionSection } from "@/components/shared/ActionsMenu";
 import { ActionDialog } from "@/components/shared/ActionDialog";
+import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
+import { PaginationBar } from "@/components/shared/PaginationBar";
 import { AvailableIcon, DeactivateIcon, ViewIcon } from "@/components/shared/icons";
-import { EmptyState } from "@/components/shared/EmptyState";
 
-// Dashboard "Unverified reviews" card: the pending queue across all drivers, with the same
-// ⋮ quick-action menu + confirm dialog pattern as the cars/drivers lists (ActionsMenu /
-// ActionDialog, same icons) so a review can be approved or rejected right from here. The
-// whole tile still opens the driver (stretched link), like CarCard. The full list is kept
-// in state and sliced for display, so deciding one pulls the next pending review in.
+// Dashboard "Unverified reviews": the pending queue across all drivers as the app's
+// standard primary-variant table (same DataTable as Cars/Drivers), one row per review with
+// the ⋮ quick-action menu + Hero UI confirm dialog to approve or reject in place. A row
+// click opens the driver. Paginated client-side (the full list is already loaded and is
+// small — most reviews are auto-approved), so a long queue never stretches the dashboard;
+// deciding a review drops it from state and the next one slides into the page. Columns are
+// not sortable on purpose: sorting within a page of a paginated list would mislead, and the
+// queue's natural order (newest first, from the query) is the useful one.
 
-const SHOWN = 6;
+const PAGE_SIZE = 8;
 
 type Decision = "approved" | "rejected";
 
@@ -39,6 +43,7 @@ const SECTIONS: ActionSection[] = [
 export function DashboardPendingReviews({ reviews }: { reviews: FeedbackRow[] }) {
   const router = useRouter();
   const [pending, setPending] = useState(reviews);
+  const [page, setPage] = useState(1);
   const [confirm, setConfirm] = useState<{ review: FeedbackRow; decision: Decision } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isDeciding, setIsDeciding] = useState(false);
@@ -61,11 +66,75 @@ export function DashboardPendingReviews({ reviews }: { reviews: FeedbackRow[] })
     }
   }
 
-  function handleAction(review: FeedbackRow, id: string) {
-    if (id === "view") router.push(`/drivers/${review.driverId}`);
-    else if (id === "approved" || id === "rejected") setConfirm({ review, decision: id });
-  }
+  const columns = useMemo<DataTableColumn<FeedbackRow>[]>(
+    () => [
+      {
+        id: "driver",
+        label: "Driver",
+        isRowHeader: true,
+        render: (review) => <span className="font-medium text-foreground">{review.driverName}</span>,
+      },
+      {
+        id: "reviewer",
+        label: "Reviewer",
+        render: (review) => (
+          <div className="min-w-0">
+            <p className="truncate text-sm text-foreground">{review.reviewerName}</p>
+            <p className="text-xs text-muted">
+              {review.reviewerKind === "employee" ? "Employee" : review.reviewerKind === "guest" ? "Guest" : "Unknown"}
+              {review.reviewerPhone ? ` · ${review.reviewerPhone}` : ""}
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: "rating",
+        label: "Rating",
+        render: (review) => <StarRating value={review.rating} isReadOnly size={14} />,
+      },
+      {
+        id: "comment",
+        label: "Comment",
+        render: (review) =>
+          review.description ? (
+            <p className="max-w-xs truncate text-sm text-muted" title={review.description}>
+              {review.description}
+            </p>
+          ) : (
+            <span className="text-sm text-muted">—</span>
+          ),
+      },
+      {
+        id: "date",
+        label: "Date",
+        render: (review) => <span className="text-sm text-muted tabular-nums">{formatDate(review.createdAt)}</span>,
+      },
+      {
+        id: "actions",
+        label: "Actions",
+        className: "w-14 text-right",
+        render: (review) => (
+          <div className="flex justify-end">
+            <ActionsMenu
+              ariaLabel={`Actions for the review of ${review.driverName}`}
+              sections={SECTIONS}
+              isDisabled={isDeciding}
+              onAction={(id) => {
+                if (id === "view") router.push(`/drivers/${review.driverId}`);
+                else if (id === "approved" || id === "rejected") setConfirm({ review, decision: id });
+              }}
+            />
+          </div>
+        ),
+      },
+    ],
+    [isDeciding, router],
+  );
 
+  // Deleting the last row of a later page would otherwise leave `page` pointing past the end.
+  const pageCount = Math.max(1, Math.ceil(pending.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pageRows = pending.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
   const isApprove = confirm?.decision === "approved";
 
   return (
@@ -77,42 +146,19 @@ export function DashboardPendingReviews({ reviews }: { reviews: FeedbackRow[] })
         ) : null}
       </Card.Header>
       <Card.Content>
-        {pending.length === 0 ? (
-          <EmptyState message="No reviews are waiting for approval." />
-        ) : (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {pending.slice(0, SHOWN).map((review) => (
-              <div
-                key={review.id}
-                className="relative flex flex-col gap-1.5 rounded-xl border border-warning/40 bg-warning/5 p-3 transition-shadow hover:shadow-md"
-              >
-                <Link href={`/drivers/${review.driverId}`} aria-label={review.driverName} className="absolute inset-0 rounded-xl" />
-                <div className="flex items-start justify-between gap-2">
-                  <span className="truncate text-sm font-semibold text-foreground">{review.driverName}</span>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <StarRating value={review.rating} isReadOnly size={14} />
-                    <ActionsMenu
-                      ariaLabel={`Actions for the review of ${review.driverName}`}
-                      sections={SECTIONS}
-                      onAction={(id) => handleAction(review, id)}
-                      isDisabled={isDeciding}
-                    />
-                  </div>
-                </div>
-                <p className="text-xs text-muted">
-                  {review.reviewerName} · {formatDate(review.createdAt)}
-                </p>
-                {review.description ? <p className="line-clamp-2 text-sm text-muted">{review.description}</p> : null}
-              </div>
-            ))}
-          </div>
-        )}
+        <DataTable
+          ariaLabel="Unverified reviews"
+          columns={columns}
+          rows={pageRows}
+          getRowId={(review) => review.id}
+          rowHref={(review) => `/drivers/${review.driverId}`}
+          emptyMessage="No reviews are waiting for approval."
+        />
+        <PaginationBar page={currentPage} pageCount={pageCount} onPageChange={setPage} />
       </Card.Content>
       {pending.length > 0 ? (
         <Card.Footer className="flex items-center justify-between">
-          <span className="text-xs text-muted">
-            {pending.length > SHOWN ? `Showing ${SHOWN} of ${pending.length}.` : "Use ⋮ to approve or reject."}
-          </span>
+          <span className="text-xs text-muted">Click a row to open the driver, or use ⋮ to approve or reject.</span>
           <Link href="/drivers" className="text-sm font-medium text-accent hover:underline">
             View drivers
           </Link>
