@@ -83,3 +83,18 @@ export async function listFeedbackForDriver(supabase: SupabaseClient, driverId: 
   if (error) throw error;
   return ((data ?? []) as unknown as RawFeedbackRow[]).map(toFeedbackRow);
 }
+
+/**
+ * Every review still waiting on an admin decision, across all drivers, newest first —
+ * the dashboard's "Unverified reviews" card. Only unplanned-ride reviews are ever
+ * `pending` (planned-ride ones are auto-approved), so there's no journey to check here.
+ */
+export async function listPendingFeedback(supabase: SupabaseClient) {
+  const { data, error } = await supabase
+    .from("feedback")
+    .select(FEEDBACK_SELECT)
+    .eq("review_status", "pending")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return ((data ?? []) as unknown as RawFeedbackRow[]).map(toFeedbackRow);
+}
