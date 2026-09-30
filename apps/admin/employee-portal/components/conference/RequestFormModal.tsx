@@ -9,7 +9,7 @@ import { requestConferenceBooking } from "@jaipur-rugs/db-management-client";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { todayInAppZone } from "@/lib/format";
 import type { ConferenceBooking, ConferenceRoom } from "@/lib/queries/conference";
-import { fromTimeValue, istInstantMs, toTimeValue } from "@/lib/conference/calendar";
+import { fromTimeValue, hasStarted, istInstantMs, toTimeValue } from "@/lib/conference/calendar";
 import { LABEL_CLS, TimeInput } from "@/components/journey/fields";
 import { EmployeeCodeField, lookupProblem, useEmployeeLookup, useRememberedEmployeeCode } from "@/components/shared/EmployeeCodeField";
 
@@ -64,6 +64,7 @@ export function RequestFormModal({
     if (date < todayInAppZone()) return "The booking date can't be in the past.";
     if (!from || !to) return "Choose a from and to time.";
     if (fromTimeValue(to) <= fromTimeValue(from)) return "The 'to' time must be after the 'from' time.";
+    if (hasStarted(date, fromTimeValue(from))) return "That start time has already passed — pick a time from now on.";
     const who = lookupProblem(lookup, employeeCode);
     if (who) return who;
     const count = Number(seats);

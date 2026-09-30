@@ -70,6 +70,7 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | `20260930112222` | `booking_requests_schema` | booking-requests | `db/booking-requests/001_booking_requests_schema.sql` |
 | `20260930112233` | `booking_requests_rls` | booking-requests | `db/booking-requests/002_booking_requests_rls.sql` |
 | `20260930112258` | `booking_requests_decide_functions` | booking-requests | `db/booking-requests/003_booking_requests_decide_functions.sql` |
+| `20260930120216` | `conference_request_start_not_passed` | booking-requests | `db/booking-requests/004_conference_request_start_not_passed.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
@@ -127,6 +128,15 @@ Live smoke test of the functions: lookup (real code 200 / unknown 404), availabi
 range cap 400), create validation errors (400), both decide functions refuse no-session calls
 (401), and one real `conference-request-create` insert (201, row verified, then deleted). Not
 yet exercised live: an approval with a real admin session.
+
+**No conference bookings for time that has started (2026-09-30, applied):** `004`
+(`20260930120216`) changes `decide_conference_request` to refuse approval once the request's
+START has passed (was: its end), with a 5-minute grace; grants unchanged (service_role only).
+The matching Edge Function rule is `startHasPassed` in `supabase/functions/_shared/conference.ts`
+(same grace), used by `conference-booking-create`, `conference-request-create` and
+`conference-booking-update` (a moved start can't be in the past; the end can't be) — all three
+redeployed as version 2. Tested in PGlite (40 checks, incl. under-way refused / within-grace
+approves / grants) and live (a request that started 30 min ago is now refused with 400).
 
 Current live schema (as of the last migration above): `departments`, `roles`,
 `employees`, `employee_roles`, `department_access_grants`, `apps`, `permissions`,

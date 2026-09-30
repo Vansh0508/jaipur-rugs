@@ -7,6 +7,8 @@ import {
   isToday,
   istDateOf,
   minutesOfDay,
+  pastCutoffMinutes,
+  snapUp,
 } from "@/lib/conference/calendar";
 import type { ConferenceBooking, ConferenceRoom } from "@/lib/queries/conference";
 import type { SlotSelection } from "./TimeGrid";
@@ -17,8 +19,9 @@ import { useEventResize } from "./useEventResize";
 // see at a glance which rooms are free when. Bars can be stretched or contracted by dragging
 // their left or right edge (useEventResize, same as the grid's top/bottom). Rooms can't
 // double-book, so a row never has overlapping bars and needs no lanes. Clicking an empty
-// spot in a row starts a booking for that room at that time. Scrolls sideways, opening at the
-// working day; the room names stay pinned on the left.
+// spot in a row starts a booking for that room at that time. Time that has already passed is
+// shaded and can't be booked, with the same drag rules as the day/week grid (TimeGrid.tsx).
+// Scrolls sideways, opening at the working day; the room names stay pinned on the left.
 
 const HOUR_PX = 84;
 const PX_PER_MINUTE = HOUR_PX / 60;
@@ -72,6 +75,7 @@ export function TimelineView({
 
   const dayBookings = bookings.filter((b) => istDateOf(b.startsAt) === date);
   const nowMinutes = isToday(date) ? minutesOfDay(new Date(now).toISOString(), date) : null;
+  const cutoff = pastCutoffMinutes(date, now);
   const trackWidth = HOUR_PX * 24;
 
   if (rooms.length === 0) {
@@ -127,10 +131,21 @@ export function TimelineView({
                   if (room.status !== "active") return;
                   const rect = event.currentTarget.getBoundingClientRect();
                   const minutes = (event.clientX - rect.left) / PX_PER_MINUTE;
-                  const startMin = Math.min(MINUTES_PER_DAY - 60, Math.floor(minutes / 30) * 30);
-                  onCreate({ date, roomId: room.id, startMin, endMin: startMin + 60 });
+                  // Half-hour slots, but never starting before now.
+                  const startMin = Math.max(Math.min(MINUTES_PER_DAY - 60, Math.floor(minutes / 30) * 30), snapUp(cutoff));
+                  if (startMin >= MINUTES_PER_DAY) return;
+                  onCreate({ date, roomId: room.id, startMin, endMin: Math.min(startMin + 60, MINUTES_PER_DAY) });
                 }}
               >
+                {cutoff > 0 ? (
+                  <div
+                    aria-hidden
+                    title="This time has passed"
+                    className="absolute inset-y-0 left-0 cursor-not-allowed bg-surface-secondary/70"
+                    style={{ width: cutoff * PX_PER_MINUTE }}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                ) : null}
                 {roomBookings.map((booking) => {
                   const committedStart = minutesOfDay(booking.startsAt, date);
                   const committedEnd = Math.max(minutesOfDay(booking.endsAt, date), committedStart + 15);
@@ -139,6 +154,10 @@ export function TimelineView({
                   const endMin = live?.endMin ?? committedEnd;
                   const resizable = isResizable(booking, now);
                   const limits = neighbourLimits(booking, bookings, date, committedStart, committedEnd);
+                  // Under way: the start is history and stays put. Upcoming: it can't be dragged before now.
+                  const underWay = committedStart < cutoff;
+                  const startLimits = { min: Math.max(limits.min, snapUp(cutoff)), max: limits.max };
+                  const endLimits = { ...limits, endFloor: snapUp(cutoff) };
                   const target: TimelineTarget = { id: booking.id, startMin: committedStart, endMin: committedEnd, booking };
                   const width = Math.max((endMin - startMin) * PX_PER_MINUTE, 24);
 
@@ -171,17 +190,19 @@ export function TimelineView({
 
                       {resizable ? (
                         <>
-                          <div
-                            aria-hidden
-                            title="Drag to change the start time"
-                            className="absolute inset-y-0 left-0 w-2 cursor-ew-resize touch-none"
-                            {...handleProps(target, "start", limits)}
-                          />
+                          {!underWay ? (
+                            <div
+                              aria-hidden
+                              title="Drag to change the start time"
+                              className="absolute inset-y-0 left-0 w-2 cursor-ew-resize touch-none"
+                              {...handleProps(target, "start", startLimits)}
+                            />
+                          ) : null}
                           <div
                             aria-hidden
                             title="Drag to change the end time"
                             className="absolute inset-y-0 right-0 flex w-2 cursor-ew-resize touch-none items-center justify-end"
-                            {...handleProps(target, "end", limits)}
+                            {...handleProps(target, "end", endLimits)}
                           >
                             <span className="mr-px h-6 w-0.5 rounded-full bg-foreground/30" />
                           </div>

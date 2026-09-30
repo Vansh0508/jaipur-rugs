@@ -41,10 +41,23 @@ export function formatIstRange(start: Date, end: Date) {
 }
 
 /**
+ * How far behind "now" a start may be and still count as not yet passed — slack for clock
+ * drift between the browser and the server, and for a form sent a moment after the minute it
+ * starts on. Mirrored by db/booking-requests/004 (decide_conference_request).
+ */
+export const START_GRACE_MS = 5 * 60_000;
+
+/** Whether `start` is already in the past (allowing START_GRACE_MS). */
+export function startHasPassed(start: Date, now: number = Date.now()) {
+  return start.getTime() < now - START_GRACE_MS;
+}
+
+/**
  * Validates a booking window: parseable, end after start, and within ONE IST calendar day
  * (a meeting room booking is a slot in a day, not a multi-day hold). `requireFuture`
- * additionally rejects a window that is already entirely over — for new bookings; a resize
- * of a meeting that's under way passes `false`.
+ * additionally rejects a window that has already started — a room can't be booked (or
+ * requested) for time that's begun. A resize of a meeting that's under way passes `false`
+ * and checks the moved edges itself (conference-booking-update).
  */
 export function parseWindow(
   startsAt: unknown,
@@ -66,8 +79,8 @@ export function parseWindow(
   if (istDay(start) !== istDay(new Date(end.getTime() - 1))) {
     return { error: "A booking must start and end on the same day." };
   }
-  if (requireFuture && end <= new Date()) {
-    return { error: "That time has already passed — pick a time from now on." };
+  if (requireFuture && startHasPassed(start)) {
+    return { error: "That start time has already passed — pick a time from now on." };
   }
   return { start, end };
 }

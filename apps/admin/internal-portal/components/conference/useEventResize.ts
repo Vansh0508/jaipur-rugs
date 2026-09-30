@@ -35,7 +35,19 @@ type DragState<T extends ResizeTarget> = T & {
   origin: number;
   min: number;
   max: number;
+  /** The end edge can't be dragged earlier than this (now, for today) — a meeting can't end in the past. */
+  endFloor: number;
 };
+
+/**
+ * `min`/`max`: how far the start / end edge may go (the neighbouring bookings, the day's
+ * bounds, and for the start edge also "now"). `endFloor`: the earliest the end may go.
+ */
+export interface ResizeLimits {
+  min: number;
+  max: number;
+  endFloor?: number;
+}
 
 /**
  * `T` is whatever the caller wants handed back on commit (the booking, its date, …) — it only
@@ -56,7 +68,7 @@ export function useEventResize<T extends ResizeTarget>({
   function windowFor(state: DragState<T>, pointer: number): ResizePreview {
     const deltaMinutes = (pointer - state.origin) / pxPerMinute;
     if (state.edge === "end") {
-      const endMin = Math.min(state.max, Math.max(state.startMin + SNAP_MINUTES, snap(state.endMin + deltaMinutes)));
+      const endMin = Math.min(state.max, Math.max(state.startMin + SNAP_MINUTES, state.endFloor, snap(state.endMin + deltaMinutes)));
       return { id: state.id, startMin: state.startMin, endMin };
     }
     const startMin = Math.max(state.min, Math.min(state.endMin - SNAP_MINUTES, snap(state.startMin + deltaMinutes)));
@@ -66,14 +78,14 @@ export function useEventResize<T extends ResizeTarget>({
   const position = (event: ReactPointerEvent) => (axis === "y" ? event.clientY : event.clientX);
 
   /** Spread onto the drag handle for one edge of one booking. */
-  function handleProps(target: T, edge: "start" | "end", limits: { min: number; max: number }) {
+  function handleProps(target: T, edge: "start" | "end", limits: ResizeLimits) {
     return {
       onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
         if (event.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
         event.currentTarget.setPointerCapture(event.pointerId);
-        drag.current = { ...target, edge, origin: position(event), min: limits.min, max: limits.max };
+        drag.current = { ...target, edge, origin: position(event), min: limits.min, max: limits.max, endFloor: limits.endFloor ?? 0 };
         setPreview({ id: target.id, startMin: target.startMin, endMin: target.endMin });
       },
       onPointerMove: (event: ReactPointerEvent<HTMLElement>) => {

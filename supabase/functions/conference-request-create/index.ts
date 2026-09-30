@@ -4,7 +4,7 @@
 //
 // Checked here too, so the employee hears about an obvious problem straight away instead of
 // from a rejection: the employee code (must be an active employee), the window (one IST day,
-// not already over — ../_shared/conference.ts), the room (exists, not removed), capacity, and
+// not already started — ../_shared/conference.ts), the room (exists, not removed), capacity, and
 // that no confirmed booking already holds that time. Capped at MAX_OPEN_REQUESTS_PER_EMPLOYEE
 // open requests per employee, since anyone who can reach the portal can call this.
 

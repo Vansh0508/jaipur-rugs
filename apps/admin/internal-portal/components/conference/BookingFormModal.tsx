@@ -11,7 +11,7 @@ import { getBrowserSupabaseClient } from "@/lib/supabaseClient.browser";
 import { todayInAppZone } from "@/lib/format";
 import { findEmployeeByCode, type EmployeeByCode } from "@/lib/queries/employees";
 import type { ConferenceRoom } from "@/lib/queries/conference";
-import { fromTimeValue, istInstantMs, toTimeValue } from "@/lib/conference/calendar";
+import { fromTimeValue, hasStarted, istInstantMs, toTimeValue } from "@/lib/conference/calendar";
 import { FieldError, LABEL_CLS, TimeInput } from "@/components/journeys/builder/fields";
 
 // "Book Conference Room": Venue (a managed room), Booking Date (Hero UI DatePicker), From /
@@ -95,6 +95,7 @@ export function BookingFormModal({
     if (date < todayInAppZone()) return "The booking date can't be in the past.";
     if (!from || !to) return "Choose a from and to time.";
     if (fromTimeValue(to) <= fromTimeValue(from)) return "The 'to' time must be after the 'from' time.";
+    if (hasStarted(date, fromTimeValue(from))) return "That start time has already passed — pick a time from now on.";
     if (!employeeCode.trim()) return "Enter the Employee ID.";
     if (lookup.state === "loading") return "Still looking up the Employee ID — one moment.";
     if (lookup.state !== "found") return lookup.state === "inactive" ? "That employee isn't active." : "No employee matches that Employee ID.";

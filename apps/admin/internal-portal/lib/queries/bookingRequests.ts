@@ -49,10 +49,14 @@ export function requestStartsAt(request: BookingRequest) {
   return request.kind === "conference" ? request.startsAt : request.firstPickupAt;
 }
 
-/** A pending request whose time has already gone can only be rejected (the server agrees). */
+/**
+ * A pending request whose time has gone can only be rejected (the server agrees): a conference
+ * request once its start has passed — a room can't be booked for time that's already begun —
+ * and a journey request once the trip would be over.
+ */
 export function isRequestExpired(request: BookingRequest, now: number = Date.now()) {
-  const end = request.kind === "conference" ? request.endsAt : request.lastDropAt;
-  return new Date(end).getTime() <= now;
+  const cutoff = request.kind === "conference" ? request.startsAt : request.lastDropAt;
+  return new Date(cutoff).getTime() <= now;
 }
 
 type RawEmployee = {

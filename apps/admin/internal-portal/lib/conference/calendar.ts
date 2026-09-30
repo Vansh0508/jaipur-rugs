@@ -114,6 +114,27 @@ export function minutesOfDay(iso: string, date: string) {
   return Math.min(MINUTES_PER_DAY, Math.max(0, Math.round(minutes)));
 }
 
+/**
+ * How far into `date` (minutes past midnight IST) it's already too late to book: the whole
+ * day for a past date, the current minute for today, nothing for a future date. A conference
+ * room can't be booked or requested for a time that has already started (the Edge Functions
+ * enforce the same rule).
+ */
+export function pastCutoffMinutes(date: string, now: number = Date.now()) {
+  const minutes = Math.ceil((now - istInstantMs(date, 0)) / 60_000);
+  return Math.min(MINUTES_PER_DAY, Math.max(0, minutes));
+}
+
+/** Whether a slot starting `startMin` into `date` has already begun. */
+export function hasStarted(date: string, startMin: number, now: number = Date.now()) {
+  return istInstantMs(date, startMin) < now;
+}
+
+/** The first SNAP_MINUTES step at or after `minutes` — where a click in the past is moved to. */
+export function snapUp(minutes: number, step = SNAP_MINUTES) {
+  return Math.ceil(minutes / step) * step;
+}
+
 export function snap(minutes: number, step = SNAP_MINUTES) {
   return Math.round(minutes / step) * step;
 }

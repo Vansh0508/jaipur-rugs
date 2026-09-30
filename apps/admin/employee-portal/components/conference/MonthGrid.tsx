@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { dayHeader, formatMinutes, isToday, istDateOf, minutesOfDay, monthGridDates } from "@/lib/conference/calendar";
+import { MINUTES_PER_DAY, dayHeader, formatMinutes, isToday, istDateOf, minutesOfDay, monthGridDates, pastCutoffMinutes } from "@/lib/conference/calendar";
 import type { ConferenceBooking } from "@/lib/queries/conference";
 
 // The Month view: a Monday-first grid of whole weeks. Each day lists its bookings as compact
@@ -56,12 +56,16 @@ export function MonthGrid({
           const dayBookings = byDay.get(day) ?? [];
           const shown = dayBookings.slice(0, MAX_CHIPS);
           const extra = dayBookings.length - shown.length;
+          // A day that's already over can't take a booking; its bookings stay clickable.
+          const isPast = pastCutoffMinutes(day) >= MINUTES_PER_DAY;
           return (
             <div
               key={day}
-              onClick={() => onCreate(day)}
+              onClick={() => !isPast && onCreate(day)}
+              title={isPast ? "This day has passed" : undefined}
               className={
-                "flex min-h-28 cursor-cell flex-col gap-1 border-border p-1.5 transition-colors hover:bg-surface-secondary/40 " +
+                "flex min-h-28 flex-col gap-1 border-border p-1.5 transition-colors " +
+                (isPast ? "cursor-not-allowed " : "cursor-cell hover:bg-surface-secondary/40 ") +
                 (index % 7 !== 0 ? "border-l " : "") +
                 (index >= 7 ? "border-t " : "") +
                 (inMonth ? "" : "bg-surface-secondary/30")

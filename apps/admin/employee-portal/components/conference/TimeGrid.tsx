@@ -9,6 +9,8 @@ import {
   istDateOf,
   layoutLanes,
   minutesOfDay,
+  pastCutoffMinutes,
+  snapUp,
 } from "@/lib/conference/calendar";
 import type { ConferenceBooking } from "@/lib/queries/conference";
 import { eventStyle, isResizable, neighbourLimits } from "./shared";
@@ -17,7 +19,9 @@ import { useEventResize } from "./useEventResize";
 // The Day and Week views — copied from apps/admin/internal-portal's TimeGrid. One column per
 // date, the hours of the day down the side; each block is a time some room is already taken
 // (no names — see conference-availability). Busy slots of different rooms that overlap in time
-// sit side by side (layoutLanes). Clicking an empty spot starts a request at that time. The
+// sit side by side (layoutLanes). Clicking an empty spot starts a request at that time; time
+// that has already passed is shaded and can't be requested (a click just after "now" starts at
+// the next quarter hour). The
 // resize handles from the admin copy never show here (./shared.ts isResizable). The grid
 // scrolls (all 24 hours exist) and opens scrolled to the working day.
 
@@ -172,6 +176,7 @@ function DayColumn({
     [dayBookings, date],
   );
   const nowMinutes = isToday(date) ? minutesOfDay(new Date(now).toISOString(), date) : null;
+  const cutoff = pastCutoffMinutes(date, now);
 
   return (
     <div
@@ -183,10 +188,21 @@ function DayColumn({
       onClick={(event) => {
         const rect = event.currentTarget.getBoundingClientRect();
         const minutes = (event.clientY - rect.top) / PX_PER_MINUTE;
-        const startMin = Math.min(MINUTES_PER_DAY - 60, Math.floor(minutes / 30) * 30);
-        onCreate({ date, startMin, endMin: startMin + 60 });
+        // Half-hour slots, but never starting before now.
+        const startMin = Math.max(Math.min(MINUTES_PER_DAY - 60, Math.floor(minutes / 30) * 30), snapUp(cutoff));
+        if (startMin >= MINUTES_PER_DAY) return;
+        onCreate({ date, startMin, endMin: Math.min(startMin + 60, MINUTES_PER_DAY) });
       }}
     >
+      {cutoff > 0 ? (
+        <div
+          aria-hidden
+          title="This time has passed"
+          className="absolute inset-x-0 top-0 cursor-not-allowed bg-surface-secondary/70"
+          style={{ height: cutoff * PX_PER_MINUTE }}
+          onClick={(event) => event.stopPropagation()}
+        />
+      ) : null}
       {laid.map(({ booking, startMin: committedStart, endMin: committedEnd, lane, lanes }) => {
         const live = preview?.id === booking.id ? preview : null;
         const startMin = live?.startMin ?? committedStart;

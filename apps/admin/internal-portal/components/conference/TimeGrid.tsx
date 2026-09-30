@@ -9,6 +9,8 @@ import {
   istDateOf,
   layoutLanes,
   minutesOfDay,
+  pastCutoffMinutes,
+  snapUp,
 } from "@/lib/conference/calendar";
 import type { ConferenceBooking } from "@/lib/queries/conference";
 import { eventStyle, isResizable, neighbourLimits } from "./shared";
@@ -18,8 +20,11 @@ import { useEventResize } from "./useEventResize";
 // where their times say and can be stretched or contracted by dragging their top or bottom
 // edge (useEventResize) — the drag redraws live and saves on release. Bookings of different
 // rooms that overlap in time sit side by side (layoutLanes). Clicking an empty spot starts a
-// booking at that time. The grid scrolls (all 24 hours exist, so nothing booked early or late
-// is hidden) and opens scrolled to the working day.
+// booking at that time. Time that has already passed is shaded and can't be booked: a click
+// there does nothing, a click just after "now" starts at the next quarter hour, an upcoming
+// meeting's start can't be dragged into the past, and a meeting under way keeps its start —
+// only its end can move (not before now). The grid scrolls (all 24 hours exist, so nothing
+// booked early or late is hidden) and opens scrolled to the working day.
 
 const HOUR_PX = 56;
 const PX_PER_MINUTE = HOUR_PX / 60;
@@ -172,6 +177,7 @@ function DayColumn({
     [dayBookings, date],
   );
   const nowMinutes = isToday(date) ? minutesOfDay(new Date(now).toISOString(), date) : null;
+  const cutoff = pastCutoffMinutes(date, now);
 
   return (
     <div
@@ -183,16 +189,32 @@ function DayColumn({
       onClick={(event) => {
         const rect = event.currentTarget.getBoundingClientRect();
         const minutes = (event.clientY - rect.top) / PX_PER_MINUTE;
-        const startMin = Math.min(MINUTES_PER_DAY - 60, Math.floor(minutes / 30) * 30);
-        onCreate({ date, startMin, endMin: startMin + 60 });
+        // Half-hour slots, but never starting before now.
+        const startMin = Math.max(Math.min(MINUTES_PER_DAY - 60, Math.floor(minutes / 30) * 30), snapUp(cutoff));
+        if (startMin >= MINUTES_PER_DAY) return;
+        onCreate({ date, startMin, endMin: Math.min(startMin + 60, MINUTES_PER_DAY) });
       }}
     >
+      {cutoff > 0 ? (
+        <div
+          aria-hidden
+          title="This time has passed"
+          className="absolute inset-x-0 top-0 cursor-not-allowed bg-surface-secondary/70"
+          style={{ height: cutoff * PX_PER_MINUTE }}
+          onClick={(event) => event.stopPropagation()}
+        />
+      ) : null}
+
       {laid.map(({ booking, startMin: committedStart, endMin: committedEnd, lane, lanes }) => {
         const live = preview?.id === booking.id ? preview : null;
         const startMin = live?.startMin ?? committedStart;
         const endMin = live?.endMin ?? committedEnd;
         const resizable = isResizable(booking, now);
         const limits = neighbourLimits(booking, bookings, date, committedStart, committedEnd);
+        // Under way: the start is history and stays put. Upcoming: it can't be dragged before now.
+        const underWay = committedStart < cutoff;
+        const startLimits = { min: Math.max(limits.min, snapUp(cutoff)), max: limits.max };
+        const endLimits = { ...limits, endFloor: snapUp(cutoff) };
         const target: GridTarget = { id: booking.id, startMin: committedStart, endMin: committedEnd, booking, date };
         const color = roomColors.get(booking.roomId) ?? "var(--accent)";
         const height = Math.max((endMin - startMin) * PX_PER_MINUTE, MIN_EVENT_PX);
@@ -238,17 +260,19 @@ function DayColumn({
 
             {resizable ? (
               <>
-                <div
-                  aria-hidden
-                  title="Drag to change the start time"
-                  className="absolute inset-x-0 top-0 h-2 cursor-ns-resize touch-none"
-                  {...handleProps(target, "start", limits)}
-                />
+                {!underWay ? (
+                  <div
+                    aria-hidden
+                    title="Drag to change the start time"
+                    className="absolute inset-x-0 top-0 h-2 cursor-ns-resize touch-none"
+                    {...handleProps(target, "start", startLimits)}
+                  />
+                ) : null}
                 <div
                   aria-hidden
                   title="Drag to change the end time"
                   className="absolute inset-x-0 bottom-0 flex h-2 cursor-ns-resize touch-none items-end justify-center"
-                  {...handleProps(target, "end", limits)}
+                  {...handleProps(target, "end", endLimits)}
                 >
                   <span className="mb-px h-0.5 w-6 rounded-full bg-foreground/30" />
                 </div>

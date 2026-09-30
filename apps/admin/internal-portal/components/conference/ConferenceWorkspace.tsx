@@ -9,9 +9,12 @@ import { getBrowserSupabaseClient } from "@/lib/supabaseClient.browser";
 import { todayInAppZone } from "@/lib/format";
 import {
   CONFERENCE_VIEWS,
+  MINUTES_PER_DAY,
+  hasStarted,
   istDateOf,
   istInstantMs,
   parseConferenceView,
+  pastCutoffMinutes,
   rangeLabel,
   roomColorMap,
   shiftDate,
@@ -48,15 +51,14 @@ type Section = "calendar" | "bookings" | "requests" | "rooms";
 
 const VIEW_LABEL: Record<ConferenceView, string> = { day: "Day", week: "Week", month: "Month", timeline: "Timeline" };
 
-/** The next half hour (or 9 AM when that's before the working day) for "Book" with no slot picked. */
+/**
+ * The slot "Book" (or a click on a month day) starts with: 9–10 AM, or on today the next half
+ * hour from now if that's later — never a time that has already passed. Late at night that can
+ * run out of day; the form then says so.
+ */
 function defaultSlot(date: string): { startMin: number; endMin: number } {
-  if (date === todayInAppZone()) {
-    const nowIst = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" });
-    const [h, m] = nowIst.split(":").map(Number);
-    const startMin = Math.min(22 * 60, Math.ceil(((h ?? 0) * 60 + (m ?? 0) + 1) / 30) * 30);
-    if (startMin >= 9 * 60) return { startMin, endMin: startMin + 60 };
-  }
-  return { startMin: 9 * 60, endMin: 10 * 60 };
+  const startMin = Math.min(Math.max(9 * 60, Math.ceil(pastCutoffMinutes(date) / 30) * 30), MINUTES_PER_DAY - 30);
+  return { startMin, endMin: Math.min(startMin + 60, MINUTES_PER_DAY - 1) };
 }
 
 export function ConferenceWorkspace({
@@ -88,6 +90,7 @@ export function ConferenceWorkspace({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<ConferenceBooking | null>(null);
   const [resizeError, setResizeError] = useState<string | null>(null);
+  const [pastSlot, setPastSlot] = useState(false);
 
   const activeRooms = useMemo(() => rooms.filter((r) => r.status === "active"), [rooms]);
   const roomColors = useMemo(() => roomColorMap(rooms), [rooms]);
@@ -123,6 +126,12 @@ export function ConferenceWorkspace({
   }
 
   function handleCreate(slot: SlotSelection & { roomId?: string }) {
+    // The grids already shade and skip the past; this catches a slot the clock overtook while
+    // the page sat open, and a month-view day that's already over.
+    if (hasStarted(slot.date, slot.startMin)) {
+      setPastSlot(true);
+      return;
+    }
     openForm({ roomId: slot.roomId ?? (roomFilter !== "all" ? roomFilter : undefined), date: slot.date, startMin: slot.startMin, endMin: slot.endMin });
   }
 
@@ -160,7 +169,7 @@ export function ConferenceWorkspace({
         bookings={calendarBookings}
         roomColors={roomColors}
         onSelect={(b) => setSelectedId(b.id)}
-        onCreate={(day) => handleCreate({ date: day, startMin: 9 * 60, endMin: 10 * 60 })}
+        onCreate={(day) => handleCreate({ date: day, ...defaultSlot(day) })}
         onOpenDay={(day) => navigate({ view: "day", date: day })}
       />
     );
@@ -339,6 +348,12 @@ export function ConferenceWorkspace({
         onOpenChange={(open) => !open && setResizeError(null)}
         heading="Couldn't change the booking"
         body={resizeError ? `${resizeError} The booking has been put back to its original time.` : null}
+      />
+      <ActionDialog
+        isOpen={pastSlot}
+        onOpenChange={setPastSlot}
+        heading="That time has passed"
+        body="Conference rooms can only be booked from now on. Pick a later time."
       />
     </div>
   );

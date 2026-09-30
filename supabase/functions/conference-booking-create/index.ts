@@ -4,7 +4,7 @@
 // their name/department are read from `employees` whenever they're shown, never stored.
 //
 // Rejected (400/409):
-// - a window that isn't within one IST day, or is already over (../_shared/conference.ts);
+// - a window that isn't within one IST day, or whose start has passed (../_shared/conference.ts);
 // - a room that doesn't exist or has been removed (inactive);
 // - a sitting arrangement above the room's capacity, when the room has one;
 // - an overlap with another confirmed booking of the room — the database's exclusion
