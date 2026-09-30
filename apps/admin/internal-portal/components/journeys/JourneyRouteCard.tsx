@@ -19,7 +19,8 @@ function StopsTooltip({ stops }: { stops: JourneyStopSummary[] }) {
     <div className="relative z-20 flex items-center gap-3.5">
       <span className="ml-1.5 size-2 shrink-0 rounded-full bg-border ring-4 ring-surface" />
       <Tooltip delay={150} closeDelay={0}>
-        <Tooltip.Trigger>
+        {/* The count sits inside the card's <Link>: clicking it should show the stops, not open the journey. */}
+        <Tooltip.Trigger onClick={(e: React.MouseEvent) => e.preventDefault()}>
           <span className="cursor-default select-none text-xs font-medium text-muted underline decoration-dashed underline-offset-2">
             {stops.length} stop{stops.length !== 1 ? "s" : ""}
           </span>
