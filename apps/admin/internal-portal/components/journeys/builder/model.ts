@@ -35,7 +35,8 @@ export function newClientId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${counter}`;
 }
 
-export function emptyGuest(kind: PoolGuest["kind"] = "guest"): PoolGuest {
+/** A new pool row — Employee by default; the row's Guest/Employee dropdown switches it. */
+export function emptyGuest(kind: PoolGuest["kind"] = "employee"): PoolGuest {
   return { clientId: newClientId("guest"), kind, guestId: null, employeeId: null, employeeCode: null, departmentName: null, name: "", phone: "" };
 }
 
