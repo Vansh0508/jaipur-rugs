@@ -9,7 +9,7 @@ import { applyMapAction, mapsView, type MapRow, type MapsRole } from "@/lib/maps
 import type { MapAction, MapCopy, MapsState } from "@/lib/maps/types";
 
 type Tab = "inRack" | "notAvailable" | "chosen";
-const TABS: [Tab, string][] = [["inRack", "In rack"], ["notAvailable", "Not available"], ["chosen", "Chosen"]];
+const TABS: [Tab, string][] = [["inRack", "In rack"], ["notAvailable", "Not available"], ["chosen", "Map found"]];
 const LINE = "flex h-7 items-center"; // one line per copy, the same height in every column so they line up
 
 function when(at?: string) {
