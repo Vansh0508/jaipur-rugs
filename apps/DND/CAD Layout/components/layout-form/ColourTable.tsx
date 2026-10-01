@@ -59,7 +59,7 @@ export function ColourTable({ rows, showYarn, maxSlots, onChange }: ColourTableP
                   <input
                     value={row.code}
                     onChange={(e) => update(i, { code: e.target.value })}
-                    placeholder="ARS-102"
+                    placeholder="e.g. ARS-102"
                     className="h-9 w-36 rounded-lg border-2 border-border bg-transparent px-2 text-sm outline-none focus:border-accent"
                   />
                 </td>
