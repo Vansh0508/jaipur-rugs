@@ -63,6 +63,7 @@ export function PaperChallan({
           <div>
             {pair("Prod. Order No", <span>{row.productionOrderNo}</span>)}
             {pair("Map No", <span>{row.mapNo ?? ""}</span>)}
+            {pair("Size", <span>{row.orderSize ?? ""}</span>)}
             {pair("DraftsMan", <Ink value={row.draftsman} disabled={!canEdit} onChange={(value) => set({ draftsman: value }, "DraftsMan changed.")} />)}
             {pair("Challan Date", canEdit
               ? <Ink type="date" min={todayInIndia()} value={shownChallanDate(row)} onChange={(value) => set({ challanDate: value }, `Challan date set to ${value}.`)} />
