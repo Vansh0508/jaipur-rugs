@@ -1,4 +1,4 @@
-import type { BmpImage } from "./bmp";
+import { toHex, type BmpImage } from "./bmp";
 import { countColours } from "./image";
 
 export interface PaletteColour {
@@ -32,7 +32,23 @@ export interface TikniAnalysis {
   byArea: PaletteColour[];
 }
 
-const WHITE = 0xffffff;
+// A Tikni BMP's gap rows are a literal #FFFFFF (it's a synthetic export, no noise). A real
+// JPEG/PNG photo of a visualization (2026-10-01, "QNQ-66-02 (Visualization)(1).jpg") never
+// hits that exactly — compression and anti-aliasing leave every "white" row a few shades
+// off — so requiring an exact match made detectLegendStrip return null for every such file,
+// and its legend strip (colour-code swatches, e.g. "M12 M04 M07...") rode along into the
+// embedded design image uncropped. NEAR_WHITE_MIN and the row tolerance below let a mostly-
+// white row with a little real-world noise still count as the gap.
+const NEAR_WHITE_MIN = 243;
+const ROW_NON_WHITE_TOLERANCE = 0.01;
+// Swatches in a rendered/photographed legend aren't a single flat hex either — merge runs
+// of similar colour the same way image.ts's quantizer does, instead of grouping by exact
+// equality, or compression noise would split one swatch into dozens of spurious "colours".
+const SWATCH_MERGE_DISTANCE = 20;
+
+function isNearWhite(r: number, g: number, b: number): boolean {
+  return r >= NEAR_WHITE_MIN && g >= NEAR_WHITE_MIN && b >= NEAR_WHITE_MIN;
+}
 
 /**
  * Tikni writes a colour-legend strip under the design (a band of swatches separated
@@ -80,12 +96,17 @@ export function extractPalette(image: BmpImage): PaletteColour[] {
 
 function detectLegendStrip(image: BmpImage): LegendStrip | null {
   const { width, height, rgb } = image;
-  const rowPixel = (y: number, x: number) => {
+  const rowPixel = (y: number, x: number): [number, number, number] => {
     const p = (y * width + x) * 3;
-    return (rgb[p]! << 16) | (rgb[p + 1]! << 8) | rgb[p + 2]!;
+    return [rgb[p]!, rgb[p + 1]!, rgb[p + 2]!];
   };
   const rowIsWhite = (y: number) => {
-    for (let x = 0; x < width; x++) if (rowPixel(y, x) !== WHITE) return false;
+    let nonWhite = 0;
+    const limit = width * ROW_NON_WHITE_TOLERANCE;
+    for (let x = 0; x < width; x++) {
+      const [r, g, b] = rowPixel(y, x);
+      if (!isNearWhite(r, g, b) && ++nonWhite > limit) return false;
+    }
     return true;
   };
 
@@ -106,17 +127,47 @@ function detectLegendStrip(image: BmpImage): LegendStrip | null {
   const top = y + 1;
 
   const mid = Math.floor((stripTop + stripBottom) / 2);
+  // Merge runs of similar colour (see SWATCH_MERGE_DISTANCE) rather than grouping by exact
+  // equality — a photographed/rendered swatch is rarely a single flat hex. A code label
+  // printed over/under the swatch (e.g. "M12") cuts a few stray pixels into the run too, so
+  // a run shorter than MIN_RUN_WIDTH is text/antialiasing noise, not a real swatch.
+  const MIN_RUN_WIDTH = Math.max(6, Math.round(width * 0.01));
   const order: string[] = [];
-  let prev = -1;
+  let runR = 0;
+  let runG = 0;
+  let runB = 0;
+  let runCount = 0;
+  const flushRun = () => {
+    if (runCount < MIN_RUN_WIDTH) {
+      runR = runG = runB = runCount = 0;
+      return;
+    }
+    const r = runR / runCount;
+    const g = runG / runCount;
+    const b = runB / runCount;
+    if (!isNearWhite(r, g, b)) order.push(toHex(Math.round(r), Math.round(g), Math.round(b)));
+    runR = runG = runB = runCount = 0;
+  };
   for (let x = 0; x < width; x++) {
-    const c = rowPixel(mid, x);
-    if (c === prev) continue;
-    prev = c;
-    if (c === WHITE) continue;
-    const hex = c.toString(16).padStart(6, "0").toUpperCase();
-    if (!order.includes(hex)) order.push(hex);
+    const [r, g, b] = rowPixel(mid, x);
+    if (runCount > 0) {
+      const dr = r - runR / runCount;
+      const dg = g - runG / runCount;
+      const db = b - runB / runCount;
+      if (Math.sqrt(dr * dr + dg * dg + db * db) > SWATCH_MERGE_DISTANCE) flushRun();
+    }
+    runR += r;
+    runG += g;
+    runB += b;
+    runCount++;
   }
-  if (order.length < 2) return null;
+  flushRun();
+  // `top` came from real gap/strip geometry (white-margin, then non-white rows, then a
+  // white gap) — crop on that regardless of how clean `order` came out, so a legend strip
+  // that's hard to read colour-by-colour (noisy photo, label text crossing every swatch)
+  // still gets cut off the design image rather than leaving it in because of this alone
+  // (2026-10-01: that exact failure mode, `order.length < 2` returning null here, undid
+  // the crop entirely for a real DnD visualization JPEG).
   return { top, order };
 }
 
