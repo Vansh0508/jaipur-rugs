@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
 
     const { data: room, error: roomError } = await supabaseAdmin
       .from("conference_rooms")
-      .select("id, name, capacity, status")
+      .select("id, name, capacity, description, status")
       .eq("id", roomId)
       .maybeSingle();
     if (roomError) return jsonResponse({ error: roomError.message }, 500);
@@ -109,6 +109,7 @@ Deno.serve(async (req) => {
         employee.id,
         conferenceEmail("conference_request_sent", {
           roomName: room.name,
+          roomDescription: room.description,
           startsAt: window.start.toISOString(),
           endsAt: window.end.toISOString(),
           seatingCount: seatingCount as number,

@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
     }
 
     const [{ data: room, error: roomError }, { data: employee, error: employeeError }] = await Promise.all([
-      supabaseAdmin.from("conference_rooms").select("id, name, capacity, status").eq("id", roomId).maybeSingle(),
+      supabaseAdmin.from("conference_rooms").select("id, name, capacity, description, status").eq("id", roomId).maybeSingle(),
       supabaseAdmin.from("employees").select("id, status").eq("id", employeeId).maybeSingle(),
     ]);
     if (roomError) return jsonResponse({ error: roomError.message }, 500);
@@ -106,6 +106,7 @@ Deno.serve(async (req) => {
         employeeId,
         conferenceEmail("conference_confirmed", {
           roomName: room.name,
+          roomDescription: room.description,
           startsAt: window.start.toISOString(),
           endsAt: window.end.toISOString(),
           seatingCount: seatingCount as number,

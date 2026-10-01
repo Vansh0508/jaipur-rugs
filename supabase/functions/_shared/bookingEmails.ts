@@ -202,6 +202,8 @@ export function inBackground(promise: Promise<unknown>) {
 
 export interface ConferenceEmailInfo {
   roomName: string;
+  /** conference_rooms.description — where the room is; shown as "Location" when set. */
+  roomDescription?: string | null;
   startsAt: string;
   endsAt: string;
   seatingCount: number;
@@ -221,6 +223,7 @@ export function conferenceEmail(event: "conference_request_sent" | "conference_c
   const details: [string, string][] = [
     ["Event", info.eventName],
     ["Room", info.roomName],
+    ...(info.roomDescription ? ([["Location", info.roomDescription]] as [string, string][]) : []),
     ["When", `${when} (IST)`],
     ["Sitting arrangement", `${info.seatingCount} seat${info.seatingCount === 1 ? "" : "s"}`],
   ];

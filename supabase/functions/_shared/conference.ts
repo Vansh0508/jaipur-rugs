@@ -23,6 +23,9 @@ export const EXCLUSION_VIOLATION = "23P01";
 /** Postgres unique_violation — here, a duplicate room name. */
 export const UNIQUE_VIOLATION = "23505";
 
+/** conference_rooms.description's length cap (db/conference/003). */
+export const MAX_DESCRIPTION = 500;
+
 // The fleet and offices run on India time; a booking is for one calendar day *there*.
 const APP_TIME_ZONE = "Asia/Kolkata";
 

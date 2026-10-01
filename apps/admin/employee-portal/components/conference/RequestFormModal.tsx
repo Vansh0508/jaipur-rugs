@@ -126,6 +126,12 @@ export function RequestFormModal({
                   isRequired
                   fullWidth
                 />
+                {room?.description ? (
+                  // Where the chosen room is (conference_rooms.description).
+                  <p className="-mt-2 text-xs text-muted">
+                    <span className="font-medium text-foreground">Location:</span> {room.description}
+                  </p>
+                ) : null}
 
                 <BookingDatePicker label="Booking date" value={date} onChange={setDate} min={todayInAppZone()} />
 

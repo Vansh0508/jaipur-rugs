@@ -72,6 +72,7 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | `20260930112258` | `booking_requests_decide_functions` | booking-requests | `db/booking-requests/003_booking_requests_decide_functions.sql` |
 | `20260930120216` | `conference_request_start_not_passed` | booking-requests | `db/booking-requests/004_conference_request_start_not_passed.sql` |
 | `20260930123455` | `booking_emails` | booking-requests | `db/booking-requests/005_booking_emails.sql` |
+| `20261001053103` | `conference_room_description` | conference | `db/conference/003_conference_room_description.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
@@ -154,6 +155,17 @@ Senders: `supabase/functions/_shared/bookingEmails.ts` + `smtp.ts`, called after
 employee calendar. Tested in PGlite (48 checks incl. the 8 for 005) and against a local SMTPS
 sink (all six emails); live: advisors nothing new, login to the real mail server verified and one
 test message sent to the sender mailbox. Not yet observed live: a function-triggered email row.
+
+**Conference room description (2026-10-01, applied):** `db/conference/003` (`20261001053103`)
+adds an optional `conference_rooms.description` (text, <= 500 chars) saying where the room is.
+No RLS change (the existing admin-only select policy covers it). Set from the Internal Portal's
+room form (`conference-room-create` v2 / `conference-room-update` v2); shown under the venue in
+both booking forms (`conference-availability` v3 now returns it to the employee portal) and as a
+"Location" row in the conference status emails (`conference-request-create` v4,
+`conference-request-decide` v3, `conference-booking-create` v4). Advisors: nothing new.
+`packages/supabase-client/src/types.ts` updated. The journey functions also bundle
+`_shared/bookingEmails.ts` but weren't redeployed: the change only adds an optional
+conference-email field, so their deployed copies behave identically.
 
 Current live schema (as of the last migration above): `departments`, `roles`,
 `employees`, `employee_roles`, `department_access_grants`, `apps`, `permissions`,

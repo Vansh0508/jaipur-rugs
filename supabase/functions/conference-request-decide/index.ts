@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
       (async () => {
         const { data: request } = await supabaseAdmin
           .from("conference_booking_requests")
-          .select("requested_by, starts_at, ends_at, seating_count, event_name, decision_note, room:conference_rooms(name)")
+          .select("requested_by, starts_at, ends_at, seating_count, event_name, decision_note, room:conference_rooms(name, description)")
           .eq("id", requestId)
           .maybeSingle();
         if (!request) return;
@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
           seating_count: number;
           event_name: string;
           decision_note: string | null;
-          room: { name: string } | null;
+          room: { name: string; description: string | null } | null;
         };
         const event = decision === "approved" ? "conference_confirmed" : "conference_rejected";
         await sendBookingEmail(
@@ -86,6 +86,7 @@ Deno.serve(async (req) => {
           r.requested_by,
           conferenceEmail(event, {
             roomName: r.room?.name ?? "Conference room",
+            roomDescription: r.room?.description ?? null,
             startsAt: r.starts_at,
             endsAt: r.ends_at,
             seatingCount: r.seating_count,

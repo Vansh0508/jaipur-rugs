@@ -12,6 +12,8 @@ export interface ConferenceRoom {
   id: string;
   name: string;
   capacity: number | null;
+  /** Where the room is ("2nd floor, Admin block"); null when not given. */
+  description: string | null;
   status: ConferenceRoomStatus;
 }
 

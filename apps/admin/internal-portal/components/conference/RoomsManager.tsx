@@ -55,7 +55,10 @@ export function RoomsManager({ rooms, roomColors }: { rooms: ConferenceRoom[]; r
       render: (room) => (
         <div className="flex items-center gap-2.5">
           <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: roomColors.get(room.id) }} />
-          <span className="font-medium text-foreground">{room.name}</span>
+          <div className="min-w-0">
+            <span className="font-medium text-foreground">{room.name}</span>
+            {room.description ? <p className="truncate text-xs text-muted">{room.description}</p> : null}
+          </div>
         </div>
       ),
     },

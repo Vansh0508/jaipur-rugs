@@ -1,15 +1,18 @@
 // db-management write endpoint: add a conference room (a venue). Internal Portal admin only,
 // see ../_shared/authz.ts. Names are unique case-insensitively (conference_rooms_name_key) —
-// a duplicate is a 409 with a message, not a 500.
+// a duplicate is a 409 with a message, not a 500. The optional description says where the
+// room is (db/conference/003).
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { requireInternalPortalAdmin, authzErrorResponse } from "../_shared/authz.ts";
-import { corsHeaders, jsonResponse, UNIQUE_VIOLATION } from "../_shared/conference.ts";
+import { corsHeaders, jsonResponse, MAX_DESCRIPTION, UNIQUE_VIOLATION } from "../_shared/conference.ts";
 
 interface CreateRoomBody {
   name: string;
   /** Optional seating limit; omit or null for "not recorded". */
   capacity?: number | null;
+  /** Optional: where the room is ("2nd floor, Admin block"). Shown in booking forms and emails. */
+  description?: string | null;
 }
 
 Deno.serve(async (req) => {
@@ -26,6 +29,7 @@ Deno.serve(async (req) => {
     const body = (await req.json()) as Partial<CreateRoomBody>;
     const name = body.name?.trim();
     const capacity = body.capacity ?? null;
+    const description = typeof body.description === "string" ? body.description.trim() || null : null;
 
     if (!name) {
       return jsonResponse({ error: "name is required" }, 400);
@@ -33,10 +37,13 @@ Deno.serve(async (req) => {
     if (capacity !== null && (!Number.isInteger(capacity) || capacity < 1)) {
       return jsonResponse({ error: "capacity must be a whole number of at least 1" }, 400);
     }
+    if (description && description.length > MAX_DESCRIPTION) {
+      return jsonResponse({ error: `The description can be at most ${MAX_DESCRIPTION} characters.` }, 400);
+    }
 
     const { data: created, error: insertError } = await supabaseAdmin
       .from("conference_rooms")
-      .insert({ name, capacity })
+      .insert({ name, capacity, description })
       .select("id")
       .single();
 

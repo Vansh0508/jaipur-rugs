@@ -35,6 +35,7 @@ erDiagram
         uuid id PK
         text name UK "case-insensitive unique (lower(name))"
         int capacity "nullable; seating limit, enforced by conference-booking-create"
+        text description "nullable, <= 500 chars; where the room is (003) — shown in booking forms + emails"
         enum status "conference_room_status: active / inactive (soft-delete)"
         timestamptz created_at
         timestamptz updated_at

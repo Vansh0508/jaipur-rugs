@@ -52,7 +52,7 @@ export async function lookupEmployeeByCode(supabase: SupabaseClient, employeeCod
 }
 
 export interface ConferenceAvailability {
-  rooms: { id: string; name: string; capacity: number | null }[];
+  rooms: { id: string; name: string; capacity: number | null; description: string | null }[];
   /** Confirmed bookings as bare time ranges — no names or details. */
   busy: { roomId: string; startsAt: string; endsAt: string }[];
   /**

@@ -1,6 +1,7 @@
 // Public (verify_jwt = false) — what the employee portal's conference calendar shows: the
-// active rooms, and when each is taken. Busy time ranges only (room, start, end) for
-// confirmed bookings overlapping [from, to) — no event names, no who booked, no details. The
+// active rooms (with their description — where the room is), and when each is taken. Busy
+// time ranges only (room, start, end) for confirmed bookings overlapping [from, to) — no
+// event names, no who booked, no details. The
 // portal has no login, so it gets exactly enough to see what's free and nothing about other
 // people's meetings. Pending requests come back separately (`pending`), also as bare ranges:
 // the calendar draws them as "Requested — pending" so an employee can see a slot is already
@@ -30,7 +31,7 @@ Deno.serve(async (req) => {
     }
 
     const [{ data: rooms, error: roomsError }, { data: bookings, error: bookingsError }, { data: requests, error: requestsError }] = await Promise.all([
-      supabaseAdmin.from("conference_rooms").select("id, name, capacity").eq("status", "active").order("name"),
+      supabaseAdmin.from("conference_rooms").select("id, name, capacity, description").eq("status", "active").order("name"),
       supabaseAdmin
         .from("conference_bookings")
         .select("room_id, starts_at, ends_at, conference_rooms!inner(status)")

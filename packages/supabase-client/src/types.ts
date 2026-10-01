@@ -2,7 +2,7 @@
 // regenerated 2026-09-30 (see db/MIGRATIONS.md for every migration this reflects) — this
 // refresh folds in db/booking-requests/001-003 (conference_booking_requests, journey_requests,
 // decide_conference_request / decide_journey_request), plus 005 (booking_email_log, its two
-// enums, get_booking_smtp_config).
+// enums, get_booking_smtp_config), and db/conference/003 (conference_rooms.description).
 
 export type Json =
   | string
@@ -440,6 +440,7 @@ export type Database = {
         Row: {
           capacity: number | null
           created_at: string
+          description: string | null
           id: string
           name: string
           status: Database["public"]["Enums"]["conference_room_status"]
@@ -448,6 +449,7 @@ export type Database = {
         Insert: {
           capacity?: number | null
           created_at?: string
+          description?: string | null
           id?: string
           name: string
           status?: Database["public"]["Enums"]["conference_room_status"]
@@ -456,6 +458,7 @@ export type Database = {
         Update: {
           capacity?: number | null
           created_at?: string
+          description?: string | null
           id?: string
           name?: string
           status?: Database["public"]["Enums"]["conference_room_status"]

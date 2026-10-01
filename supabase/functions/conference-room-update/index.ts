@@ -1,7 +1,8 @@
 // db-management write endpoint: edit a conference room — rename it, change its capacity,
 // and "remove" or restore it (status inactive / active; a soft-delete, since bookings keep
 // a foreign key to the room). Internal Portal admin only. Every field but roomId is
-// optional; `capacity: null` clears the limit, while omitting it leaves it alone.
+// optional; `capacity: null` clears the limit and `description: null` (or "") clears the
+// description, while omitting either leaves it alone.
 //
 // Removing (status → inactive) is blocked (409) while the room still has confirmed bookings
 // that haven't finished — removing a room out from under a booked meeting is always a
@@ -9,7 +10,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { requireInternalPortalAdmin, authzErrorResponse } from "../_shared/authz.ts";
-import { corsHeaders, jsonResponse, UNIQUE_VIOLATION } from "../_shared/conference.ts";
+import { corsHeaders, jsonResponse, MAX_DESCRIPTION, UNIQUE_VIOLATION } from "../_shared/conference.ts";
 
 const STATUSES = ["active", "inactive"] as const;
 
@@ -17,6 +18,7 @@ interface UpdateRoomBody {
   roomId: string;
   name?: string;
   capacity?: number | null;
+  description?: string | null;
   status?: (typeof STATUSES)[number];
 }
 
@@ -48,6 +50,16 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: "capacity must be a whole number of at least 1, or null" }, 400);
       }
       changes.capacity = body.capacity;
+    }
+    if (body.description !== undefined) {
+      if (body.description !== null && typeof body.description !== "string") {
+        return jsonResponse({ error: "description must be text, or null" }, 400);
+      }
+      const description = body.description?.trim() || null;
+      if (description && description.length > MAX_DESCRIPTION) {
+        return jsonResponse({ error: `The description can be at most ${MAX_DESCRIPTION} characters.` }, 400);
+      }
+      changes.description = description;
     }
     if (body.status !== undefined) {
       if (!STATUSES.includes(body.status)) {
@@ -83,7 +95,7 @@ Deno.serve(async (req) => {
       .from("conference_rooms")
       .update({ ...changes, updated_at: new Date().toISOString() })
       .eq("id", roomId)
-      .select("id, name, capacity, status")
+      .select("id, name, capacity, description, status")
       .maybeSingle();
 
     if (updateError) {
