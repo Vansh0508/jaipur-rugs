@@ -1,5 +1,6 @@
 import "server-only";
 import { spawn } from "node:child_process";
+import { TRAPS, schemaFor } from "./catalogue";
 import { LIBRARY } from "./library";
 
 /**
@@ -23,77 +24,28 @@ export function backend(): ModelBackend {
   return process.env.JRGPT_CLAUDE_BIN ? "cli" : "none";
 }
 
-/** Only the curated views are described — never the 90 raw NAV tables. */
-function schemaPrompt(): string {
-  return `
-jrgpt.sales_invoiced   invoiced sales, one row per invoice line.
-  invoice_date, order_date, financial_year ('25-26'), customer_code, customer_name,
-  customer_classification, country, territory, is_big_box (bool), is_related_party (bool),
-  merchant, salesperson_code, design_code, quality, size_code, shape_code, collection,
-  item_code, serial_no, quantity, sold_sqft, amount_inr, net_amount, unit_price_psf,
-  currency_code
-  amount_inr is INR-normalised and is the ONLY correct revenue column.
-  History starts 2021-04-01 (rolling window). ~30% of amount_inr is is_related_party=true.
-
-jrgpt.open_orders      ordered, not yet invoiced. Live snapshot, no history.
-  sales_order_no, sales_order_date, customer_code, customer_name, merchant, country,
-  design_code, quality, size_code, outstanding_qty, line_amount_inr (already INR),
-  ageing_band (text), days_since_order (numeric), current_status, status_grouping
-
-jrgpt.customers_mv     one row per customer.
-  customer_code, customer_name, country, ever_big_box, first_invoice_date,
-  last_invoice_date, days_since_last_order, invoice_lines, active_months,
-  distinct_designs_bought, distinct_collections_bought, lifetime_amount_inr,
-  avg_reorder_gap_days
-
-jrgpt.products_mv      one row per design (65k).
-  design_code, quality, construction, collection, shape, product_line, primary_style,
-  sku_count, order_lines, size_count, first_ordered, last_ordered
-
-jrgpt.production_wip   live work in progress.
-  production_order_no, serial_no, current_status, production_location, weaver_name,
-  quality, design_code, size_code, outstanding_qty, order_priority,
-  days_at_current_status, rpo_created, map_completed, issued_to_weaver,
-  days_rpo_to_map, days_map_to_weaver, days_since_weaver_issue
-
-jrgpt.artisan_activity daily output. ROLLING WINDOW - starts 2025-04.
-  output_date, weaver_code, weaver_name (a PAYING FIRM, not a person), branch,
-  quality, design_code, size_code, rugs_produced, sqft
-
-jrgpt.receivables      open customer receivables.
-  customer_code, customer_name, posting_date, due_date, document_type, amount_inr,
-  days_overdue, is_open
-
-jrgpt.fg_stock         finished rugs in stock.
-  serial_no, design_code, size_code, location_type, location_name, ageing_days, ageing_band
-
-RULES
-- Money as crore: round((sum(x)/10000000)::numeric,1).
-- financial_year is text ('24-25','25-26'). Indian FY, not calendar year.
-- There is NO cost data anywhere, so margin/profit CANNOT be computed.
-- There is NO usable B2B/B2C split. Use is_big_box / customer_classification / country.
-- There are no reorder levels, no weaver wages, no sales targets, no CRM/leads.
-- If the question needs any of the above, reply exactly: CANNOT_ANSWER
-`.trim();
-}
-
 function fewShot(): string {
   return LIBRARY.slice(0, 6)
     .map((e) => `Q: ${e.label}\nSQL: ${e.sql.trim().replace(/\s+/g, " ")}`)
     .join("\n\n");
 }
 
-export function buildPrompt(question: string): string {
-  return `You write PostgreSQL for Jaipur Rugs' data warehouse.
+export async function buildPrompt(question: string): Promise<string> {
+  const schema = await schemaFor(question);
+  return `You write PostgreSQL for Jaipur Rugs' data warehouse (a read-only mirror of NAV).
 
 Return ONLY a SQL query. No prose, no markdown fences, no explanation.
 A single SELECT statement. No semicolons, no comments, no DDL or DML.
-Use ONLY the views below — never any other table.
-If it cannot be answered from these, return exactly: CANNOT_ANSWER
+Read only from jrgpt.* or nav_mirror.* — nothing else.
+Raw table and column names contain spaces, dashes and dots, so quote them exactly as shown.
+Money as crore: round((sum(x)/10000000)::numeric,1).
+If the data genuinely cannot answer it, return exactly: CANNOT_ANSWER
 
-${schemaPrompt()}
+${schema}
 
-Examples:
+${TRAPS}
+
+Examples of good answers:
 ${fewShot()}
 
 Q: ${question}
@@ -172,7 +124,7 @@ export async function generateSql(question: string): Promise<string> {
     );
   }
 
-  const prompt = buildPrompt(question);
+  const prompt = await buildPrompt(question);
   let raw: string;
   try {
     raw = which === "cli" ? await viaCli(prompt, 60_000) : await viaApi(prompt);

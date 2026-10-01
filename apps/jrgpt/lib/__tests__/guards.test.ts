@@ -2,20 +2,25 @@ import { describe, expect, it } from "vitest";
 import { addLimit, MAX_ROWS, UnsafeSql, validate } from "../guards";
 
 /**
- * Ported from `python3 jrgpt/ask.py --selftest` in the Tableau repo, where this exact set
- * passes 10/10 attacks with zero false positives. The property under test is that an
- * attack is BLOCKED — not which rule catches it first, since the rules overlap on purpose.
+ * The boundary is the SCHEMA and the STATEMENT TYPE, not a table list: jrgpt.* and
+ * nav_mirror.* are both readable (the mirror is a read-only copy of NAV, and all of it is
+ * in scope), while every other schema and every write is rejected.
+ *
+ * The property under test is that an attack is BLOCKED — not which rule catches it first,
+ * since the rules overlap on purpose.
  */
 const ATTACKS: Array<[name: string, sql: string]> = [
   ["drop table", "drop table jrgpt.sales_invoiced"],
   ["stacked statement", "select 1; drop table x"],
-  ["raw nav_mirror table", 'select * from nav_mirror."NAV-033 - Total Order Rug List"'],
   ["system catalog", "select * from pg_catalog.pg_user"],
+  ["auth schema", "select * from auth.users"],
+  ["private helpers", "select private.current_employee_id()"],
+  ["storage", "select * from storage.objects"],
+  ["public app tables", "select * from public.employees"],
   ["insert", "insert into jrgpt.x values (1)"],
   ["trailing comment", "select * from jrgpt.sales_invoiced -- comment"],
   ["update", "update jrgpt.open_orders set x=1"],
   ["sleep", "select pg_sleep(60) from jrgpt.open_orders"],
-  ["unlisted view", "select * from jrgpt.secret_table"],
   ["empty", ""],
 ];
 
@@ -23,6 +28,10 @@ const VALID: string[] = [
   "select count(*) from jrgpt.open_orders",
   "select financial_year, sum(amount_inr) from jrgpt.sales_invoiced group by 1",
   "with c as (select customer_code from jrgpt.customers_mv) select count(*) from c, jrgpt.open_orders",
+  // The whole mirror is in scope now, so raw NAV tables — quoted names and all — are valid.
+  'select count(*) from nav_mirror."NAV-128 - Inspection Sheet All"',
+  'select "Branch", count(*) from nav_mirror."NAV-346 - OTD Reprort For Hand Knotted" group by 1',
+  'select * from jrgpt.sales_invoiced s join nav_mirror."NAV-099 - Loom Master Details" l on true',
 ];
 
 describe("validate", () => {

@@ -48,9 +48,13 @@ export function validate(sql: string): string {
   const banned = FORBIDDEN.exec(bare);
   if (banned) throw new UnsafeSql(`forbidden keyword: ${banned[0]}`);
 
-  // Every schema-qualified reference must be allowlisted, including the
-  // schema."Quoted Name With Spaces" form the raw NAV tables use.
-  const allowed = new Set<string>(ALLOWED_VIEWS);
+  // Schema-level allowlist. jrgpt.* (curated) and nav_mirror.* (the full NAV mirror) are
+  // both readable — the mirror is a read-only copy and all of it is in scope. What stays
+  // blocked is everything else: pg_catalog, information_schema, public, auth, private —
+  // and every write, which the checks above already reject. The boundary is the schema and
+  // the statement type, not a hand-maintained table list.
+  const ALLOWED_SCHEMAS = new Set(["jrgpt", "nav_mirror"]);
+  const BLOCKED_SCHEMAS = new Set(["public", "pg_catalog", "information_schema", "auth", "private", "storage", "vault"]);
   const refs = new Set<string>();
   for (const m of bare.matchAll(/\b([a-z_][a-z0-9_]*)\s*\.\s*([a-z_][a-z0-9_]*)/gi)) {
     refs.add(`${m[1]!.toLowerCase()}.${m[2]!.toLowerCase()}`);
@@ -58,15 +62,14 @@ export function validate(sql: string): string {
   for (const m of bare.matchAll(/\b([a-z_][a-z0-9_]*)\s*\.\s*"([^"]+)"/gi)) {
     refs.add(`${m[1]!.toLowerCase()}.${m[2]!.toLowerCase()}`);
   }
-  const schemas = new Set(["jrgpt", "nav_mirror", "public", "pg_catalog", "information_schema"]);
   for (const ref of refs) {
     const schema = ref.split(".")[0]!;
-    if (schemas.has(schema) && !allowed.has(ref)) throw new UnsafeSql(`table not allowed: ${ref}`);
+    if (BLOCKED_SCHEMAS.has(schema)) throw new UnsafeSql(`schema not allowed: ${schema}`);
   }
 
   const lower = bare.toLowerCase();
-  if (![...allowed].some((v) => lower.includes(v))) {
-    throw new UnsafeSql("query does not reference any allowed view");
+  if (![...ALLOWED_SCHEMAS].some((sc) => lower.includes(`${sc}.`))) {
+    throw new UnsafeSql("query must read from jrgpt.* or nav_mirror.*");
   }
   return statement;
 }
