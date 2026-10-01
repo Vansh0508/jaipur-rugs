@@ -17,6 +17,16 @@ const MAX_QUANTIZED_COLOURS = 40;
 // Round each channel to a multiple of this before counting — collapses JPEG artifacting
 // and anti-aliasing gradients into the same bucket as the colour they're a shade of.
 const QUANT_STEP = 16;
+// Euclidean RGB distance below which two bucketed colours are merged into one (see
+// mergeSimilarBuckets). A real DnD photo of a near-monochrome rug (2026-10-01,
+// "QNQ-66-02 (Visualization)(1).jpg") produced 40 colours that were, to the eye, maybe
+// 8 real ones — lighting and fabric-texture gradients spread one colour across dozens of
+// QUANT_STEP buckets that independent per-channel rounding never put back together. A
+// photographer's studio lighting gradient across one yarn colour moves each channel by
+// comparable, correlated amounts, so Euclidean distance (not a wider QUANT_STEP, which
+// would just as easily merge genuinely different pale colours) is what actually matches
+// "same colour, different shading" rather than "different colour, similar brightness."
+const MERGE_DISTANCE = 30;
 // Matches the dimension guard bmp.ts already applies to BMPs — one real DnD reference
 // photo (2026-09-28: "20250428 NEXUS ID - COWORKING LOUNGE.jpg") is a genuine 8000x4500,
 // 36 megapixel camera shot, so this has real headroom above real files, not just BMPs.
@@ -109,9 +119,7 @@ export function countColours(rgb: Uint8Array): Map<string, number> {
     }
   }
 
-  const top = [...buckets.values()]
-    .sort((a, b) => b.count - a.count)
-    .slice(0, MAX_QUANTIZED_COLOURS);
+  const top = mergeSimilarBuckets([...buckets.values()]).slice(0, MAX_QUANTIZED_COLOURS);
   const colourCounts = new Map<string, number>();
   for (const bucket of top) {
     // Average colour actually seen in the bucket, not the rounded bucket key — keeps the
@@ -124,4 +132,41 @@ export function countColours(rgb: Uint8Array): Map<string, number> {
 
 function quantiseChannel(value: number): number {
   return Math.min(255, Math.round(value / QUANT_STEP) * QUANT_STEP);
+}
+
+interface ColourBucket {
+  count: number;
+  r: number;
+  g: number;
+  b: number;
+}
+
+/**
+ * Greedy single-link clustering by RGB distance between accumulated-mean centroids,
+ * largest bucket first (so a dominant colour's many nearby shading buckets all merge into
+ * it, rather than two small buckets merging into each other and crowding out the real
+ * dominant colour). Returned sorted by total pixel count, descending.
+ */
+function mergeSimilarBuckets(buckets: ColourBucket[]): ColourBucket[] {
+  const sorted = [...buckets].sort((a, b) => b.count - a.count);
+  const clusters: ColourBucket[] = [];
+  for (const bucket of sorted) {
+    const target = clusters.find((c) => rgbDistance(c, bucket) <= MERGE_DISTANCE);
+    if (target) {
+      target.count += bucket.count;
+      target.r += bucket.r;
+      target.g += bucket.g;
+      target.b += bucket.b;
+    } else {
+      clusters.push({ ...bucket });
+    }
+  }
+  return clusters.sort((a, b) => b.count - a.count);
+}
+
+function rgbDistance(a: ColourBucket, b: ColourBucket): number {
+  const dr = a.r / a.count - b.r / b.count;
+  const dg = a.g / a.count - b.g / b.count;
+  const db = a.b / a.count - b.b / b.count;
+  return Math.sqrt(dr * dr + dg * dg + db * db);
 }
