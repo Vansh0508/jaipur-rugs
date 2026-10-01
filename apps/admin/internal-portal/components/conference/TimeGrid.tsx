@@ -13,7 +13,7 @@ import {
   snapUp,
 } from "@/lib/conference/calendar";
 import type { ConferenceBooking } from "@/lib/queries/conference";
-import { eventStyle, isResizable, neighbourLimits } from "./shared";
+import { blockTitle, eventStyle, isResizable, neighbourLimits } from "./shared";
 import { useEventResize } from "./useEventResize";
 
 // The Day and Week views: one column per date, the hours of the day down the side. Events sit
@@ -240,14 +240,14 @@ function DayColumn({
               (live ? "z-20 shadow-lg ring-2 ring-accent/60" : "z-10")
             }
             style={{
-              ...eventStyle(color),
+              ...eventStyle(color, Boolean(booking.pendingRequestId)),
               top: startMin * PX_PER_MINUTE,
               height,
               left: `calc(${(lane / lanes) * 100}% + 2px)`,
               width: `calc(${100 / lanes}% - 4px)`,
             }}
           >
-            <p className="truncate font-semibold text-foreground">{booking.eventName}</p>
+            <p className="truncate font-semibold text-foreground">{blockTitle(booking)}</p>
             <p className="truncate text-[10px] text-muted tabular-nums">
               {formatMinutes(startMin)} – {formatMinutes(endMin)}
             </p>

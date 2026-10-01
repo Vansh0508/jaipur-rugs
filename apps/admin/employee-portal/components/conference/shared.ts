@@ -2,12 +2,28 @@ import type { CSSProperties } from "react";
 import { MINUTES_PER_DAY, minutesOfDay } from "@/lib/conference/calendar";
 import type { ConferenceBooking } from "@/lib/queries/conference";
 
-/** A booking's tint and accent edge, from its room's colour (a CSS colour / token). */
-export function eventStyle(color: string): CSSProperties {
+/**
+ * A booking's tint and accent edge, from its room's colour (a CSS colour / token). A pending
+ * request is drawn fainter, striped and dashed — visibly "not booked yet". (Same as the
+ * Internal Portal's copy.)
+ */
+export function eventStyle(color: string, pending = false): CSSProperties {
+  if (pending) {
+    return {
+      background: `repeating-linear-gradient(135deg, color-mix(in oklab, ${color} 10%, var(--surface)) 0 6px, var(--surface) 6px 12px)`,
+      border: `1.5px dashed ${color}`,
+      borderLeft: `4px dashed ${color}`,
+    };
+  }
   return {
     background: `color-mix(in oklab, ${color} 18%, var(--surface))`,
     borderLeft: `4px solid ${color}`,
   };
+}
+
+/** What a block's first line says: "Booked", or "Requested — pending" for a pending request. */
+export function blockTitle(booking: ConferenceBooking) {
+  return booking.eventName;
 }
 
 /**
@@ -28,7 +44,7 @@ export function neighbourLimits(booking: ConferenceBooking, all: ConferenceBooki
   let min = 0;
   let max = MINUTES_PER_DAY;
   for (const other of all) {
-    if (other.id === booking.id || other.roomId !== booking.roomId || other.status !== "confirmed") continue;
+    if (other.id === booking.id || other.roomId !== booking.roomId || other.status !== "confirmed" || other.pendingRequestId) continue;
     const otherStart = minutesOfDay(other.startsAt, date);
     const otherEnd = minutesOfDay(other.endsAt, date);
     if (otherEnd <= otherStart) continue; // not on this day

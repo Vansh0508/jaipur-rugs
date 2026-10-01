@@ -2,7 +2,9 @@
 // active rooms, and when each is taken. Busy time ranges only (room, start, end) for
 // confirmed bookings overlapping [from, to) — no event names, no who booked, no details. The
 // portal has no login, so it gets exactly enough to see what's free and nothing about other
-// people's meetings. Pending requests aren't shown: they don't hold a slot until approved.
+// people's meetings. Pending requests come back separately (`pending`), also as bare ranges:
+// the calendar draws them as "Requested — pending" so an employee can see a slot is already
+// asked for. They don't hold the slot — anyone can still request it; the admin decides.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/conference.ts";
@@ -27,7 +29,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: `The range can be at most ${MAX_RANGE_DAYS} days.` }, 400);
     }
 
-    const [{ data: rooms, error: roomsError }, { data: bookings, error: bookingsError }] = await Promise.all([
+    const [{ data: rooms, error: roomsError }, { data: bookings, error: bookingsError }, { data: requests, error: requestsError }] = await Promise.all([
       supabaseAdmin.from("conference_rooms").select("id, name, capacity").eq("status", "active").order("name"),
       supabaseAdmin
         .from("conference_bookings")
@@ -37,13 +39,25 @@ Deno.serve(async (req) => {
         .lt("starts_at", end.toISOString())
         .gt("ends_at", start.toISOString())
         .order("starts_at"),
+      // Only requests that can still be approved (start not yet passed).
+      supabaseAdmin
+        .from("conference_booking_requests")
+        .select("room_id, starts_at, ends_at, conference_rooms!inner(status)")
+        .eq("status", "pending")
+        .eq("conference_rooms.status", "active")
+        .gt("starts_at", new Date().toISOString())
+        .lt("starts_at", end.toISOString())
+        .gt("ends_at", start.toISOString())
+        .order("starts_at"),
     ]);
     if (roomsError) return jsonResponse({ error: roomsError.message }, 500);
     if (bookingsError) return jsonResponse({ error: bookingsError.message }, 500);
+    if (requestsError) return jsonResponse({ error: requestsError.message }, 500);
 
     return jsonResponse({
       rooms: rooms ?? [],
       busy: (bookings ?? []).map((b) => ({ roomId: b.room_id, startsAt: b.starts_at, endsAt: b.ends_at })),
+      pending: (requests ?? []).map((r) => ({ roomId: r.room_id, startsAt: r.starts_at, endsAt: r.ends_at })),
     });
   } catch (err) {
     return jsonResponse({ error: err instanceof Error ? err.message : "availability failed" }, 500);

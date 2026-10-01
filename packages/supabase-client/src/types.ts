@@ -1,7 +1,8 @@
 // Generated from project matnispbauvvlnbsuzxq via mcp Supabase generate_typescript_types,
 // regenerated 2026-09-30 (see db/MIGRATIONS.md for every migration this reflects) — this
 // refresh folds in db/booking-requests/001-003 (conference_booking_requests, journey_requests,
-// decide_conference_request / decide_journey_request).
+// decide_conference_request / decide_journey_request), plus 005 (booking_email_log, its two
+// enums, get_booking_smtp_config).
 
 export type Json =
   | string
@@ -162,6 +163,94 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      booking_email_log: {
+        Row: {
+          conference_booking_id: string | null
+          conference_booking_request_id: string | null
+          created_at: string
+          employee_id: string | null
+          error: string | null
+          event: Database["public"]["Enums"]["booking_email_event"]
+          id: string
+          journey_id: string | null
+          journey_request_id: string | null
+          recipient: string | null
+          status: Database["public"]["Enums"]["booking_email_status"]
+          subject: string
+        }
+        Insert: {
+          conference_booking_id?: string | null
+          conference_booking_request_id?: string | null
+          created_at?: string
+          employee_id?: string | null
+          error?: string | null
+          event: Database["public"]["Enums"]["booking_email_event"]
+          id?: string
+          journey_id?: string | null
+          journey_request_id?: string | null
+          recipient?: string | null
+          status: Database["public"]["Enums"]["booking_email_status"]
+          subject: string
+        }
+        Update: {
+          conference_booking_id?: string | null
+          conference_booking_request_id?: string | null
+          created_at?: string
+          employee_id?: string | null
+          error?: string | null
+          event?: Database["public"]["Enums"]["booking_email_event"]
+          id?: string
+          journey_id?: string | null
+          journey_request_id?: string | null
+          recipient?: string | null
+          status?: Database["public"]["Enums"]["booking_email_status"]
+          subject?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "booking_email_log_conference_booking_id_fkey"
+            columns: ["conference_booking_id"]
+            isOneToOne: false
+            referencedRelation: "conference_bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "booking_email_log_conference_booking_request_id_fkey"
+            columns: ["conference_booking_request_id"]
+            isOneToOne: false
+            referencedRelation: "conference_booking_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "booking_email_log_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "booking_email_log_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "login_session_summary"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "booking_email_log_journey_id_fkey"
+            columns: ["journey_id"]
+            isOneToOne: false
+            referencedRelation: "journeys"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "booking_email_log_journey_request_id_fkey"
+            columns: ["journey_request_id"]
+            isOneToOne: false
+            referencedRelation: "journey_requests"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       conference_booking_requests: {
         Row: {
@@ -3454,6 +3543,7 @@ export type Database = {
         Returns: Json
       }
       get_atlas_slack_webhook_url: { Args: never; Returns: string }
+      get_booking_smtp_config: { Args: never; Returns: Json }
       get_orders_sync_secret: { Args: never; Returns: string }
       list_deletable_documents: { Args: { p_limit?: number }; Returns: Json }
       list_folders_to_refresh: { Args: { p_limit?: number }; Returns: Json }
@@ -3596,6 +3686,14 @@ export type Database = {
         | "lockout_blocked"
       auth_attempt_method: "email_otp" | "password" | "password_reset"
       auth_limit_scope: "email" | "ip" | "username"
+      booking_email_event:
+        | "conference_request_sent"
+        | "conference_confirmed"
+        | "conference_rejected"
+        | "journey_request_sent"
+        | "journey_confirmed"
+        | "journey_rejected"
+      booking_email_status: "sent" | "failed" | "skipped"
       booking_request_status: "pending" | "approved" | "rejected"
       check_status: "pending" | "approved" | "rejected"
       column_request_status: "pending" | "added" | "declined" | "approved"
@@ -3821,6 +3919,15 @@ export const Constants = {
       ],
       auth_attempt_method: ["email_otp", "password", "password_reset"],
       auth_limit_scope: ["email", "ip", "username"],
+      booking_email_event: [
+        "conference_request_sent",
+        "conference_confirmed",
+        "conference_rejected",
+        "journey_request_sent",
+        "journey_confirmed",
+        "journey_rejected",
+      ],
+      booking_email_status: ["sent", "failed", "skipped"],
       booking_request_status: ["pending", "approved", "rejected"],
       check_status: ["pending", "approved", "rejected"],
       column_request_status: ["pending", "added", "declined", "approved"],

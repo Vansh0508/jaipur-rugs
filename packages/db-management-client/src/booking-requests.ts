@@ -55,6 +55,11 @@ export interface ConferenceAvailability {
   rooms: { id: string; name: string; capacity: number | null }[];
   /** Confirmed bookings as bare time ranges — no names or details. */
   busy: { roomId: string; startsAt: string; endsAt: string }[];
+  /**
+   * Pending requests that can still be approved, also bare ranges. They don't hold the slot.
+   * Optional so an older deployment of the function (without it) still type-checks at runtime.
+   */
+  pending?: { roomId: string; startsAt: string; endsAt: string }[];
 }
 
 /** Invokes `conference-availability` for [from, to) (ISO timestamps, at most 62 days apart). */

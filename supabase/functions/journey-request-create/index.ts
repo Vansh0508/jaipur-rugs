@@ -11,6 +11,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse } from "../_shared/conference.ts";
 import { cleanText, findActiveEmployeeByCode, MAX_OPEN_REQUESTS_PER_EMPLOYEE, validateTrip } from "../_shared/bookingRequests.ts";
+import { inBackground, journeyEmail, sendBookingEmail } from "../_shared/bookingEmails.ts";
 
 interface CreateJourneyRequestBody {
   employeeCode: string;
@@ -68,6 +69,23 @@ Deno.serve(async (req) => {
       .select("id")
       .single();
     if (insertError || !created) return jsonResponse({ error: insertError?.message ?? "insert failed" }, 500);
+
+    // "Journey Booking Sent (Confirmation Pending)" — after the response, never blocking it.
+    inBackground(
+      sendBookingEmail(
+        supabaseAdmin,
+        "journey_request_sent",
+        employee.id,
+        journeyEmail("journey_request_sent", {
+          routeSummary: trip.routeSummary,
+          firstPickupAt: trip.firstPickupAt,
+          lastDropAt: trip.lastDropAt,
+          passengerCount: trip.guests.length,
+          reference: created.id,
+        }),
+        { journeyRequestId: created.id },
+      ),
+    );
 
     return jsonResponse({ id: created.id }, 201);
   } catch (err) {

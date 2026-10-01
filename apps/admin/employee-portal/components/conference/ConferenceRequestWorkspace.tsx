@@ -48,6 +48,7 @@ function defaultSlot(date: string): { startMin: number; endMin: number } {
 export function ConferenceRequestWorkspace({
   rooms,
   busy,
+  pending,
   view,
   date,
   roomFilter,
@@ -56,6 +57,8 @@ export function ConferenceRequestWorkspace({
   rooms: ConferenceRoom[];
   /** Busy blocks around the visible range. */
   busy: ConferenceBooking[];
+  /** Pending requests (anyone's), drawn dashed. They don't block a new request. */
+  pending: ConferenceBooking[];
   view: ConferenceView;
   date: string;
   roomFilter: string;
@@ -70,7 +73,11 @@ export function ConferenceRequestWorkspace({
   const [pastSlot, setPastSlot] = useState(false);
 
   const roomColors = useMemo(() => roomColorMap(rooms), [rooms]);
-  const calendarBusy = useMemo(() => (roomFilter === "all" ? busy : busy.filter((b) => b.roomId === roomFilter)), [busy, roomFilter]);
+  // What the calendar draws: confirmed busy blocks plus pending requests (dashed).
+  const calendarBusy = useMemo(() => {
+    const all = [...busy, ...pending];
+    return roomFilter === "all" ? all : all.filter((b) => b.roomId === roomFilter);
+  }, [busy, pending, roomFilter]);
   const timelineRooms = useMemo(() => (roomFilter === "all" ? rooms : rooms.filter((r) => r.id === roomFilter)), [rooms, roomFilter]);
 
   function navigate(next: { view?: ConferenceView; date?: string; room?: string }) {
@@ -202,8 +209,8 @@ export function ConferenceRequestWorkspace({
 
           <p className="text-xs text-muted">
             {view === "month"
-              ? "Click a day to request a room that day, or a date number to open it. Coloured blocks are times a room is already booked."
-              : "Click an empty slot to request it. Coloured blocks are times a room is already booked."}
+              ? "Click a day to request a room that day, or a date number to open it. Coloured blocks are times a room is already booked; dashed ones have a request waiting for approval."
+              : "Click an empty slot to request it. Coloured blocks are times a room is already booked; dashed ones have a request waiting for approval."}
           </p>
         </div>
       )}
@@ -226,10 +233,12 @@ export function ConferenceRequestWorkspace({
       <ActionDialog
         isOpen={takenSlot !== null}
         onOpenChange={(open) => !open && setTakenSlot(null)}
-        heading="That time is taken"
+        heading={takenSlot?.pendingRequestId ? "Someone has requested this time" : "That time is taken"}
         body={
           takenSlot
-            ? `${takenSlot.roomName} is booked ${formatTime(takenSlot.startsAt)} – ${formatTime(takenSlot.endsAt)}. Pick a free slot, or another room.`
+            ? takenSlot.pendingRequestId
+              ? `${takenSlot.roomName} has a pending request for ${formatTime(takenSlot.startsAt)} – ${formatTime(takenSlot.endsAt)}. It isn't booked yet — you can still send your own request, and the admin team will decide.`
+              : `${takenSlot.roomName} is booked ${formatTime(takenSlot.startsAt)} – ${formatTime(takenSlot.endsAt)}. Pick a free slot, or another room.`
             : null
         }
       />

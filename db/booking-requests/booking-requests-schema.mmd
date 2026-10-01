@@ -34,6 +34,13 @@
 %% reads nothing directly — it has no session — and gets only what it needs (active rooms,
 %% busy time ranges with no names, one employee by exact code) from its Edge Functions. No
 %% INSERT/UPDATE/DELETE policy on either table: every write is an Edge Function.
+%%
+%% BOOKING_EMAIL_LOG (005): one row per status email the Edge Functions tried to send — request
+%% sent (confirmation pending), confirmed, rejected, for conference and journey. A log, not a
+%% queue: the send happens right after the write it describes and is never retried. Its links
+%% to the request / booking / journey are `on delete set null`, so the history outlives them.
+%% SMTP settings live in Vault ('booking_smtp_config'), read only by the service role through
+%% public.get_booking_smtp_config(). Admin-only reads, no write policy.
 
 erDiagram
     EMPLOYEES ||--o{ CONFERENCE_BOOKING_REQUESTS : "requested by"
@@ -43,6 +50,11 @@ erDiagram
     EMPLOYEES ||--o{ JOURNEY_REQUESTS : "requested by"
     EMPLOYEES ||--o{ JOURNEY_REQUESTS : "decided by"
     JOURNEYS |o--o| JOURNEY_REQUESTS : "created on approval"
+    EMPLOYEES ||--o{ BOOKING_EMAIL_LOG : "emailed"
+    CONFERENCE_BOOKING_REQUESTS |o--o{ BOOKING_EMAIL_LOG : "about"
+    JOURNEY_REQUESTS |o--o{ BOOKING_EMAIL_LOG : "about"
+    CONFERENCE_BOOKINGS |o--o{ BOOKING_EMAIL_LOG : "about"
+    JOURNEYS |o--o{ BOOKING_EMAIL_LOG : "about"
 
     CONFERENCE_BOOKING_REQUESTS {
         uuid id PK
@@ -78,4 +90,19 @@ erDiagram
         uuid journey_id FK "journeys, unique; set only when approved"
         timestamptz created_at
         timestamptz updated_at
+    }
+
+    BOOKING_EMAIL_LOG {
+        uuid id PK
+        enum event "booking_email_event: conference_request_sent / conference_confirmed / conference_rejected / journey_request_sent / journey_confirmed / journey_rejected"
+        uuid employee_id FK "employees — the recipient employee (nullable)"
+        text recipient "nullable; the address used (null if none on file)"
+        text subject
+        enum status "booking_email_status: sent / failed / skipped"
+        text error "nullable, <= 2000 chars"
+        uuid conference_booking_request_id FK "nullable, on delete set null"
+        uuid journey_request_id FK "nullable, on delete set null"
+        uuid conference_booking_id FK "nullable, on delete set null"
+        uuid journey_id FK "nullable, on delete set null"
+        timestamptz created_at
     }

@@ -11,6 +11,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse, parseWindow } from "../_shared/conference.ts";
 import { cleanText, findActiveEmployeeByCode, MAX_OPEN_REQUESTS_PER_EMPLOYEE, UUID_PATTERN } from "../_shared/bookingRequests.ts";
+import { conferenceEmail, inBackground, sendBookingEmail } from "../_shared/bookingEmails.ts";
 
 interface CreateConferenceRequestBody {
   employeeCode: string;
@@ -99,6 +100,24 @@ Deno.serve(async (req) => {
       .select("id")
       .single();
     if (insertError || !created) return jsonResponse({ error: insertError?.message ?? "insert failed" }, 500);
+
+    // "Conference Booking Sent (Confirmation Pending)" — after the response, never blocking it.
+    inBackground(
+      sendBookingEmail(
+        supabaseAdmin,
+        "conference_request_sent",
+        employee.id,
+        conferenceEmail("conference_request_sent", {
+          roomName: room.name,
+          startsAt: window.start.toISOString(),
+          endsAt: window.end.toISOString(),
+          seatingCount: seatingCount as number,
+          eventName,
+          reference: created.id,
+        }),
+        { conferenceBookingRequestId: created.id },
+      ),
+    );
 
     return jsonResponse({ id: created.id }, 201);
   } catch (err) {

@@ -12,7 +12,7 @@ import {
 } from "@/lib/conference/calendar";
 import type { ConferenceBooking, ConferenceRoom } from "@/lib/queries/conference";
 import type { SlotSelection } from "./TimeGrid";
-import { eventStyle, isResizable, neighbourLimits } from "./shared";
+import { blockTitle, eventStyle, isResizable, neighbourLimits } from "./shared";
 import { useEventResize } from "./useEventResize";
 
 // The Timeline view: one row per room, the day's hours running left to right — so you can
@@ -181,9 +181,9 @@ export function TimelineView({
                         "absolute flex cursor-pointer flex-col justify-center overflow-hidden rounded-md px-2.5 text-xs shadow-sm outline-none transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-accent " +
                         (live ? "z-20 shadow-lg ring-2 ring-accent/60" : "z-10")
                       }
-                      style={{ ...eventStyle(color), left: startMin * PX_PER_MINUTE, width, top: 7, bottom: 7 }}
+                      style={{ ...eventStyle(color, Boolean(booking.pendingRequestId)), left: startMin * PX_PER_MINUTE, width, top: 7, bottom: 7 }}
                     >
-                      <p className="truncate font-semibold text-foreground">{booking.eventName}</p>
+                      <p className="truncate font-semibold text-foreground">{blockTitle(booking)}</p>
                       <p className="truncate text-[10px] text-muted tabular-nums">
                         {formatMinutes(startMin)} – {formatMinutes(endMin)}
                       </p>

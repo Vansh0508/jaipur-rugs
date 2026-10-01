@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { MINUTES_PER_DAY, dayHeader, formatMinutes, isToday, istDateOf, minutesOfDay, monthGridDates, pastCutoffMinutes } from "@/lib/conference/calendar";
 import type { ConferenceBooking } from "@/lib/queries/conference";
+import { blockTitle } from "./shared";
 
 // The Month view: a Monday-first grid of whole weeks. Each day lists its bookings as compact
 // chips (a room-coloured dot, the start time, the event) — at this scale there's no time axis
@@ -93,12 +94,12 @@ export function MonthGrid({
                     event.stopPropagation();
                     onSelect(booking);
                   }}
-                  title={`${booking.eventName} — ${booking.roomName}`}
+                  title={`${blockTitle(booking)} — ${booking.roomName}`}
                   className="flex w-full items-center gap-1.5 truncate rounded px-1 py-0.5 text-left text-[11px] outline-none hover:bg-surface-secondary focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ backgroundColor: roomColors.get(booking.roomId) ?? "var(--accent)" }} />
                   <span className="shrink-0 tabular-nums text-muted">{formatMinutes(minutesOfDay(booking.startsAt, day))}</span>
-                  <span className="truncate font-medium text-foreground">{booking.eventName}</span>
+                  <span className={"truncate font-medium text-foreground" + (booking.pendingRequestId ? " italic opacity-75" : "")}>{blockTitle(booking)}</span>
                 </button>
               ))}
               {extra > 0 ? (

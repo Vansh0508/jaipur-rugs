@@ -8,6 +8,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { requireInternalPortalAdmin, authzErrorResponse } from "../_shared/authz.ts";
 import { corsHeaders, describeConflict, EXCLUSION_VIOLATION, jsonResponse } from "../_shared/conference.ts";
 import { cleanText, describeDecisionError, UUID_PATTERN } from "../_shared/bookingRequests.ts";
+import { conferenceEmail, inBackground, sendBookingEmail } from "../_shared/bookingEmails.ts";
 
 interface DecideConferenceRequestBody {
   requestId: string;
@@ -57,6 +58,45 @@ Deno.serve(async (req) => {
       if (known) return jsonResponse({ error: known.error }, known.status);
       return jsonResponse({ error: error.message }, 500);
     }
+
+    // "Conference Booking Confirmed" / "Conference Booking Rejected" to the requester.
+    const decision = body.decision;
+    const requestId = body.requestId;
+    inBackground(
+      (async () => {
+        const { data: request } = await supabaseAdmin
+          .from("conference_booking_requests")
+          .select("requested_by, starts_at, ends_at, seating_count, event_name, decision_note, room:conference_rooms(name)")
+          .eq("id", requestId)
+          .maybeSingle();
+        if (!request) return;
+        const r = request as unknown as {
+          requested_by: string;
+          starts_at: string;
+          ends_at: string;
+          seating_count: number;
+          event_name: string;
+          decision_note: string | null;
+          room: { name: string } | null;
+        };
+        const event = decision === "approved" ? "conference_confirmed" : "conference_rejected";
+        await sendBookingEmail(
+          supabaseAdmin,
+          event,
+          r.requested_by,
+          conferenceEmail(event, {
+            roomName: r.room?.name ?? "Conference room",
+            startsAt: r.starts_at,
+            endsAt: r.ends_at,
+            seatingCount: r.seating_count,
+            eventName: r.event_name,
+            reference: requestId,
+            note: r.decision_note,
+          }),
+          { conferenceBookingRequestId: requestId, conferenceBookingId: (bookingId as string | null) ?? null },
+        );
+      })(),
+    );
 
     return jsonResponse({ decision: body.decision, bookingId: bookingId ?? null });
   } catch (err) {

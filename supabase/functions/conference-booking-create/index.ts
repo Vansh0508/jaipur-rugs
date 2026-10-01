@@ -19,6 +19,7 @@ import {
   jsonResponse,
   parseWindow,
 } from "../_shared/conference.ts";
+import { conferenceEmail, inBackground, sendBookingEmail } from "../_shared/bookingEmails.ts";
 
 interface CreateBookingBody {
   roomId: string;
@@ -96,6 +97,23 @@ Deno.serve(async (req) => {
       }
       return jsonResponse({ error: insertError?.message ?? "insert failed" }, 500);
     }
+
+    // Booked directly by an admin: "Conference Booking Confirmed" to the employee it's for.
+    inBackground(
+      sendBookingEmail(
+        supabaseAdmin,
+        "conference_confirmed",
+        employeeId,
+        conferenceEmail("conference_confirmed", {
+          roomName: room.name,
+          startsAt: window.start.toISOString(),
+          endsAt: window.end.toISOString(),
+          seatingCount: seatingCount as number,
+          eventName,
+        }),
+        { conferenceBookingId: created.id },
+      ),
+    );
 
     return jsonResponse({ id: created.id }, 201);
   } catch (err) {

@@ -71,6 +71,7 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | `20260930112233` | `booking_requests_rls` | booking-requests | `db/booking-requests/002_booking_requests_rls.sql` |
 | `20260930112258` | `booking_requests_decide_functions` | booking-requests | `db/booking-requests/003_booking_requests_decide_functions.sql` |
 | `20260930120216` | `conference_request_start_not_passed` | booking-requests | `db/booking-requests/004_conference_request_start_not_passed.sql` |
+| `20260930123455` | `booking_emails` | booking-requests | `db/booking-requests/005_booking_emails.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
@@ -137,6 +138,22 @@ The matching Edge Function rule is `startHasPassed` in `supabase/functions/_shar
 `conference-booking-update` (a moved start can't be in the past; the end can't be) — all three
 redeployed as version 2. Tested in PGlite (40 checks, incl. under-way refused / within-grace
 approves / grants) and live (a request that started 30 min ago is now refused with 400).
+
+**Booking status emails + pending requests on the calendars (2026-09-30, applied):** `005`
+(`20260930123455`) adds `booking_email_log` (one row per attempted email — event enum
+`booking_email_event`, status enum `booking_email_status` sent / failed / skipped; FKs to the
+request / booking / journey `on delete set null`; RLS on, admin-only select, no write policy) and
+`public.get_booking_smtp_config()`, a security-definer reader of the Vault secret
+`booking_smtp_config` (EXECUTE for `service_role` only — anon/authenticated denied, verified live).
+The secret itself was created with `vault.create_secret` (not in any migration file) from the
+gitignored `supabase/functions/.env`; SMTPS on port 465, since Edge Functions can't reach 25/587.
+Senders: `supabase/functions/_shared/bookingEmails.ts` + `smtp.ts`, called after the write by
+`conference-request-create` (v3), `journey-request-create` (v2), `conference-request-decide` (v2),
+`journey-request-decide` (v2), `conference-booking-create` (v3), `create-journey` (v8);
+`conference-availability` (v2) now also returns pending request ranges (no names) for the
+employee calendar. Tested in PGlite (48 checks incl. the 8 for 005) and against a local SMTPS
+sink (all six emails); live: advisors nothing new, login to the real mail server verified and one
+test message sent to the sender mailbox. Not yet observed live: a function-triggered email row.
 
 Current live schema (as of the last migration above): `departments`, `roles`,
 `employees`, `employee_roles`, `department_access_grants`, `apps`, `permissions`,

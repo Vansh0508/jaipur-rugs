@@ -20,6 +20,7 @@ export default async function ConferenceBookingPage({
 
   let rooms: ConferenceRoom[] = [];
   let busy: ConferenceBooking[] = [];
+  let pending: ConferenceBooking[] = [];
   let loadError: string | null = null;
   try {
     const availability = await getConferenceAvailability(
@@ -27,7 +28,7 @@ export default async function ConferenceBookingPage({
       new Date(istInstantMs(range.from, 0)).toISOString(),
       new Date(istInstantMs(addDays(range.to, 1), 0)).toISOString(),
     );
-    ({ rooms, bookings: busy } = toCalendarData(availability));
+    ({ rooms, bookings: busy, pending } = toCalendarData(availability));
   } catch (err) {
     loadError = err instanceof Error ? err.message : "unknown error";
   }
@@ -35,5 +36,5 @@ export default async function ConferenceBookingPage({
   // A ?room= that isn't a real room (stale link) falls back to all rooms.
   const roomFilter = params.room && rooms.some((room) => room.id === params.room) ? params.room : "all";
 
-  return <ConferenceRequestWorkspace rooms={rooms} busy={busy} view={view} date={date} roomFilter={roomFilter} loadError={loadError} />;
+  return <ConferenceRequestWorkspace rooms={rooms} busy={busy} pending={pending} view={view} date={date} roomFilter={roomFilter} loadError={loadError} />;
 }

@@ -29,6 +29,12 @@ export interface ConferenceBooking {
   eventName: string;
   eventDetails: string | null;
   status: ConferenceBookingStatus;
+  /**
+   * Set when this isn't a booking but an employee's pending request, drawn on the calendar
+   * as a dashed block (the request's id; see ConferenceWorkspace). Never resizable, and never
+   * limits how far a real booking can be dragged.
+   */
+  pendingRequestId?: string;
 }
 
 export function bookingPhase(

@@ -25,6 +25,7 @@ import type { ConferenceBooking, ConferenceRoom } from "@/lib/queries/conference
 import type { ConferenceRequest } from "@/lib/queries/bookingRequests";
 import { ActionDialog } from "@/components/shared/ActionDialog";
 import { RequestsPanel } from "@/components/requests/RequestsPanel";
+import { PendingRequestDialog } from "@/components/requests/PendingRequestDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { BookingDetailsDialog } from "./BookingDetailsDialog";
@@ -95,11 +96,39 @@ export function ConferenceWorkspace({
   const activeRooms = useMemo(() => rooms.filter((r) => r.status === "active"), [rooms]);
   const roomColors = useMemo(() => roomColorMap(rooms), [rooms]);
   const confirmed = useMemo(() => bookings.filter((b) => b.status === "confirmed"), [bookings]);
-  const calendarBookings = useMemo(
-    () => (roomFilter === "all" ? confirmed : confirmed.filter((b) => b.roomId === roomFilter)),
-    [confirmed, roomFilter],
+  // Employees' pending requests sit on the calendar too, as dashed blocks next to the real
+  // bookings; clicking one opens it to approve or reject (PendingRequestDialog).
+  const pendingBlocks = useMemo<ConferenceBooking[]>(
+    () =>
+      requests.map((r) => ({
+        id: `request-${r.id}`,
+        roomId: r.roomId,
+        roomName: r.roomName,
+        employeeId: r.requester.id,
+        employeeCode: r.requester.employeeCode,
+        employeeName: r.requester.fullName,
+        departmentName: r.requester.departmentName,
+        startsAt: r.startsAt,
+        endsAt: r.endsAt,
+        seatingCount: r.seatingCount,
+        eventName: r.eventName,
+        eventDetails: r.eventDetails,
+        status: "confirmed",
+        pendingRequestId: r.id,
+      })),
+    [requests],
   );
+  const calendarBookings = useMemo(() => {
+    const all = [...confirmed, ...pendingBlocks];
+    return roomFilter === "all" ? all : all.filter((b) => b.roomId === roomFilter);
+  }, [confirmed, pendingBlocks, roomFilter]);
   const selected = selectedId ? (bookings.find((b) => b.id === selectedId) ?? null) : null;
+  const [pendingRequest, setPendingRequest] = useState<ConferenceRequest | null>(null);
+
+  function openBlock(block: ConferenceBooking) {
+    if (block.pendingRequestId) setPendingRequest(requests.find((r) => r.id === block.pendingRequestId) ?? null);
+    else setSelectedId(block.id);
+  }
 
   // --- URL state ---------------------------------------------------------------------------
   function navigate(next: { view?: ConferenceView; date?: string; room?: string }) {
@@ -168,7 +197,7 @@ export function ConferenceWorkspace({
         date={date}
         bookings={calendarBookings}
         roomColors={roomColors}
-        onSelect={(b) => setSelectedId(b.id)}
+        onSelect={openBlock}
         onCreate={(day) => handleCreate({ date: day, ...defaultSlot(day) })}
         onOpenDay={(day) => navigate({ view: "day", date: day })}
       />
@@ -180,7 +209,7 @@ export function ConferenceWorkspace({
         rooms={timelineRooms}
         bookings={calendarBookings}
         roomColors={roomColors}
-        onSelect={(b) => setSelectedId(b.id)}
+        onSelect={openBlock}
         onCreate={handleCreate}
         onResize={handleResize}
       />
@@ -192,7 +221,7 @@ export function ConferenceWorkspace({
         bookings={calendarBookings}
         roomColors={roomColors}
         showRoomName={roomFilter === "all"}
-        onSelect={(b) => setSelectedId(b.id)}
+        onSelect={openBlock}
         onCreate={handleCreate}
         onResize={handleResize}
       />
@@ -296,6 +325,7 @@ export function ConferenceWorkspace({
                 {view === "month"
                   ? "Click a day to start a booking, or a date number to open that day. Switch to Day, Week or Timeline to stretch a meeting."
                   : "Click an empty slot to book it. Drag the edge of a meeting to stretch or contract it — it saves when you let go."}
+                {requests.length > 0 ? " Dashed blocks are employees' pending requests — click one to approve or reject it." : ""}
               </p>
             </>
           )}
@@ -349,6 +379,7 @@ export function ConferenceWorkspace({
         heading="Couldn't change the booking"
         body={resizeError ? `${resizeError} The booking has been put back to its original time.` : null}
       />
+      <PendingRequestDialog request={pendingRequest} onClose={() => setPendingRequest(null)} />
       <ActionDialog
         isOpen={pastSlot}
         onOpenChange={setPastSlot}

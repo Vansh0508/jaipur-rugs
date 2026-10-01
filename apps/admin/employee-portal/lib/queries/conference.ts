@@ -29,14 +29,24 @@ export interface ConferenceBooking {
   eventName: string;
   eventDetails: string | null;
   status: ConferenceBookingStatus;
+  /** Set on a pending request's block (drawn dashed, "Requested — pending"). */
+  pendingRequestId?: string;
 }
 
-/** Availability → the shapes the calendar views take. Only active rooms come back from the server. */
-export function toCalendarData(availability: ConferenceAvailability): { rooms: ConferenceRoom[]; bookings: ConferenceBooking[] } {
+/**
+ * Availability → the shapes the calendar views take. Only active rooms come back from the
+ * server. `bookings` are the confirmed busy blocks ("Booked"); `pending` are requests waiting on
+ * the admin team ("Requested — pending", drawn dashed). Neither carries anyone's name.
+ */
+export function toCalendarData(availability: ConferenceAvailability): {
+  rooms: ConferenceRoom[];
+  bookings: ConferenceBooking[];
+  pending: ConferenceBooking[];
+} {
   const rooms: ConferenceRoom[] = availability.rooms.map((r) => ({ ...r, status: "active" }));
   const nameOf = new Map(rooms.map((r) => [r.id, r.name]));
-  const bookings: ConferenceBooking[] = availability.busy.map((b, i) => ({
-    id: `busy-${b.roomId}-${b.startsAt}-${i}`,
+  const block = (kind: "busy" | "pending") => (b: { roomId: string; startsAt: string; endsAt: string }, i: number): ConferenceBooking => ({
+    id: `${kind}-${b.roomId}-${b.startsAt}-${i}`,
     roomId: b.roomId,
     roomName: nameOf.get(b.roomId) ?? "Room",
     employeeId: "",
@@ -46,9 +56,10 @@ export function toCalendarData(availability: ConferenceAvailability): { rooms: C
     startsAt: b.startsAt,
     endsAt: b.endsAt,
     seatingCount: 0,
-    eventName: "Booked",
+    eventName: kind === "busy" ? "Booked" : "Requested — pending",
     eventDetails: null,
     status: "confirmed",
-  }));
-  return { rooms, bookings };
+    ...(kind === "pending" ? { pendingRequestId: `pending-${i}` } : {}),
+  });
+  return { rooms, bookings: availability.busy.map(block("busy")), pending: (availability.pending ?? []).map(block("pending")) };
 }

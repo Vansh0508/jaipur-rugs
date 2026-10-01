@@ -9,6 +9,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { requireInternalPortalAdmin, authzErrorResponse } from "../_shared/authz.ts";
 import { corsHeaders, jsonResponse } from "../_shared/conference.ts";
 import { cleanText, describeDecisionError, UUID_PATTERN } from "../_shared/bookingRequests.ts";
+import { inBackground, journeyEmail, loadJourneyForEmail, sendBookingEmail } from "../_shared/bookingEmails.ts";
 
 interface DecideJourneyRequestBody {
   requestId: string;
@@ -68,6 +69,38 @@ Deno.serve(async (req) => {
       if (known) return jsonResponse({ error: known.error }, known.status);
       return jsonResponse({ error: error.message }, 400);
     }
+
+    // "Journey Booking Confirmed" (with the car and driver) / "Journey Booking Rejected" to the requester.
+    const decision = body.decision;
+    const requestId = body.requestId;
+    inBackground(
+      (async () => {
+        const { data: request } = await supabaseAdmin
+          .from("journey_requests")
+          .select("requested_by, route_summary, first_pickup_at, last_drop_at, passenger_count, decision_note")
+          .eq("id", requestId)
+          .maybeSingle();
+        if (!request) return;
+        const planned = decision === "approved" && journeyId ? await loadJourneyForEmail(supabaseAdmin, journeyId as string) : null;
+        const event = decision === "approved" ? "journey_confirmed" : "journey_rejected";
+        await sendBookingEmail(
+          supabaseAdmin,
+          event,
+          request.requested_by as string,
+          journeyEmail(event, {
+            routeSummary: request.route_summary as string,
+            firstPickupAt: request.first_pickup_at as string,
+            lastDropAt: request.last_drop_at as string,
+            passengerCount: request.passenger_count as number,
+            carLabel: planned?.info.carLabel,
+            driverName: planned?.info.driverName,
+            reference: requestId,
+            note: request.decision_note as string | null,
+          }),
+          { journeyRequestId: requestId, journeyId: (journeyId as string | null) ?? null },
+        );
+      })(),
+    );
 
     return jsonResponse({ decision: body.decision, journeyId: journeyId ?? null });
   } catch (err) {
