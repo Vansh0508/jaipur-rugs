@@ -11,8 +11,16 @@
 //
 // Always confirm with `ls -l /proc/$(pm2 pid cad-layout)/exe`; `pm2 describe` reports the
 // configured interpreter, not the binary the process actually ended up on.
+//
+// .npmrc sets node-linker=hoisted + shamefully-hoist=true, so pnpm installs a single flat
+// node_modules at the workspace root, not a per-app one here — "node_modules/next/..."
+// relative to this app's own cwd never reliably existed (2026-10-01: a large lockfile
+// reconciliation pruned whatever had been here before, taking prod down). PM2 passes this
+// as a literal file argument to `node`, which doesn't walk up node_modules the way a
+// `require()`/import would, so the path has to point at the root install explicitly.
+const path = require("node:path");
 const nodeBin = process.env.PM2_NODE_INTERPRETER;
-const NEXT_CLI = "node_modules/next/dist/bin/next";
+const NEXT_CLI = path.join(__dirname, "../../../node_modules/next/dist/bin/next");
 const PORT = process.env.PORT || 3006;
 
 module.exports = {
