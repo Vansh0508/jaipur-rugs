@@ -56,7 +56,7 @@ export async function freshness(tables: string[]): Promise<Record<string, string
     `SELECT relname AS table, to_char(greatest(last_vacuum, last_analyze, last_autoanalyze),
             'YYYY-MM-DD HH24:MI') AS synced
        FROM pg_stat_all_tables
-      WHERE schemaname = 'nav_mirror' AND relname = ANY($1)`,
+      WHERE schemaname = 'nav_mirror' AND relname = ANY($1::text[])`,
     [tables],
   );
   const out: Record<string, string | null> = {};

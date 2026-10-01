@@ -7,6 +7,20 @@ import { freshness, query } from "@/lib/warehouse";
 export const dynamic = "force-dynamic";
 
 /**
+ * Every table the query reads, for the source cards. Must handle nav_mirror's quoted
+ * names ("NAV-128 - Inspection Sheet All") as well as plain jrgpt.* identifiers — the
+ * earlier version only matched the latter, so raw-table answers showed no provenance at
+ * all, which is the opposite of what is needed now the whole mirror is readable.
+ */
+function extractTables(sql: string): string[] {
+  const found = new Set<string>();
+  for (const m of sql.matchAll(/\b(jrgpt|nav_mirror)\s*\.\s*("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)/g)) {
+    found.add(`${m[1]}.${m[2]!.replace(/"/g, "")}`);
+  }
+  return [...found];
+}
+
+/**
  * Plain-English question -> SQL -> answer.
  *
  * Order matters: the verified library answers first, and only what it misses would reach a
@@ -34,9 +48,7 @@ export async function POST(request: Request) {
         const sql = addLimit(validate(await generateSql(question)));
         const { rows, columns, ms } = await query(sql);
         const values = rows.map((r) => columns.map((c) => r[c] ?? null));
-        const tables = [
-          ...new Set([...sql.matchAll(/\bjrgpt\.[a-z_]+/gi)].map((m) => m[0].toLowerCase())),
-        ];
+        const tables = extractTables(sql);
         return NextResponse.json({
           kind: "answer",
           question,
@@ -90,7 +102,7 @@ export async function POST(request: Request) {
   try {
     const { rows, columns, ms } = await query(sql);
     const values = rows.map((r) => columns.map((c) => r[c] ?? null));
-    const tables = [...new Set([...sql.matchAll(/\b(?:jrgpt|nav_mirror)\.(?:"[^"]+"|[a-z_]+)/gi)].map((m) => m[0]))];
+    const tables = extractTables(sql);
     const synced = await freshness(
       tables.filter((t) => t.startsWith("nav_mirror.")).map((t) => t.replace(/^nav_mirror\."?|"$/g, "")),
     ).catch(() => ({}));
