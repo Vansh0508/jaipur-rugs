@@ -17,7 +17,12 @@ export type AnswerPayload = {
 };
 
 export type BlockedPayload = { kind: "blocked"; question: string; reason: string };
-export type UnsurePayload = { kind: "unsure"; question: string; alternatives: string[] };
+export type UnsurePayload = {
+  kind: "unsure";
+  question: string;
+  alternatives: string[];
+  modelNote?: string;
+};
 export type Turn = AnswerPayload | BlockedPayload | UnsurePayload;
 
 /** cr_inr -> "Cr inr" reads badly; snake_case column names need humanising for display. */
@@ -70,6 +75,9 @@ export function AnswerCard({
         <p className="text-small text-default-500">
           I&rsquo;m not confident enough to answer that one. Did you mean:
         </p>
+        {turn.modelNote ? (
+          <p className="mt-1.5 text-tiny text-default-400">{turn.modelNote}</p>
+        ) : null}
         <ul className="mt-2 flex flex-col gap-1">
           {turn.alternatives.map((a) => (
             <li key={a} className="text-small text-default-700">

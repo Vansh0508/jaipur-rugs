@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@heroui/react": "^3.2.4",
     "@heroui/styles": "^3.2.4",
     "@jaipur-rugs/auth": "workspace:*",
