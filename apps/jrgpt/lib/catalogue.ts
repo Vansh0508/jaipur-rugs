@@ -44,8 +44,64 @@ const STOP = new Set(
    "give get all last this that which total number count top").split(" "),
 );
 
+/**
+ * Business vocabulary -> the words NAV actually uses in table and column names. Without
+ * this, retrieval finds nothing for "defect": NAV's defect columns are Hinglish
+ * (CRHN-ChauraiFark, CRHN-Back Kharab) and the table is called "Inspection Sheet".
+ */
+const DOMAIN: Record<string, string[]> = {
+  defect: ["inspection", "issue", "crhn"],
+  defects: ["inspection", "issue", "crhn"],
+  quality: ["inspection", "quality"],
+  rework: ["inspection", "repair"],
+  repair: ["repair", "washing"],
+  loom: ["loom"],
+  looms: ["loom"],
+  idle: ["loom", "blocked"],
+  dye: ["dyeing"],
+  dyeing: ["dyeing"],
+  dyed: ["dyeing"],
+  yarn: ["raw material", "yarn", "rm"],
+  wool: ["raw material", "yarn"],
+  material: ["raw material"],
+  weaver: ["weaver", "rmr", "vendor"],
+  weavers: ["weaver", "rmr", "vendor"],
+  artisan: ["weaver", "rmr", "artisan"],
+  village: ["village", "loom", "branch"],
+  packing: ["packing", "warehouse", "shipment"],
+  packed: ["packing", "warehouse"],
+  shipment: ["shipment", "packing", "whse"],
+  shipping: ["shipment", "whse"],
+  dispatch: ["shipment", "dispatch"],
+  container: ["packing", "cubage"],
+  stock: ["inventory", "stock"],
+  inventory: ["inventory", "stock"],
+  warehouse: ["warehouse", "inventory"],
+  map: ["map"],
+  design: ["design", "map"],
+  bom: ["bom"],
+  receivable: ["ledger", "outstanding"],
+  overdue: ["ledger", "outstanding"],
+  eway: ["eway", "ewb"],
+  compliance: ["eway", "einv"],
+  gst: ["eway", "einv", "gst"],
+  invoice: ["invoice", "sold"],
+  consignee: ["consignee"],
+  transit: ["intransit", "transit"],
+  spooling: ["spooling"],
+  tani: ["tani"],
+  online: ["online", "web"],
+  website: ["website", "web"],
+  ecommerce: ["online", "web", "ecom"],
+};
+
 function terms(text: string): string[] {
-  return [...new Set((text.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((w) => w.length > 2 && !STOP.has(w)))];
+  const base = (text.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter(
+    (w) => w.length > 2 && !STOP.has(w),
+  );
+  const out = new Set<string>(base);
+  for (const w of base) for (const alias of DOMAIN[w] ?? []) out.add(alias);
+  return [...out];
 }
 
 /** Columns of a wide table are filtered to those that match, so a 411-column table stays usable. */
@@ -76,7 +132,7 @@ export async function schemaFor(question: string, rawLimit = 5): Promise<string>
       const name = t.table.toLowerCase();
       let score = 0;
       for (const term of qTerms) {
-        if (name.includes(term)) score += 3;                              // table name is the strongest signal
+        if (name.includes(term)) score += 3; // table name is the strongest signal
         if (t.columns.some((c) => c.toLowerCase().includes(term))) score += 1;
       }
       return { t, score };
