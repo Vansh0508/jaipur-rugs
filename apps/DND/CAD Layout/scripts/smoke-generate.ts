@@ -5,6 +5,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseBmp } from "../lib/engine/bmp";
+import { parseDesignImage } from "../lib/engine/image";
 import { extractPalette } from "../lib/engine/palette";
 import { convertPptxToPdf } from "../lib/engine/pdf";
 import { generateDeck } from "../lib/engine/pptx/fill";
@@ -29,6 +30,21 @@ async function main() {
   const shmColours = colours(shm, "GRC");
   console.log(`TAQ palette: ${taqColours.length} colours, top = ${taqColours[0]?.hex}`);
   console.log(`SHm palette: ${shmColours.length} colours, top = ${shmColours[0]?.hex}`);
+
+  // JPG/PNG support (Sudesh Sharma, 2026-09-28 — DnD's real files aren't always Tikni
+  // BMPs). Not run against the generated deck below, just proves parseDesignImage handles
+  // a real photographic JPG without throwing and produces a sane, capped palette.
+  const nexusJpgPath = path.join(root, "samples", "nexus-job-source", "20250428 NEXUS ID - COWORKING LOUNGE.jpg");
+  try {
+    const jpg = await readFile(nexusJpgPath);
+    const decoded = parseDesignImage(jpg);
+    const jpgPalette = extractPalette(decoded);
+    console.log(
+      `JPG smoke (${path.basename(nexusJpgPath)}): ${decoded.width}x${decoded.height}, ${jpgPalette.length} colours, top = ${jpgPalette[0]?.hex} (${jpgPalette[0]?.areaPct.toFixed(1)}%)`,
+    );
+  } catch (err) {
+    console.log(`JPG smoke skipped (sample not present locally — gitignored): ${(err as Error).message}`);
+  }
 
   // A reference image: re-use the PNG of the SHm design as a stand-in "design intent" photo.
   const { encodePng } = await import("../lib/engine/png");

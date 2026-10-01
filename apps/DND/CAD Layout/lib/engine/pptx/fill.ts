@@ -5,7 +5,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { imageSize } from "image-size";
-import { parseBmp } from "../bmp";
+import { parseDesignImage } from "../image";
 import { analyseTikni, isLightColour } from "../palette";
 import { encodePng } from "../png";
 import type { DesignOptionInput, LayoutSpec, LayoutVariant } from "../spec";
@@ -131,8 +131,9 @@ async function fillOptionSlide(
     template.specRows.map((row) => `${template.specRowPrefix}${(spec[row] ?? "").trim()}`),
   );
 
-  // Design image (BMP -> PNG, legend strip cropped, never the BMP itself) -----
-  const bmp = parseBmp(option.bmp);
+  // Design image (source file -> PNG, legend strip cropped if it's a Tikni BMP, never
+  // the source file itself) -----
+  const bmp = parseDesignImage(option.bmp);
   const { designHeight } = analyseTikni(bmp);
   const png = encodePng(bmp.width, designHeight, bmp.rgb.subarray(0, designHeight * bmp.width * 3));
   const designRId = await pkg.addImage(slidePath, png, "png");

@@ -34,20 +34,20 @@ export function DesignOptionCard({ index, option, variant, maxSlots, canRemove, 
       } catch {
         // non-JSON body — reported via the status below
       }
-      if (!res.ok || !json.colours) throw new Error(json.error ?? `Could not read this BMP (HTTP ${res.status})`);
+      if (!res.ok || !json.colours) throw new Error(json.error ?? `Could not read this file (HTTP ${res.status})`);
       const palette = json as import("@/lib/api").PaletteResponse;
       onChange({
         ...option,
         bmp: file,
         bmpName: file.name,
-        designCode: option.designCode || file.name.replace(/\.bmp$/i, ""),
+        designCode: option.designCode || file.name.replace(/\.(bmp|jpe?g|png)$/i, ""),
         palette,
         loadingPalette: false,
         paletteError: null,
         colours: rowsFromPalette(palette, option.ordering, option.colours),
       });
     } catch (err) {
-      onChange({ ...option, bmp: file, bmpName: file.name, palette: null, colours: [], loadingPalette: false, paletteError: (err as Error).message });
+      onChange({ ...option, bmp: file, bmpName: file.name, palette: null, colours: [], loadingPalette: false, paletteError: describeFetchError(err) });
     }
   }
 
@@ -71,12 +71,12 @@ export function DesignOptionCard({ index, option, variant, maxSlots, canRemove, 
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label htmlFor={bmpInputId} className="text-sm font-medium text-foreground">
-              Tikni BMP file
+              Design file <span className="font-normal text-muted">(Tikni BMP, or JPG / PNG)</span>
             </label>
             <input
               id={bmpInputId}
               type="file"
-              accept=".bmp,image/bmp"
+              accept=".bmp,.jpg,.jpeg,.png,image/bmp,image/jpeg,image/png"
               onChange={(e) => handleBmp(e.target.files?.[0] ?? null)}
               className="h-11 rounded-lg border-2 border-border bg-transparent px-3 text-sm outline-none transition-colors file:mr-3 file:h-full file:cursor-pointer file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-accent focus:border-accent"
             />
@@ -168,6 +168,19 @@ export function DesignOptionCard({ index, option, variant, maxSlots, canRemove, 
       ) : null}
     </section>
   );
+}
+
+/**
+ * The browser's own message for a request that never got a response ("Failed to fetch" /
+ * "NetworkError when attempting to fetch resource") tells a designer nothing actionable —
+ * seen for real 2026-09-28 sitting next to an unrelated BMP-format error, which read as
+ * one confusing double failure instead of two separate, diagnosable ones.
+ */
+function describeFetchError(err: unknown): string {
+  if (err instanceof TypeError) {
+    return "Could not reach the server. Check your connection and try again.";
+  }
+  return err instanceof Error ? err.message : "Something went wrong.";
 }
 
 function OrderButton({ active, disabled, onClick, children }: { active: boolean; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {

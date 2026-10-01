@@ -1,0 +1,58 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+@import "@jaipur-rugs/config/tailwind-theme.css";
+/* Bklit chart variables, mapped onto Hero UI tokens. Required by @jaipur-rugs/charts. */
+@import "@jaipur-rugs/charts/src/chart-theme.css";
+
+/* Tailwind v4 auto-detects content within this app's own directory tree, but the shared
+   workspace packages live outside it — same @source note as apps/analytics. */
+@source "../../../packages/ui-kit/src";
+@source "../../../packages/charts/src";
+
+@theme {
+  --color-jr-ochre: oklch(0.80 0.13 78);
+  --color-jr-rose: oklch(0.84 0.08 24);
+}
+
+/* The page must never scroll sideways. The glow below is drawn with negative insets, and
+   on a 375px viewport that alone pushed the document 26px wider than the screen. */
+html,
+body {
+  overflow-x: clip;
+}
+
+/* Soft field behind the ask box. Warm ochre from the Jaipur Rugs palette rather than the
+   reference's yellow, kept low-saturation: it sits behind the numbers, never competes.
+
+   Sized in `em` off the container's own font-size rather than a fixed px inset, so it
+   scales with the hero instead of vanishing on a 1680px monitor — the first version was
+   tuned at 375px and was nearly invisible on a desktop. */
+.jr-field {
+  position: relative;
+  isolation: isolate;
+}
+.jr-field::before {
+  content: "";
+  position: absolute;
+  inset: -7em -5em -9em -5em;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 9999px;
+  background:
+    radial-gradient(48% 52% at 44% 38%, color-mix(in oklab, var(--color-jr-ochre) 62%, transparent), transparent 70%),
+    radial-gradient(40% 46% at 72% 66%, color-mix(in oklab, var(--color-jr-rose) 44%, transparent), transparent 72%);
+  filter: blur(64px);
+  opacity: 0.9;
+}
+@media (min-width: 1024px) {
+  .jr-field::before {
+    inset: -9em -7em -11em -7em;
+    filter: blur(86px);
+  }
+}
+/* Follows the `dark` class set by the bootstrap script, so an explicit user choice and
+   the OS preference both land on the same rule. */
+.dark .jr-field::before {
+  opacity: 0.42;
+  filter: blur(96px);
+}

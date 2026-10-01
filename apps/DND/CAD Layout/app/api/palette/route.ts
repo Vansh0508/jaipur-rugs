@@ -1,26 +1,30 @@
 import { NextResponse } from "next/server";
-import { parseBmp } from "@/lib/engine/bmp";
+import { parseDesignImage } from "@/lib/engine/image";
 import { analyseTikni } from "@/lib/engine/palette";
 import { downscaleRgb, encodePng } from "@/lib/engine/png";
 import type { PaletteResponse } from "@/lib/api";
 
 export const runtime = "nodejs";
 
-const MAX_BMP_BYTES = 60 * 1024 * 1024;
+const MAX_FILE_BYTES = 60 * 1024 * 1024;
 
-/** Reads one Tikni BMP and returns its palette (area-ordered), legend order and a preview. */
+/**
+ * Reads one design file (Tikni BMP, or a JPG/PNG for jobs that never went through Tikni —
+ * Sudesh Sharma, 2026-09-28) and returns its palette (area-ordered), legend order (BMP
+ * only) and a preview.
+ */
 export async function POST(request: Request) {
   const form = await request.formData();
   const file = form.get("file");
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "file is required" }, { status: 400 });
   }
-  if (file.size > MAX_BMP_BYTES) {
-    return NextResponse.json({ error: "BMP is larger than 60 MB" }, { status: 413 });
+  if (file.size > MAX_FILE_BYTES) {
+    return NextResponse.json({ error: "File is larger than 60 MB" }, { status: 413 });
   }
 
   try {
-    const bmp = parseBmp(new Uint8Array(await file.arrayBuffer()));
+    const bmp = parseDesignImage(new Uint8Array(await file.arrayBuffer()));
     const analysis = analyseTikni(bmp);
     const preview = downscaleRgb(bmp.rgb.subarray(0, analysis.designHeight * bmp.width * 3), bmp.width, analysis.designHeight, 480);
     const body: PaletteResponse = {

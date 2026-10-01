@@ -1357,3 +1357,45 @@ keys). End-to-end UI run (guest + employee on one journey, saved, shown on detai
 employee tagged, found by employee code in list search) — test journey and guest deleted
 afterwards.
 
+## JRGPT views (2026-09-30)
+
+**Different database from every entry above.** These are views on the **NAV mirror**
+(`nav_mirror` schema, Postgres on 192.168.0.18:6543), not the shared Supabase project
+`matnispbauvvlnbsuzxq`. Recorded here so the ledger stays the one place to look, but nothing
+below touches Supabase.
+
+- Applied `db/jrgpt/01..09` — ten objects in a new `jrgpt` schema: `sales_invoiced`,
+  `open_orders`, `customers` (+ `customers_mv`), `products` (+ `products_mv`),
+  `production_wip`, `artisan_activity`, `receivables`, `fg_stock`. All read-only views over
+  existing mirrored tables; no source table was modified.
+- `customers_mv` and `products_mv` are materialised because the underlying aggregations run
+  4.9s and 12.3s — far too slow for an interactive answer. Materialised they query in 0.19s.
+  **They go stale when the mirror re-syncs**; `Tableau/jrgpt/refresh_jrgpt.sh` refreshes them
+  concurrently (the unique indexes in `05_materialize.sql` exist for that).
+- Two NAV tables were copied into `nav_mirror` to make receivables possible:
+  `JRCPL Live$Cust_ Ledger Entry` (190,884 rows) and `JRCPL Live$Detailed Cust_ Ledg_ Entry`
+  (414,273). **Both are required** — in this NAV version the ledger header's `Amount`,
+  `Remaining Amount` and `Remaining Amt_ (LCY)` are FlowFields, computed not stored, so the
+  money only exists in the detail table. `jrgpt.receivables` aggregates detail per
+  `Cust_ Ledger Entry No_` and joins back to the header for due date and open flag.
+- Verified against the reference implementation: every tile in `apps/jrgpt` matches
+  `python3 jrgpt/director_30.py` in the Tableau working directory exactly. That Python set is
+  the source of truth for these numbers; drift in the app is an app bug.
+
+**Known gaps, deliberately not worked around:**
+- **No cost data anywhere.** Tested three ways against `JRCPL Live$Value Entry` (79.3M rows):
+  `Cost Amount (Actual)` implies 99.7% margin, `+ (Expected)` 98.5%, `Cost per Unit × Qty`
+  0.7%. All impossible for a manufacturer. NAV's Cost Accounting module is empty
+  (`Cost Entry` = 0 rows). Margin cannot be derived — JRGPT must say so, not estimate.
+- **No reorder levels.** Across 519,390 items, `Reorder Point`, `Reorder Quantity`,
+  `Safety Stock` and `Reordering Policy` are all zero; `Stockkeeping Unit` is empty.
+- `jrgpt.sales_invoiced` inherits a **rolling ~5-year window** from its NAV source — history
+  starts 2021-04-01 and older years drop off as it rolls. Never present it as all-time.
+- ~30% of invoiced revenue is to group entities (`is_related_party`). Any concentration or
+  customer-count answer must state whether they are included.
+- `db/jrgpt/10_pins.sql` applied to **matnispbauvvlnbsuzxq** (the shared project, not the
+  mirror) on 2026-10-01: `jrgpt_pins` + `jrgpt_pin_kind` enum, keyed to `employees.id`, RLS
+  via `private.current_employee_id()` so a pin is visible only to the person who made it.
+  Security advisors run immediately after: **no new findings**. This is the only table JRGPT
+  writes — everything else it does is a read against the NAV mirror.
+
