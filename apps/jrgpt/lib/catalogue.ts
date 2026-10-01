@@ -21,6 +21,8 @@ export async function catalogue(): Promise<TableInfo[]> {
     `select table_schema as schema, table_name as table, column_name as column
        from information_schema.columns
       where table_schema in ('jrgpt', 'nav_mirror')
+        -- load/staging leftovers are not real data; never offer them to the model
+        and table_name not like '\\_%'
       order by table_schema, table_name, ordinal_position`,
   );
 
