@@ -98,3 +98,19 @@ export async function listPendingFeedback(supabase: SupabaseClient) {
   if (error) throw error;
   return ((data ?? []) as unknown as RawFeedbackRow[]).map(toFeedbackRow);
 }
+
+/**
+ * Approved reviews tied to one journey, newest first — the journey record page's "Guest
+ * feedback" card. Planned-ride reviews are auto-approved and unplanned ones never carry a
+ * journey_id, so `approved` here only drops the ones an admin rejected afterwards.
+ */
+export async function listFeedbackForJourney(supabase: SupabaseClient, journeyId: string) {
+  const { data, error } = await supabase
+    .from("feedback")
+    .select(FEEDBACK_SELECT)
+    .eq("journey_id", journeyId)
+    .eq("review_status", "approved")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return ((data ?? []) as unknown as RawFeedbackRow[]).map(toFeedbackRow);
+}

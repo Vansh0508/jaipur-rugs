@@ -1,0 +1,206 @@
+import type { RequestJourneyInput } from "@jaipur-rugs/db-management-client";
+
+// Pure state logic for the journey request builder — apps/admin/internal-portal's
+// components/journeys/builder/model.ts (driver-app-new's JourneyBuilder rules), with the two
+// differences a no-login request needs: no car or driver (the admin assigns them when
+// approving), and guests are entered as name + phone only, never matched to an existing
+// guest record (that happens when the admin approves, by phone).
+
+/**
+ * One entry in the guest pool — a guest or an employee. Employees: `employeeId` comes from an
+ * exact employee-code lookup. Guests: name + full E.164 phone (ui-kit PhoneInput's output).
+ */
+export interface PoolGuest {
+  clientId: string;
+  kind: "guest" | "employee";
+  employeeId: string | null;
+  employeeCode: string | null;
+  departmentName: string | null;
+  name: string;
+  phone: string;
+}
+
+export interface BuilderStop {
+  clientId: string;
+  location: string;
+  /** "HH:mm" (24h) — the date comes from the journey's Date & Time, see buildSchedule. */
+  time: string;
+  pickupIds: string[];
+  dropIds: string[];
+}
+
+let counter = 0;
+export function newClientId(prefix: string) {
+  counter += 1;
+  return `${prefix}-${Date.now().toString(36)}-${counter}`;
+}
+
+/** A new pool row — Employee by default; the row's Guest/Employee dropdown switches it. */
+export function emptyGuest(kind: PoolGuest["kind"] = "employee"): PoolGuest {
+  return { clientId: newClientId("guest"), kind, employeeId: null, employeeCode: null, departmentName: null, name: "", phone: "" };
+}
+
+/** How stops reference a passenger (journey-request-create contract): phone for guests, "employee:<id>" for employees. */
+export function passengerKey(g: PoolGuest) {
+  return g.kind === "employee" ? `employee:${g.employeeId}` : g.phone;
+}
+
+export function emptyStop(): BuilderStop {
+  return { clientId: newClientId("stop"), location: "", time: "", pickupIds: [], dropIds: [] };
+}
+
+/** Everyone picked up (start or any stop) and not dropped at an intermediate stop — auto-dropped at the destination. */
+export function destinationGuestIds(pool: PoolGuest[], startIds: string[], stops: BuilderStop[]) {
+  const picked = new Set([...startIds, ...stops.flatMap((s) => s.pickupIds)]);
+  const dropped = new Set(stops.flatMap((s) => s.dropIds));
+  return pool.map((g) => g.clientId).filter((id) => picked.has(id) && !dropped.has(id));
+}
+
+/** Start pickups: anyone not already picked up at an intermediate stop (selected ones stay visible for deselection). */
+export function startEligible(pool: PoolGuest[], startIds: string[], stops: BuilderStop[]) {
+  const pickedAtStops = new Set(stops.flatMap((s) => s.pickupIds));
+  return pool.filter((g) => !pickedAtStops.has(g.clientId) || startIds.includes(g.clientId));
+}
+
+/**
+ * At intermediate stop `index`: pickup = not already picked up at the start or any OTHER
+ * stop; drop = currently in the vehicle (picked up at or before this stop, not dropped at
+ * an earlier one). Selected guests always stay listed so they can be deselected.
+ */
+export function stopEligible(pool: PoolGuest[], startIds: string[], stops: BuilderStop[], index: number) {
+  const stop = stops[index]!;
+  const pickedElsewhere = new Set(startIds);
+  stops.forEach((s, j) => j !== index && s.pickupIds.forEach((id) => pickedElsewhere.add(id)));
+
+  const inVehicle = new Set(startIds);
+  stops.forEach((s, j) => j <= index && s.pickupIds.forEach((id) => inVehicle.add(id)));
+  stops.forEach((s, j) => j < index && s.dropIds.forEach((id) => inVehicle.delete(id)));
+
+  return {
+    forPickup: pool.filter((g) => !pickedElsewhere.has(g.clientId) || stop.pickupIds.includes(g.clientId)),
+    forDrop: pool.filter((g) => inVehicle.has(g.clientId) || stop.dropIds.includes(g.clientId)),
+  };
+}
+
+export function isGuestInRoute(clientId: string, startIds: string[], stops: BuilderStop[]) {
+  return startIds.includes(clientId) || stops.some((s) => s.pickupIds.includes(clientId) || s.dropIds.includes(clientId));
+}
+
+/** Guests referenced by the route that are no longer in the pool — purged when the pool is saved. */
+export function withoutMissingGuests(poolIds: Set<string>, startIds: string[], stops: BuilderStop[]) {
+  return {
+    startIds: startIds.filter((id) => poolIds.has(id)),
+    stops: stops.map((s) => ({ ...s, pickupIds: s.pickupIds.filter((id) => poolIds.has(id)), dropIds: s.dropIds.filter((id) => poolIds.has(id)) })),
+  };
+}
+
+function atTime(base: Date, time: string) {
+  const [h, m] = time.split(":").map(Number);
+  const d = new Date(base);
+  d.setHours(h!, m!, 0, 0);
+  return d;
+}
+
+/**
+ * Real arrival timestamps for origin → stops → destination: the journey's Date & Time gives
+ * the day; the origin's time defaults to that same time; every later stop's time-of-day is
+ * placed on the same day as the previous stop, rolling to the next day when it's earlier (an
+ * overnight trip). Returns null entries for missing times. (Same as the admin builder.)
+ */
+export function buildSchedule(rideDate: string, startTime: string, stopTimes: string[], endTime: string): (Date | null)[] {
+  if (!rideDate) return [null, ...stopTimes.map(() => null), null];
+  const base = new Date(rideDate);
+  const origin = atTime(base, startTime || rideDate.slice(11, 16));
+  const result: (Date | null)[] = [origin];
+  let previous = origin;
+  for (const time of [...stopTimes, endTime]) {
+    if (!time) {
+      result.push(null);
+      continue;
+    }
+    let next = atTime(previous, time);
+    if (next < previous) next = new Date(next.getTime() + 24 * 60 * 60 * 1000);
+    result.push(next);
+    previous = next;
+  }
+  return result;
+}
+
+const E164 = /^\+[1-9]\d{6,14}$/;
+
+export interface BuilderValues {
+  rideDate: string;
+  startPoint: string;
+  startTime: string;
+  endPoint: string;
+  endTime: string;
+  pool: PoolGuest[];
+  startIds: string[];
+  stops: BuilderStop[];
+}
+
+export function validatePool(pool: PoolGuest[]) {
+  const errors: Record<string, string> = {};
+  const seenPhones = new Set<string>();
+  const seenEmployees = new Set<string>();
+  for (const g of pool) {
+    const key = `guest_${g.clientId}`;
+    if (g.kind === "employee") {
+      if (!g.employeeId) errors[key] = "Enter the employee's ID and wait for their name to appear";
+      else if (seenEmployees.has(g.employeeId)) errors[key] = "This employee is already in the pool";
+      if (g.employeeId) seenEmployees.add(g.employeeId);
+      continue;
+    }
+    if (!g.name.trim() || !g.phone) errors[key] = "Enter guest name and phone number";
+    else if (!E164.test(g.phone)) errors[key] = "Enter a valid phone number";
+    else if (seenPhones.has(g.phone)) errors[key] = "This phone number is already in the pool";
+    if (g.phone) seenPhones.add(g.phone);
+  }
+  return errors;
+}
+
+export function validate(values: BuilderValues) {
+  const errors: Record<string, string> = {};
+  if (!values.rideDate) errors.rideDate = "Pick a date and time";
+  if (!values.startPoint.trim()) errors.start = "Enter a start point";
+  if (!values.endPoint.trim()) errors.end = "Enter an end point";
+  if (!values.endTime) errors.endTime = "Enter the arrival time";
+  if (values.pool.length === 0) errors.guests = "Add at least one passenger to the journey";
+  Object.assign(errors, validatePool(values.pool));
+  for (const s of values.stops) {
+    if (!s.location.trim()) errors[`stop_${s.clientId}_location`] = "Enter a location";
+    if (!s.time) errors[`stop_${s.clientId}_time`] = "Enter a time";
+  }
+  const pickups = values.startIds.length + values.stops.reduce((n, s) => n + s.pickupIds.length, 0);
+  if (values.pool.length > 0 && pickups === 0) errors.route = "Select at least one passenger to pick up along the route";
+  return errors;
+}
+
+/** The journey-request-create payload's trip (see supabase/functions/_shared/bookingRequests.ts). */
+export function buildPayload(values: BuilderValues, schedule: Date[]): Pick<RequestJourneyInput, "guests" | "stops"> {
+  const keyOf = new Map(values.pool.map((g) => [g.clientId, passengerKey(g)]));
+  const keys = (ids: string[]) => ids.map((id) => keyOf.get(id)!).filter(Boolean);
+  const last = values.stops.length + 1;
+  return {
+    guests: values.pool.map((g) => (g.kind === "employee" ? { employeeId: g.employeeId! } : { fullName: g.name.trim(), phone: g.phone })),
+    stops: [
+      { sequenceNo: 0, role: "origin", locationName: values.startPoint.trim(), arrivalAt: schedule[0]!.toISOString(), pickups: keys(values.startIds), drops: [] },
+      ...values.stops.map((s, i) => ({
+        sequenceNo: i + 1,
+        role: "stop" as const,
+        locationName: s.location.trim(),
+        arrivalAt: schedule[i + 1]!.toISOString(),
+        pickups: keys(s.pickupIds),
+        drops: keys(s.dropIds),
+      })),
+      {
+        sequenceNo: last,
+        role: "destination",
+        locationName: values.endPoint.trim(),
+        arrivalAt: schedule[last]!.toISOString(),
+        pickups: [],
+        drops: keys(destinationGuestIds(values.pool, values.startIds, values.stops)),
+      },
+    ],
+  };
+}

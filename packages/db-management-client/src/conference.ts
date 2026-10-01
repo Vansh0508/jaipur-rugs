@@ -29,6 +29,8 @@ export interface CreateConferenceRoomInput {
   name: string;
   /** Seating limit; omit (or null) when not recorded. */
   capacity?: number | null;
+  /** Where the room is, e.g. "2nd floor, Admin block" (at most 500 characters). */
+  description?: string | null;
 }
 
 /** Invokes `conference-room-create`. Throws (with the function's message) on a duplicate name. */
@@ -41,6 +43,8 @@ export interface UpdateConferenceRoomInput {
   name?: string;
   /** `null` clears the limit; leave undefined to keep it. */
   capacity?: number | null;
+  /** `null` (or "") clears it; leave undefined to keep it. */
+  description?: string | null;
   /** `inactive` is "remove" (a soft-delete); `active` restores. */
   status?: "active" | "inactive";
 }
@@ -50,7 +54,7 @@ export interface UpdateConferenceRoomInput {
  * throws (with the function's message) while the room still has unfinished confirmed bookings.
  */
 export function updateConferenceRoom(supabase: SupabaseClient, input: UpdateConferenceRoomInput) {
-  return invoke<{ id: string; name: string; capacity: number | null; status: "active" | "inactive" }>(
+  return invoke<{ id: string; name: string; capacity: number | null; description: string | null; status: "active" | "inactive" }>(
     supabase,
     "conference-room-update",
     input,

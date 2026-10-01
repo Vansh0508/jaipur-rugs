@@ -5,6 +5,8 @@
 // Rejected (400/404/409):
 // - a window that isn't within one IST day (../_shared/conference.ts);
 // - a booking that's cancelled, or has already finished — history isn't rewritten;
+// - moving the start to a time that has already passed (an upcoming meeting can't be pulled
+//   into the past; one under way keeps its start), or the end to one that has;
 // - an overlap with another confirmed booking of the same room (the exclusion constraint's
 //   23P01, worded by describeConflict, which ignores this booking itself).
 
@@ -16,6 +18,7 @@ import {
   EXCLUSION_VIOLATION,
   jsonResponse,
   parseWindow,
+  startHasPassed,
 } from "../_shared/conference.ts";
 
 interface UpdateBookingBody {
@@ -48,7 +51,7 @@ Deno.serve(async (req) => {
 
     const { data: booking, error: bookingError } = await supabaseAdmin
       .from("conference_bookings")
-      .select("id, room_id, status, ends_at")
+      .select("id, room_id, status, starts_at, ends_at")
       .eq("id", body.bookingId)
       .maybeSingle();
     if (bookingError) return jsonResponse({ error: bookingError.message }, 500);
@@ -58,6 +61,13 @@ Deno.serve(async (req) => {
     }
     if (new Date(booking.ends_at) <= new Date()) {
       return jsonResponse({ error: "This booking has already finished and can't be changed." }, 409);
+    }
+    const startMoved = window.start.getTime() !== new Date(booking.starts_at).getTime();
+    if (startMoved && startHasPassed(window.start)) {
+      return jsonResponse({ error: "A meeting can't be moved to start at a time that has already passed." }, 400);
+    }
+    if (window.end <= new Date()) {
+      return jsonResponse({ error: "The end time has already passed — pick a time from now on." }, 400);
     }
 
     const { data: updated, error: updateError } = await supabaseAdmin

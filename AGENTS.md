@@ -39,9 +39,10 @@ Do not introduce a second UI kit, a second charting library, a second ORM, or a 
 jaipur-rugs/
 ├── apps/
 │   ├── hub/                    # common interface — auth, org directory, hierarchy, role admin, launcher
-│   ├── admin/                   # grouping folder — one department, two independently deployed apps
+│   ├── admin/                   # grouping folder — one department, independently deployed apps
 │   │   ├── feedback-app/        # Vercel — employees/guests rate in-house drivers (Phase 1)
-│   │   └── internal-portal/     # on-premise — driver mgmt, reporting (Phase 2, placeholder only)
+│   │   ├── internal-portal/     # on-premise — admin: cars, drivers, journeys, conference, request approvals
+│   │   └── employee-portal/     # NO login — employees request journeys / conference rooms (see db/booking-requests/)
 │   ├── atlas/                    # cross-functional — merchant/production/shipping/sales order visibility (see db/orders/)
 │   ├── inventory/               # department app, added when its DB module ships
 │   ├── production/

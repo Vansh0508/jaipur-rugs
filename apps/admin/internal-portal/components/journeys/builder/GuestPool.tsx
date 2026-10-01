@@ -1,19 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Tabs, Tooltip } from "@heroui/react";
+import { Label, ListBox, Select, Tooltip, type Key } from "@heroui/react";
 import { Button, PhoneInput, TextField } from "@jaipur-rugs/ui-kit";
 import { getBrowserSupabaseClient } from "@/lib/supabaseClient.browser";
 import { searchGuestCandidates, type GuestCandidate } from "@/lib/queries/guests";
 import { searchEmployeeCandidates, type EmployeeCandidate } from "@/lib/queries/employees";
+import { LABEL_CLS } from "./fields";
 import { emptyGuest, type PoolGuest } from "./model";
 
 // driver-app-new's "Guests Pool" overlay + GuestAutocomplete: every guest on the journey
 // is entered once here (phone + name, both searching existing guests), then picked per
 // stop below. Choosing a suggestion links the existing `guests` row (create_journey
-// matches on it); a new phone creates a guest when the journey is saved. Each row has a
-// Guest / Employee switch: an employee is picked from the employees directory (by name or
-// employee code) and linked as-is — no guest copy, and no phone needed (most have none).
+// matches on it); a new phone creates a guest when the journey is saved. Each row starts with
+// a Guest/Employee dropdown (Employee by default): an employee is picked from the employees
+// directory (by name or employee code) and linked as-is — no guest copy, and no phone needed
+// (most have none).
 
 function useGuestSuggestions(term: string, enabled: boolean) {
   const [results, setResults] = useState<GuestCandidate[]>([]);
@@ -149,22 +151,26 @@ function EmployeeRow({ guest, onChange }: { guest: PoolGuest; onChange: (g: Pool
   if (guest.employeeId) {
     const initials = guest.name.split(" ").filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-secondary/40 p-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-xs font-semibold">
-          {initials}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground">{guest.name}</p>
-          <p className="truncate text-xs text-muted">
-            <span className="tracking-wide tabular-nums">{guest.employeeCode}</span>
-            {guest.departmentName ? ` · ${guest.departmentName}` : ""}
-            {" · "}
-            <span className="tabular-nums">{guest.phone || "No phone on file"}</span>
-          </p>
+      <div>
+        {/* Same label row as the search field, so it lines up with the Guest/Employee dropdown. */}
+        <span className={LABEL_CLS}>Employee</span>
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-secondary/40 p-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-xs font-semibold">
+            {initials}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-foreground">{guest.name}</p>
+            <p className="truncate text-xs text-muted">
+              <span className="tracking-wide tabular-nums">{guest.employeeCode}</span>
+              {guest.departmentName ? ` · ${guest.departmentName}` : ""}
+              {" · "}
+              <span className="tabular-nums">{guest.phone || "No phone on file"}</span>
+            </p>
+          </div>
+          <Button size="sm" variant="ghost" onPress={() => onChange({ ...emptyGuest("employee"), clientId: guest.clientId })}>
+            Change
+          </Button>
         </div>
-        <Button size="sm" variant="ghost" onPress={() => onChange({ ...emptyGuest("employee"), clientId: guest.clientId })}>
-          Change
-        </Button>
       </div>
     );
   }
@@ -215,23 +221,39 @@ function EmployeeRow({ guest, onChange }: { guest: PoolGuest; onChange: (g: Pool
   );
 }
 
-/** Guest / Employee switch for one pool row. Locked while the passenger is on the route. */
-function KindSwitch({ kind, isDisabled, onChange }: { kind: PoolGuest["kind"]; isDisabled: boolean; onChange: (kind: PoolGuest["kind"]) => void }) {
+const KIND_OPTIONS: { id: PoolGuest["kind"]; label: string }[] = [
+  { id: "employee", label: "Employee" },
+  { id: "guest", label: "Guest" },
+];
+
+/**
+ * The row's Guest/Employee dropdown. Hero UI's Select directly rather than ui-kit's wrapper,
+ * which has no disabled state — the row is locked while the passenger is on the route.
+ */
+function KindSelect({ kind, isDisabled, onChange }: { kind: PoolGuest["kind"]; isDisabled: boolean; onChange: (kind: PoolGuest["kind"]) => void }) {
   return (
-    <Tabs selectedKey={kind} onSelectionChange={(key) => onChange(String(key) as PoolGuest["kind"])} isDisabled={isDisabled}>
-      <Tabs.ListContainer>
-        <Tabs.List aria-label="Passenger type">
-          <Tabs.Tab id="guest" className="px-3 text-xs">
-            Guest
-            <Tabs.Indicator />
-          </Tabs.Tab>
-          <Tabs.Tab id="employee" className="px-3 text-xs">
-            Employee
-            <Tabs.Indicator />
-          </Tabs.Tab>
-        </Tabs.List>
-      </Tabs.ListContainer>
-    </Tabs>
+    <Select
+      className="w-36 shrink-0"
+      value={kind}
+      isDisabled={isDisabled}
+      onChange={(key: Key | Key[] | null) => key != null && !Array.isArray(key) && onChange(String(key) as PoolGuest["kind"])}
+    >
+      <Label>Guest/Employee</Label>
+      <Select.Trigger>
+        <Select.Value />
+        <Select.Indicator />
+      </Select.Trigger>
+      <Select.Popover>
+        <ListBox>
+          {KIND_OPTIONS.map((option) => (
+            <ListBox.Item key={option.id} id={option.id} textValue={option.label}>
+              {option.label}
+              <ListBox.ItemIndicator />
+            </ListBox.Item>
+          ))}
+        </ListBox>
+      </Select.Popover>
+    </Select>
   );
 }
 
@@ -290,18 +312,19 @@ export function GuestPoolEditor({
             );
             return (
               <div key={guest.clientId} className="flex items-start gap-3 p-3">
-                <div className="flex min-w-0 flex-1 flex-col gap-2">
-                  <KindSwitch
-                    kind={guest.kind}
-                    isDisabled={inRoute}
-                    onChange={(kind) => kind !== guest.kind && onChange({ ...emptyGuest(kind), clientId: guest.clientId })}
-                  />
+                <KindSelect
+                  kind={guest.kind}
+                  isDisabled={inRoute}
+                  onChange={(kind) => kind !== guest.kind && onChange({ ...emptyGuest(kind), clientId: guest.clientId })}
+                />
+                <div className="min-w-0 flex-1">
                   {guest.kind === "employee" ? <EmployeeRow guest={guest} onChange={onChange} /> : <GuestRow guest={guest} onChange={onChange} />}
                   {errors[`guest_${guest.clientId}`] ? (
                     <p className="mt-1 pl-1 text-[11px] text-danger">{errors[`guest_${guest.clientId}`]}</p>
                   ) : null}
                 </div>
-                <div className="shrink-0 pt-1">
+                {/* Below the label row, level with the inputs. */}
+                <div className="shrink-0 pt-7">
                   {inRoute ? (
                     <Tooltip delay={0} closeDelay={0}>
                       <Tooltip.Trigger>

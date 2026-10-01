@@ -96,3 +96,26 @@ verify_jwt = true
 
 [functions.orders-escalate-order]
 verify_jwt = true
+
+# Booking-requests module (apps/admin/employee-portal → apps/admin/internal-portal) — see
+# db/booking-requests/booking-requests-schema.mmd. The employee portal has NO login (product
+# decision), so its four functions have no JWT to gate on; each validates everything it
+# receives and nothing they write is live until an admin approves it. The two decide
+# functions are Internal Portal admin-only, like the rest of that app.
+[functions.employee-lookup-by-code]
+verify_jwt = false
+
+[functions.conference-availability]
+verify_jwt = false
+
+[functions.conference-request-create]
+verify_jwt = false
+
+[functions.journey-request-create]
+verify_jwt = false
+
+[functions.conference-request-decide]
+verify_jwt = true
+
+[functions.journey-request-decide]
+verify_jwt = true

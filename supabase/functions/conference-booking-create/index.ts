@@ -4,7 +4,7 @@
 // their name/department are read from `employees` whenever they're shown, never stored.
 //
 // Rejected (400/409):
-// - a window that isn't within one IST day, or is already over (../_shared/conference.ts);
+// - a window that isn't within one IST day, or whose start has passed (../_shared/conference.ts);
 // - a room that doesn't exist or has been removed (inactive);
 // - a sitting arrangement above the room's capacity, when the room has one;
 // - an overlap with another confirmed booking of the room — the database's exclusion
@@ -19,6 +19,7 @@ import {
   jsonResponse,
   parseWindow,
 } from "../_shared/conference.ts";
+import { conferenceEmail, inBackground, sendBookingEmail } from "../_shared/bookingEmails.ts";
 
 interface CreateBookingBody {
   roomId: string;
@@ -58,7 +59,7 @@ Deno.serve(async (req) => {
     }
 
     const [{ data: room, error: roomError }, { data: employee, error: employeeError }] = await Promise.all([
-      supabaseAdmin.from("conference_rooms").select("id, name, capacity, status").eq("id", roomId).maybeSingle(),
+      supabaseAdmin.from("conference_rooms").select("id, name, capacity, description, status").eq("id", roomId).maybeSingle(),
       supabaseAdmin.from("employees").select("id, status").eq("id", employeeId).maybeSingle(),
     ]);
     if (roomError) return jsonResponse({ error: roomError.message }, 500);
@@ -96,6 +97,24 @@ Deno.serve(async (req) => {
       }
       return jsonResponse({ error: insertError?.message ?? "insert failed" }, 500);
     }
+
+    // Booked directly by an admin: "Conference Booking Confirmed" to the employee it's for.
+    inBackground(
+      sendBookingEmail(
+        supabaseAdmin,
+        "conference_confirmed",
+        employeeId,
+        conferenceEmail("conference_confirmed", {
+          roomName: room.name,
+          roomDescription: room.description,
+          startsAt: window.start.toISOString(),
+          endsAt: window.end.toISOString(),
+          seatingCount: seatingCount as number,
+          eventName,
+        }),
+        { conferenceBookingId: created.id },
+      ),
+    );
 
     return jsonResponse({ id: created.id }, 201);
   } catch (err) {

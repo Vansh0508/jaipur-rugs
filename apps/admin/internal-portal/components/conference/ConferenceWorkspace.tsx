@@ -9,9 +9,12 @@ import { getBrowserSupabaseClient } from "@/lib/supabaseClient.browser";
 import { todayInAppZone } from "@/lib/format";
 import {
   CONFERENCE_VIEWS,
+  MINUTES_PER_DAY,
+  hasStarted,
   istDateOf,
   istInstantMs,
   parseConferenceView,
+  pastCutoffMinutes,
   rangeLabel,
   roomColorMap,
   shiftDate,
@@ -19,7 +22,10 @@ import {
   type ConferenceView,
 } from "@/lib/conference/calendar";
 import type { ConferenceBooking, ConferenceRoom } from "@/lib/queries/conference";
+import type { ConferenceRequest } from "@/lib/queries/bookingRequests";
 import { ActionDialog } from "@/components/shared/ActionDialog";
+import { RequestsPanel } from "@/components/requests/RequestsPanel";
+import { PendingRequestDialog } from "@/components/requests/PendingRequestDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { BookingDetailsDialog } from "./BookingDetailsDialog";
@@ -31,8 +37,9 @@ import { RoomsManager } from "./RoomsManager";
 import { TimeGrid, type SlotSelection } from "./TimeGrid";
 import { TimelineView } from "./TimelineView";
 
-// Conference booking: three sections as Hero UI secondary tabs — Calendar (Day / Week / Month
-// / Timeline, with stretch-to-resize), Bookings (the list) and Rooms (manage venues). The
+// Conference booking: four sections as Hero UI secondary tabs — Calendar (Day / Week / Month
+// / Timeline, with stretch-to-resize), Bookings (the list), Requests (employees' requests from
+// the employee portal, to approve or reject) and Rooms (manage venues). The
 // calendar's view, date and room filter live in the URL (?view=&date=&room=), so the server
 // page fetches exactly the bookings around what's on screen and a link to a day is shareable;
 // everything else is local state.
@@ -41,24 +48,24 @@ import { TimelineView } from "./TimelineView";
 // once (optimistic), conference-booking-update is called, and if the server refuses (most
 // often another booking in the way) the booking snaps back and the reason is shown.
 
-type Section = "calendar" | "bookings" | "rooms";
+type Section = "calendar" | "bookings" | "requests" | "rooms";
 
 const VIEW_LABEL: Record<ConferenceView, string> = { day: "Day", week: "Week", month: "Month", timeline: "Timeline" };
 
-/** The next half hour (or 9 AM when that's before the working day) for "Book" with no slot picked. */
+/**
+ * The slot "Book" (or a click on a month day) starts with: 9–10 AM, or on today the next half
+ * hour from now if that's later — never a time that has already passed. Late at night that can
+ * run out of day; the form then says so.
+ */
 function defaultSlot(date: string): { startMin: number; endMin: number } {
-  if (date === todayInAppZone()) {
-    const nowIst = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" });
-    const [h, m] = nowIst.split(":").map(Number);
-    const startMin = Math.min(22 * 60, Math.ceil(((h ?? 0) * 60 + (m ?? 0) + 1) / 30) * 30);
-    if (startMin >= 9 * 60) return { startMin, endMin: startMin + 60 };
-  }
-  return { startMin: 9 * 60, endMin: 10 * 60 };
+  const startMin = Math.min(Math.max(9 * 60, Math.ceil(pastCutoffMinutes(date) / 30) * 30), MINUTES_PER_DAY - 30);
+  return { startMin, endMin: Math.min(startMin + 60, MINUTES_PER_DAY - 1) };
 }
 
 export function ConferenceWorkspace({
   rooms,
   bookings: serverBookings,
+  requests,
   view,
   date,
   roomFilter,
@@ -66,6 +73,8 @@ export function ConferenceWorkspace({
   rooms: ConferenceRoom[];
   /** Confirmed and cancelled bookings around the visible range. */
   bookings: ConferenceBooking[];
+  /** Pending employee requests, earliest slot first. */
+  requests: ConferenceRequest[];
   view: ConferenceView;
   date: string;
   /** "all" or a room id. */
@@ -82,15 +91,44 @@ export function ConferenceWorkspace({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<ConferenceBooking | null>(null);
   const [resizeError, setResizeError] = useState<string | null>(null);
+  const [pastSlot, setPastSlot] = useState(false);
 
   const activeRooms = useMemo(() => rooms.filter((r) => r.status === "active"), [rooms]);
   const roomColors = useMemo(() => roomColorMap(rooms), [rooms]);
   const confirmed = useMemo(() => bookings.filter((b) => b.status === "confirmed"), [bookings]);
-  const calendarBookings = useMemo(
-    () => (roomFilter === "all" ? confirmed : confirmed.filter((b) => b.roomId === roomFilter)),
-    [confirmed, roomFilter],
+  // Employees' pending requests sit on the calendar too, as dashed blocks next to the real
+  // bookings; clicking one opens it to approve or reject (PendingRequestDialog).
+  const pendingBlocks = useMemo<ConferenceBooking[]>(
+    () =>
+      requests.map((r) => ({
+        id: `request-${r.id}`,
+        roomId: r.roomId,
+        roomName: r.roomName,
+        employeeId: r.requester.id,
+        employeeCode: r.requester.employeeCode,
+        employeeName: r.requester.fullName,
+        departmentName: r.requester.departmentName,
+        startsAt: r.startsAt,
+        endsAt: r.endsAt,
+        seatingCount: r.seatingCount,
+        eventName: r.eventName,
+        eventDetails: r.eventDetails,
+        status: "confirmed",
+        pendingRequestId: r.id,
+      })),
+    [requests],
   );
+  const calendarBookings = useMemo(() => {
+    const all = [...confirmed, ...pendingBlocks];
+    return roomFilter === "all" ? all : all.filter((b) => b.roomId === roomFilter);
+  }, [confirmed, pendingBlocks, roomFilter]);
   const selected = selectedId ? (bookings.find((b) => b.id === selectedId) ?? null) : null;
+  const [pendingRequest, setPendingRequest] = useState<ConferenceRequest | null>(null);
+
+  function openBlock(block: ConferenceBooking) {
+    if (block.pendingRequestId) setPendingRequest(requests.find((r) => r.id === block.pendingRequestId) ?? null);
+    else setSelectedId(block.id);
+  }
 
   // --- URL state ---------------------------------------------------------------------------
   function navigate(next: { view?: ConferenceView; date?: string; room?: string }) {
@@ -117,6 +155,12 @@ export function ConferenceWorkspace({
   }
 
   function handleCreate(slot: SlotSelection & { roomId?: string }) {
+    // The grids already shade and skip the past; this catches a slot the clock overtook while
+    // the page sat open, and a month-view day that's already over.
+    if (hasStarted(slot.date, slot.startMin)) {
+      setPastSlot(true);
+      return;
+    }
     openForm({ roomId: slot.roomId ?? (roomFilter !== "all" ? roomFilter : undefined), date: slot.date, startMin: slot.startMin, endMin: slot.endMin });
   }
 
@@ -153,8 +197,8 @@ export function ConferenceWorkspace({
         date={date}
         bookings={calendarBookings}
         roomColors={roomColors}
-        onSelect={(b) => setSelectedId(b.id)}
-        onCreate={(day) => handleCreate({ date: day, startMin: 9 * 60, endMin: 10 * 60 })}
+        onSelect={openBlock}
+        onCreate={(day) => handleCreate({ date: day, ...defaultSlot(day) })}
         onOpenDay={(day) => navigate({ view: "day", date: day })}
       />
     );
@@ -165,7 +209,7 @@ export function ConferenceWorkspace({
         rooms={timelineRooms}
         bookings={calendarBookings}
         roomColors={roomColors}
-        onSelect={(b) => setSelectedId(b.id)}
+        onSelect={openBlock}
         onCreate={handleCreate}
         onResize={handleResize}
       />
@@ -177,7 +221,7 @@ export function ConferenceWorkspace({
         bookings={calendarBookings}
         roomColors={roomColors}
         showRoomName={roomFilter === "all"}
-        onSelect={(b) => setSelectedId(b.id)}
+        onSelect={openBlock}
         onCreate={handleCreate}
         onResize={handleResize}
       />
@@ -205,6 +249,10 @@ export function ConferenceWorkspace({
             </Tabs.Tab>
             <Tabs.Tab id="bookings">
               Bookings
+              <Tabs.Indicator />
+            </Tabs.Tab>
+            <Tabs.Tab id="requests">
+              Requests{requests.length > 0 ? ` (${requests.length})` : ""}
               <Tabs.Indicator />
             </Tabs.Tab>
             <Tabs.Tab id="rooms">
@@ -277,6 +325,7 @@ export function ConferenceWorkspace({
                 {view === "month"
                   ? "Click a day to start a booking, or a date number to open that day. Switch to Day, Week or Timeline to stretch a meeting."
                   : "Click an empty slot to book it. Drag the edge of a meeting to stretch or contract it — it saves when you let go."}
+                {requests.length > 0 ? " Dashed blocks are employees' pending requests — click one to approve or reject it." : ""}
               </p>
             </>
           )}
@@ -288,6 +337,14 @@ export function ConferenceWorkspace({
             roomColors={roomColors}
             onOpen={(b) => setSelectedId(b.id)}
             onCancel={(b) => setCancelTarget(b)}
+          />
+        </Tabs.Panel>
+
+        <Tabs.Panel id="requests" className="pt-4">
+          <RequestsPanel
+            requests={requests}
+            title="Conference requests"
+            description="Rooms employees have asked for. Approving books the room exactly as requested."
           />
         </Tabs.Panel>
 
@@ -321,6 +378,13 @@ export function ConferenceWorkspace({
         onOpenChange={(open) => !open && setResizeError(null)}
         heading="Couldn't change the booking"
         body={resizeError ? `${resizeError} The booking has been put back to its original time.` : null}
+      />
+      <PendingRequestDialog request={pendingRequest} onClose={() => setPendingRequest(null)} />
+      <ActionDialog
+        isOpen={pastSlot}
+        onOpenChange={setPastSlot}
+        heading="That time has passed"
+        body="Conference rooms can only be booked from now on. Pick a later time."
       />
     </div>
   );

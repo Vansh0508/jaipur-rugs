@@ -12,6 +12,8 @@ import { DashboardPendingReviews } from "@/components/drivers/DashboardPendingRe
 import { JourneysTabsCard } from "@/components/dashboard/JourneysTabsCard";
 import { RideCountsChart } from "@/components/dashboard/RideCountsChart";
 import { StatusPieCard } from "@/components/dashboard/StatusPieCard";
+import { RequestsPanel } from "@/components/requests/RequestsPanel";
+import { listPendingRequests, requestsOrEmpty } from "@/lib/queries/bookingRequests";
 
 const RIDE_DAYS = 14;
 
@@ -24,7 +26,7 @@ const OUT = "var(--muted)";
 export default async function DashboardPage() {
   const supabase = await getServerSupabaseClient();
 
-  const [active, upcoming, rideCounts, drivers, cars, recentFeedback, pendingFeedback] = await Promise.all([
+  const [active, upcoming, rideCounts, drivers, cars, recentFeedback, pendingFeedback, requests] = await Promise.all([
     listJourneys(supabase, { status: "ongoing" }),
     listJourneys(supabase, { status: "planned" }),
     getRideCountsByDay(supabase, RIDE_DAYS),
@@ -32,11 +34,15 @@ export default async function DashboardPage() {
     listCarsWithActivity(supabase),
     listRecentFeedback(supabase, 5),
     listPendingFeedback(supabase),
+    requestsOrEmpty(listPendingRequests(supabase)),
   ]);
 
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-xl font-semibold text-foreground">Dashboard</h1>
+
+      {/* Employee requests first: they're waiting on an admin, and a requested slot goes stale. */}
+      <RequestsPanel requests={requests} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-4">
         <RideCountsChart data={rideCounts} days={RIDE_DAYS} />

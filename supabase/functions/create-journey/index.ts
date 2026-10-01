@@ -11,6 +11,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { requireInternalPortalAdmin, authzErrorResponse } from "../_shared/authz.ts";
+import { inBackground, journeyEmail, loadJourneyForEmail, sendBookingEmail } from "../_shared/bookingEmails.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -85,6 +86,19 @@ Deno.serve(async (req) => {
       }
       return jsonResponse({ error: error.message }, 400);
     }
+
+    // Planned directly by an admin: "Journey Booking Confirmed" to each employee passenger
+    // (guests have no email on file). See ../_shared/bookingEmails.ts.
+    const journeyId = data as string;
+    inBackground(
+      (async () => {
+        const planned = await loadJourneyForEmail(supabaseAdmin, journeyId);
+        if (!planned) return;
+        for (const passengerId of planned.employeePassengerIds) {
+          await sendBookingEmail(supabaseAdmin, "journey_confirmed", passengerId, journeyEmail("journey_confirmed", planned.info), { journeyId });
+        }
+      })(),
+    );
 
     return jsonResponse({ id: data }, 201);
   } catch (err) {

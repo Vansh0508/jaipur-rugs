@@ -8,6 +8,8 @@ export interface ConferenceRoom {
   name: string;
   /** Seating limit; null when not recorded. */
   capacity: number | null;
+  /** Where the room is ("2nd floor, Admin block"); null when not given. */
+  description: string | null;
   status: ConferenceRoomStatus;
 }
 
@@ -29,6 +31,12 @@ export interface ConferenceBooking {
   eventName: string;
   eventDetails: string | null;
   status: ConferenceBookingStatus;
+  /**
+   * Set when this isn't a booking but an employee's pending request, drawn on the calendar
+   * as a dashed block (the request's id; see ConferenceWorkspace). Never resizable, and never
+   * limits how far a real booking can be dragged.
+   */
+  pendingRequestId?: string;
 }
 
 export function bookingPhase(
@@ -42,7 +50,7 @@ export function bookingPhase(
 }
 
 export async function listConferenceRooms(supabase: SupabaseClient): Promise<ConferenceRoom[]> {
-  const { data, error } = await supabase.from("conference_rooms").select("id, name, capacity, status").order("name");
+  const { data, error } = await supabase.from("conference_rooms").select("id, name, capacity, description, status").order("name");
   if (error) throw error;
   return (data ?? []) as ConferenceRoom[];
 }

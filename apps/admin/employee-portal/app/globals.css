@@ -1,0 +1,26 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+@import "@jaipur-rugs/config/tailwind-theme.css";
+
+/* Tailwind v4 auto-detects content within this app's own directory tree, but ui-kit's
+   components live in a sibling workspace package outside that tree — this tells the v4
+   scanner to include it too. */
+@source "../../../../packages/ui-kit/src";
+
+/* @heroui/styles defines --background (grey) and --surface (white) as raw CSS vars but
+   doesn't register either as a Tailwind utility. Declared app-locally, same as every other
+   department app, for the standard shell (grey canvas behind a detached white content card —
+   see the department-app-shell skill). */
+.bg-app {
+  background-color: var(--background);
+}
+.bg-surface {
+  background-color: var(--surface);
+}
+
+/* Sans-serif everywhere, matching apps/admin/internal-portal (whose calendar and builder this
+   app reuses): number-like values use tabular-nums instead of a monospace face. */
+@theme {
+  --font-mono: var(--font-sans);
+  --default-mono-font-family: var(--font-sans);
+}

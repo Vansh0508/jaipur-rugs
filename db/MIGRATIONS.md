@@ -67,6 +67,12 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | `20260928073957` | `journey_employee_passengers` | journeys | `db/journeys/011_journey_employee_passengers.sql` |
 | `20260930063613` | `conference_schema` | conference | `db/conference/001_conference_schema.sql` |
 | `20260930063641` | `conference_rls` | conference | `db/conference/002_conference_rls.sql` |
+| `20260930112222` | `booking_requests_schema` | booking-requests | `db/booking-requests/001_booking_requests_schema.sql` |
+| `20260930112233` | `booking_requests_rls` | booking-requests | `db/booking-requests/002_booking_requests_rls.sql` |
+| `20260930112258` | `booking_requests_decide_functions` | booking-requests | `db/booking-requests/003_booking_requests_decide_functions.sql` |
+| `20260930120216` | `conference_request_start_not_passed` | booking-requests | `db/booking-requests/004_conference_request_start_not_passed.sql` |
+| `20260930123455` | `booking_emails` | booking-requests | `db/booking-requests/005_booking_emails.sql` |
+| `20261001053103` | `conference_room_description` | conference | `db/conference/003_conference_room_description.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
@@ -96,6 +102,70 @@ with stand-ins for `employees`/`departments`/the `private` helpers) and every ru
 exercised. After applying: security + performance advisors re-run — no findings on the new
 tables beyond INFO `unused_index` (brand-new, no traffic yet); `packages/supabase-client/src/types.ts`
 regenerated.
+
+**Booking-requests module (2026-09-30, applied to `matnispbauvvlnbsuzxq`):**
+`db/booking-requests/001`–`003`, backing the new no-login `apps/admin/employee-portal` and the
+Internal Portal's approval screens (Dashboard, Journeys, Conference → Requests). Adds
+`conference_booking_requests` and `journey_requests` (the latter keeps the proposed trip as
+`trip` jsonb in create_journey's `{ guests, stops }` shape — see the ERD for why), one shared
+`booking_request_status` enum (`pending` / `approved` / `rejected`), and two security-definer
+functions, `decide_conference_request` / `decide_journey_request`, EXECUTE for `service_role`
+only, that approve in one transaction (lock the request, re-check, create the booking /
+journey, link it). Reads admin-only (`private.is_internal_portal_admin`), no write policy.
+Six Edge Functions, all deployed (version 1) and ACTIVE: public (`verify_jwt = false` — the
+portal has no session) `employee-lookup-by-code`, `conference-availability`,
+`conference-request-create`, `journey-request-create`; admin (`verify_jwt = true`)
+`conference-request-decide`, `journey-request-decide`. Before applying, the SQL was run in PGlite on top of the real
+`db/conference/001`–`002` (stand-ins for `employees`/`private` helpers/`create_journey`) and
+36 checks passed: approve/reject/decide-twice, EXCLUDE clash on approval (request stays
+pending), back-to-back allowed, past/over-capacity/removed-room/inactive-employee refusals,
+journey approve passing trip + car + driver to create_journey, conflict rollback, every CHECK,
+RLS (admin reads; non-admin and anon read nothing; direct inserts refused) and the EXECUTE
+grants. The trip validator (`supabase/functions/_shared/bookingRequests.ts`) passed 20 cases
+under Deno. Applied as `20260930112222` / `20260930112233` / `20260930112258`. After applying:
+EXECUTE on both decide functions confirmed `service_role`-only (anon/authenticated denied), RLS +
+the select policy on both tables; security + performance advisors show nothing new beyond INFO
+`unused_index` on the brand-new tables; `packages/supabase-client/src/types.ts` regenerated.
+Live smoke test of the functions: lookup (real code 200 / unknown 404), availability (200,
+range cap 400), create validation errors (400), both decide functions refuse no-session calls
+(401), and one real `conference-request-create` insert (201, row verified, then deleted). Not
+yet exercised live: an approval with a real admin session.
+
+**No conference bookings for time that has started (2026-09-30, applied):** `004`
+(`20260930120216`) changes `decide_conference_request` to refuse approval once the request's
+START has passed (was: its end), with a 5-minute grace; grants unchanged (service_role only).
+The matching Edge Function rule is `startHasPassed` in `supabase/functions/_shared/conference.ts`
+(same grace), used by `conference-booking-create`, `conference-request-create` and
+`conference-booking-update` (a moved start can't be in the past; the end can't be) — all three
+redeployed as version 2. Tested in PGlite (40 checks, incl. under-way refused / within-grace
+approves / grants) and live (a request that started 30 min ago is now refused with 400).
+
+**Booking status emails + pending requests on the calendars (2026-09-30, applied):** `005`
+(`20260930123455`) adds `booking_email_log` (one row per attempted email — event enum
+`booking_email_event`, status enum `booking_email_status` sent / failed / skipped; FKs to the
+request / booking / journey `on delete set null`; RLS on, admin-only select, no write policy) and
+`public.get_booking_smtp_config()`, a security-definer reader of the Vault secret
+`booking_smtp_config` (EXECUTE for `service_role` only — anon/authenticated denied, verified live).
+The secret itself was created with `vault.create_secret` (not in any migration file) from the
+gitignored `supabase/functions/.env`; SMTPS on port 465, since Edge Functions can't reach 25/587.
+Senders: `supabase/functions/_shared/bookingEmails.ts` + `smtp.ts`, called after the write by
+`conference-request-create` (v3), `journey-request-create` (v2), `conference-request-decide` (v2),
+`journey-request-decide` (v2), `conference-booking-create` (v3), `create-journey` (v8);
+`conference-availability` (v2) now also returns pending request ranges (no names) for the
+employee calendar. Tested in PGlite (48 checks incl. the 8 for 005) and against a local SMTPS
+sink (all six emails); live: advisors nothing new, login to the real mail server verified and one
+test message sent to the sender mailbox. Not yet observed live: a function-triggered email row.
+
+**Conference room description (2026-10-01, applied):** `db/conference/003` (`20261001053103`)
+adds an optional `conference_rooms.description` (text, <= 500 chars) saying where the room is.
+No RLS change (the existing admin-only select policy covers it). Set from the Internal Portal's
+room form (`conference-room-create` v2 / `conference-room-update` v2); shown under the venue in
+both booking forms (`conference-availability` v3 now returns it to the employee portal) and as a
+"Location" row in the conference status emails (`conference-request-create` v4,
+`conference-request-decide` v3, `conference-booking-create` v4). Advisors: nothing new.
+`packages/supabase-client/src/types.ts` updated. The journey functions also bundle
+`_shared/bookingEmails.ts` but weren't redeployed: the change only adds an optional
+conference-email field, so their deployed copies behave identically.
 
 Current live schema (as of the last migration above): `departments`, `roles`,
 `employees`, `employee_roles`, `department_access_grants`, `apps`, `permissions`,
@@ -1298,4 +1368,46 @@ passenger needs a phone or an employeeId+key; keys unique; stop references check
 keys). End-to-end UI run (guest + employee on one journey, saved, shown on detail with the
 employee tagged, found by employee code in list search) — test journey and guest deleted
 afterwards.
+
+## JRGPT views (2026-09-30)
+
+**Different database from every entry above.** These are views on the **NAV mirror**
+(`nav_mirror` schema, Postgres on 192.168.0.18:6543), not the shared Supabase project
+`matnispbauvvlnbsuzxq`. Recorded here so the ledger stays the one place to look, but nothing
+below touches Supabase.
+
+- Applied `db/jrgpt/01..09` — ten objects in a new `jrgpt` schema: `sales_invoiced`,
+  `open_orders`, `customers` (+ `customers_mv`), `products` (+ `products_mv`),
+  `production_wip`, `artisan_activity`, `receivables`, `fg_stock`. All read-only views over
+  existing mirrored tables; no source table was modified.
+- `customers_mv` and `products_mv` are materialised because the underlying aggregations run
+  4.9s and 12.3s — far too slow for an interactive answer. Materialised they query in 0.19s.
+  **They go stale when the mirror re-syncs**; `Tableau/jrgpt/refresh_jrgpt.sh` refreshes them
+  concurrently (the unique indexes in `05_materialize.sql` exist for that).
+- Two NAV tables were copied into `nav_mirror` to make receivables possible:
+  `JRCPL Live$Cust_ Ledger Entry` (190,884 rows) and `JRCPL Live$Detailed Cust_ Ledg_ Entry`
+  (414,273). **Both are required** — in this NAV version the ledger header's `Amount`,
+  `Remaining Amount` and `Remaining Amt_ (LCY)` are FlowFields, computed not stored, so the
+  money only exists in the detail table. `jrgpt.receivables` aggregates detail per
+  `Cust_ Ledger Entry No_` and joins back to the header for due date and open flag.
+- Verified against the reference implementation: every tile in `apps/jrgpt` matches
+  `python3 jrgpt/director_30.py` in the Tableau working directory exactly. That Python set is
+  the source of truth for these numbers; drift in the app is an app bug.
+
+**Known gaps, deliberately not worked around:**
+- **No cost data anywhere.** Tested three ways against `JRCPL Live$Value Entry` (79.3M rows):
+  `Cost Amount (Actual)` implies 99.7% margin, `+ (Expected)` 98.5%, `Cost per Unit × Qty`
+  0.7%. All impossible for a manufacturer. NAV's Cost Accounting module is empty
+  (`Cost Entry` = 0 rows). Margin cannot be derived — JRGPT must say so, not estimate.
+- **No reorder levels.** Across 519,390 items, `Reorder Point`, `Reorder Quantity`,
+  `Safety Stock` and `Reordering Policy` are all zero; `Stockkeeping Unit` is empty.
+- `jrgpt.sales_invoiced` inherits a **rolling ~5-year window** from its NAV source — history
+  starts 2021-04-01 and older years drop off as it rolls. Never present it as all-time.
+- ~30% of invoiced revenue is to group entities (`is_related_party`). Any concentration or
+  customer-count answer must state whether they are included.
+- `db/jrgpt/10_pins.sql` applied to **matnispbauvvlnbsuzxq** (the shared project, not the
+  mirror) on 2026-10-01: `jrgpt_pins` + `jrgpt_pin_kind` enum, keyed to `employees.id`, RLS
+  via `private.current_employee_id()` so a pin is visible only to the person who made it.
+  Security advisors run immediately after: **no new findings**. This is the only table JRGPT
+  writes — everything else it does is a read against the NAV mirror.
 
