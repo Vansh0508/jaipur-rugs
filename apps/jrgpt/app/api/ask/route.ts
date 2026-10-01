@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { modelKey } from "@/lib/env";
-import { addLimit } from "@/lib/guards";
+import { addLimit, UnsafeSql, validate } from "@/lib/guards";
+import { ModelUnavailable, backend, generateSql } from "@/lib/model";
 import { match, shapeOf } from "@/lib/library";
 import { freshness, query } from "@/lib/warehouse";
 
@@ -27,12 +27,53 @@ export async function POST(request: Request) {
   }
 
   if (found.kind === "unsure") {
-    // No model yet, so we cannot generalise past the library. Say so and offer the nearest
-    // questions rather than answering something adjacent and wrong.
+    // The library only covers questions we have already verified. Anything else goes to the
+    // model, whose SQL is then validated exactly like any untrusted input.
+    if (backend() !== "none") {
+      try {
+        const sql = addLimit(validate(await generateSql(question)));
+        const { rows, columns, ms } = await query(sql);
+        const values = rows.map((r) => columns.map((c) => r[c] ?? null));
+        const tables = [
+          ...new Set([...sql.matchAll(/\bjrgpt\.[a-z_]+/gi)].map((m) => m[0].toLowerCase())),
+        ];
+        return NextResponse.json({
+          kind: "answer",
+          question,
+          matched: { id: "model", label: "Generated for this question", score: 1 },
+          columns,
+          rows: values,
+          shape: shapeOf(columns, values),
+          sql,
+          tables,
+          synced: {},
+          ms,
+        });
+      } catch (err) {
+        if (err instanceof UnsafeSql) {
+          return NextResponse.json({
+            kind: "blocked",
+            question,
+            reason: `The generated query was rejected by the safety rules: ${err.message}`,
+          });
+        }
+        if (err instanceof ModelUnavailable) {
+          return NextResponse.json({
+            kind: "unsure",
+            question,
+            modelNote: err.message,
+            alternatives: found.alternatives.map((a) => a.label),
+          });
+        }
+        throw err;
+      }
+    }
+
     return NextResponse.json({
       kind: "unsure",
       question,
-      hasModel: Boolean(modelKey()),
+      modelNote:
+        "No model is configured on this host, so I can only answer questions I have been verified on.",
       alternatives: found.alternatives.map((a) => a.label),
     });
   }

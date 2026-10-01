@@ -267,6 +267,10 @@ export const BLOCKED: Record<string, string> = {
   "Q27": "No weaver wage or payment data exists in NAV or the mirror.",
   "Q28": "MODEL, not a query. Inputs exist (1,882 RJ looms, per-line demand, lead times).",
   "Q30": "No target. Item Budget Entry and G_L Budget Entry are both empty (0 rows). Supply the target and this becomes answerable.",
+  Q06B:
+    "There is no usable B2B/B2C split. `Type_of_Business` is '-' on 96.9% of rows, so any " +
+    "such breakdown would be invented. Ask by Big Box, customer classification or country " +
+    "instead - those are reliable.",
 };
 
 /**
@@ -279,7 +283,18 @@ const BLOCK_HINTS: Record<string, string> = {
   wage: "Q27", wages: "Q27", income: "Q27", salary: "Q27", earning: "Q27", earnings: "Q27",
   target: "Q30", budget: "Q30", reorder: "Q12", replenish: "Q12", replenishment: "Q12",
   capacity: "Q28",
+  // The B2B/B2C split does not exist in the data: Type_of_Business is literally '-' on
+  // 96.9% of rows. Answering a B2B question with a general sales figure is exactly the
+  // confidently-wrong failure this layer exists to prevent.
+  b2b: "Q06B", b2c: "Q06B", wholesale: "Q06B", retail: "Q06B",
 };
+
+/**
+ * Words too generic to carry a match on their own. "sales" and "last" overlapping is not
+ * evidence two questions are the same - that is how "B2B sales in last FY" was answered
+ * with a month-on-month revenue chart.
+ */
+const WEAK = new Set("sales revenue last month year quarter top show total number count".split(" "));
 
 const STOP = new Set(
   ("what is the of our are a an how much many in to for by and or on at we us right now today " +
@@ -345,6 +360,14 @@ export function match(question: string): MatchResult {
 
   if (scored.length === 0) return { kind: "unsure", alternatives: LIBRARY.slice(0, 4) };
   const best = scored[0]!;
+
+  // Require at least one non-generic word in common. Without this, a question can match
+  // purely on filler and be answered with something unrelated.
+  const bestTokens = tokens(`${best.entry.label} ${best.entry.keywords}`);
+  const strongOverlap = [...qt].some((t) => !WEAK.has(t) && bestTokens.has(t));
+  if (!strongOverlap) {
+    return { kind: "unsure", alternatives: scored.slice(0, 4).map((s) => s.entry) };
+  }
   if (best.score < CONFIDENCE_FLOOR) {
     return { kind: "unsure", alternatives: scored.slice(0, 4).map((s) => s.entry) };
   }
