@@ -138,12 +138,21 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
     tryAct({ type: "reviewChange", id: selected.id, requestId: pending.id, approved, note: reviewNote }, () => setReviewNote(""));
   }
 
-  function checkTask(taskId: string, approved: boolean) {
-    if (!selected) return;
-    tryAct({ type: "reviewTask", id: selected.id, taskId, approved, note: taskNote }, () => setTaskNote(""));
+  // Sending back needs a reason: asked for here when the box is empty, so the button never seems to do nothing.
+  function askWhatToFix(task: { assignedPart: string; sketcherName: string }): string {
+    return window.prompt(`What needs fixing in ${task.assignedPart} by ${task.sketcherName}? It goes back to them.`)?.trim() ?? "";
   }
 
-  // From a table row: approve straight away; sending back or rejecting needs a note, so it opens the challan.
+  function checkTask(taskId: string, approved: boolean) {
+    if (!selected) return;
+    const task = selected.tasks.find((item) => item.id === taskId);
+    const note = approved ? taskNote : taskNote.trim() || (task ? askWhatToFix(task) : "");
+    if (!approved && !note) return;
+    tryAct({ type: "reviewTask", id: selected.id, taskId, approved, note }, () => setTaskNote(""));
+  }
+
+  // From a table row: approve or send back straight away (send back asks what needs fixing); rejecting a detail
+  // change needs a note, so it opens the challan.
   const rowActions = useCallback((row: SketchChallan) => {
     const button = "rounded-md px-2 py-1 text-xs font-semibold";
     if (tab === "review") {
@@ -154,9 +163,12 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
           <span key={task.id} className="flex items-center gap-1">
             <span className="text-xs">{task.assignedPart} · {task.sketcherName}</span>
             <button type="button" className={button + " bg-accent text-white"} onClick={() => tryAct({ type: "reviewTask", id: row.id, taskId: task.id, approved: true, note: "" })}>Approve</button>
+            <button type="button" className={button + " bg-surface-secondary"} onClick={() => {
+              const note = askWhatToFix(task);
+              if (note) tryAct({ type: "reviewTask", id: row.id, taskId: task.id, approved: false, note });
+            }}>Send back</button>
           </span>
         ))}
-        <button type="button" className={button + " bg-surface-secondary"} onClick={() => setSelectedId(row.id)}>Send back…</button>
       </>);
     }
     if (tab === "requests") {
@@ -251,7 +263,7 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
             {role === "manager" && selected.tasks.some((task) => task.status === "submitted") ? (
               <div className="no-print rounded-2xl border border-border bg-surface-secondary p-4">
                 <h2 className="font-semibold">Check submitted work</h2>
-                <input className="mt-2 w-full rounded-lg border border-border bg-surface p-2 text-sm" value={taskNote} onChange={(event) => setTaskNote(event.target.value)} placeholder="What needs fixing (required to send back)" />
+                <input className="mt-2 w-full rounded-lg border border-border bg-surface p-2 text-sm" value={taskNote} onChange={(event) => setTaskNote(event.target.value)} placeholder="What needs fixing (asked when you press Send back)" />
                 {selected.tasks.filter((task) => task.status === "submitted").map((task) => (
                   <div key={task.id} className="mt-2 flex flex-wrap items-center gap-2">
                     <span className="text-sm">{task.sketcherName} — {task.assignedPart}</span>
