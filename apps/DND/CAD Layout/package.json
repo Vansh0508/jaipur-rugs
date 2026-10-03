@@ -21,18 +21,19 @@
     "@supabase/supabase-js": "2.112.3",
     "@xmldom/xmldom": "^0.9.8",
     "image-size": "^2.0.2",
-    "jszip": "^3.10.1",
     "jpeg-js": "^0.4.4",
+    "jszip": "^3.10.1",
     "next": "^16.3.1",
     "pngjs": "^7.0.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@jaipur-rugs/config": "workspace:*",
     "@tailwindcss/postcss": "^4.3.3",
-    "@types/node": "^20.14.0",
     "@types/jpeg-js": "^0.3.7",
+    "@types/node": "^20.14.0",
     "@types/pngjs": "^6.0.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

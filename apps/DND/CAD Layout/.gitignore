@@ -10,5 +10,8 @@ next-env.d.ts
 /scripts/out/
 __pycache__/
 
+# tesseract.js's downloaded language data (lib/engine/ocr.ts) — fetched on first use, not code.
+/.cache/
+
 # Real DnD job files — reference data, not code. ~100MB of binaries; kept locally only.
 /samples/

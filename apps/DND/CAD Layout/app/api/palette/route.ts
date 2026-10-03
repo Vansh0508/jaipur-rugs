@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { parseDesignImage } from "@/lib/engine/image";
 import { analyseTikni } from "@/lib/engine/palette";
+import { readTikniCodes } from "@/lib/engine/ocr";
 import { downscaleRgb, encodePng } from "@/lib/engine/png";
 import type { PaletteResponse } from "@/lib/api";
 
@@ -26,6 +27,7 @@ export async function POST(request: Request) {
   try {
     const bmp = parseDesignImage(new Uint8Array(await file.arrayBuffer()));
     const analysis = analyseTikni(bmp);
+    await readTikniCodes(bmp, analysis);
     const preview = downscaleRgb(bmp.rgb.subarray(0, analysis.designHeight * bmp.width * 3), bmp.width, analysis.designHeight, 480);
     const body: PaletteResponse = {
       width: bmp.width,

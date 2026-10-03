@@ -51,7 +51,7 @@ export function rowsFromPalette(palette: PaletteResponse, ordering: ColourOrderi
     hex: c.hex,
     areaPct: c.areaPct,
     legendIndex: c.legendIndex,
-    code: remembered.get(c.hex)?.code ?? "",
+    code: remembered.get(c.hex)?.code ?? c.tikniCode ?? "",
     yarn: remembered.get(c.hex)?.yarn ?? "",
     included: remembered.get(c.hex)?.included ?? !c.likelyBackground,
   }));
