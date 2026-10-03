@@ -8,6 +8,13 @@ const nextConfig = {
     "@jaipur-rugs/supabase-client",
     "@jaipur-rugs/ui-kit",
   ],
+  // tesseract.js (lib/engine/ocr.ts) resolves its worker-thread entry script by path at
+  // runtime (`src/worker-script/node/index.js`), which isn't something Next's bundler can
+  // statically trace — bundling it anyway rewrote that path to a nonexistent "/ROOT/..."
+  // location and crashed every /api/palette request with MODULE_NOT_FOUND (2026-10-03,
+  // first production request after shipping OCR). Marking it external makes Next require()
+  // it straight from node_modules at runtime instead, where the real path resolves.
+  serverExternalPackages: ["tesseract.js"],
   // The templates/ folder is read at request time by the generate route — keep it out
   // of the bundler's hands and load it from disk (process.cwd()) instead.
   outputFileTracingIncludes: {
