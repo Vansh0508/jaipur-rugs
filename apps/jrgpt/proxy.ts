@@ -27,6 +27,7 @@ export async function proxy(request: NextRequest) {
     env.supabaseAnonKey,
     cookieAdapter,
     env.rootDomain,
+    env.secureCookies,
   );
 
   // Always refresh — this is what keeps the shared cookie alive across hub/analytics/jrgpt.

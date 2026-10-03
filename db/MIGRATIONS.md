@@ -73,6 +73,7 @@ project by name alone if it's ever re-verified — confirm again if there's any 
 | `20260930120216` | `conference_request_start_not_passed` | booking-requests | `db/booking-requests/004_conference_request_start_not_passed.sql` |
 | `20260930123455` | `booking_emails` | booking-requests | `db/booking-requests/005_booking_emails.sql` |
 | `20261001053103` | `conference_room_description` | conference | `db/conference/003_conference_room_description.sql` |
+| (applied 2026-10-03) | `042_fix_on_hold_pattern_performance` | orders | `db/orders/042_fix_on_hold_pattern_performance.sql` |
 
 First four applied 2026-08-17, everything else 2026-08-18 except the two Hub rows (2026-08-19) and the five `orders` rows (2026-08-27, see below). Security and performance advisors were
 run after every migration — findings were fixed in follow-up migrations as they appeared
@@ -1411,3 +1412,24 @@ below touches Supabase.
   Security advisors run immediately after: **no new findings**. This is the only table JRGPT
   writes — everything else it does is a read against the NAV mirror.
 
+
+## Orders: on_hold_pattern perf regression fix (2026-10-03)
+
+- **Applied `db/orders/042_fix_on_hold_pattern_performance.sql`** to `matnispbauvvlnbsuzxq`
+  as `042_fix_on_hold_pattern_performance`. Fixes Atlas `/orders` + `/dashboard` erroring with
+  `57014 statement timeout` right after sign-in: `orders_list_facets`, `orders_dashboard_stats`,
+  `orders_filtered_summary` and `orders_with_on_time_status.is_hidden_stock` re-evaluated the
+  `my_explicit_codes` CTE per order row (the same failure 037 fixed once). Now `me` +
+  `my_explicit_codes` are `materialized`. Verified as an `authenticated` user under the 8s role
+  timeout: all four complete; stats and summary agree.
+- **Unrecorded live migrations found:** `041a_jli_on_hold_pattern_column`, `041c_jli_can_view_order`,
+  `041d_jli_orders_with_on_time_status_view`, `041e_jli_orders_list_facets`,
+  `041f_jli_orders_dashboard_stats`, `041g_jli_orders_filtered_summary` (versions
+  `20261003060028`..`20261003060211`) are applied live but have **no file under `db/orders/`**
+  (that is what introduced the regression). `db/orders/` still needs 041 written back from the
+  live definitions. Also `cad_layout_schema` (`20261003122735`) is live although the CAD Layout
+  section above still says "not yet applied".
+- **Gotcha, hit while applying 042:** `create or replace view` without a `with (...)` clause
+  resets reloptions, silently dropping `security_invoker` and making the view SECURITY DEFINER
+  (the security advisor flagged it; `anon` had SELECT). Fixed immediately with `alter view ...
+  set (security_invoker = true)`; 042 now carries the option itself. Verified `anon` reads 0 rows.

@@ -29,7 +29,7 @@ export async function supabaseServer() {
       }
     },
   };
-  return createSupabaseServerClient(env.supabaseUrl, env.supabaseAnonKey, adapter, env.rootDomain);
+  return createSupabaseServerClient(env.supabaseUrl, env.supabaseAnonKey, adapter, env.rootDomain, env.secureCookies);
 }
 
 /**
