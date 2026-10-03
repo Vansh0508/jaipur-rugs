@@ -42,7 +42,7 @@ code can have at most 10 open requests of each kind. Host it on the internal net
 ```bash
 pnpm install                                   # from the repo root
 cp .env.example .env.local                     # fill in the Supabase URL + publishable key
-pnpm --filter @jaipur-rugs/employee-portal dev # http://localhost:3002
+pnpm --filter @jaipur-rugs/employee-portal dev # http://localhost:3002/bookings
 ```
 
 The shell is the standard department app shell (department-app-shell skill), copied from
