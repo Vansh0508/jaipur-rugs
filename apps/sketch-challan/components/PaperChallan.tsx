@@ -147,7 +147,7 @@ export function PaperChallan({
               <Button size="sm" onPress={() => { onAssign(staged); setStaged([]); }}>Allot {staged.length} part{staged.length === 1 ? "" : "s"}</Button>
               <Button size="sm" variant="secondary" onPress={() => setStaged([])}>Clear</Button>
             </div>
-          ) : row.tasks.length === 0 ? <p className="text-sm text-muted">No one assigned. Add parts, then allot. After allotment, changes need admin approval.</p> : null}
+          ) : row.tasks.length === 0 ? <p className="text-sm text-muted">No one assigned. Add a sketcher and part, add more people the same way, then allot.</p> : null}
         </div>
       ) : null}
     </div>

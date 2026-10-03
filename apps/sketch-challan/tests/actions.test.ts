@@ -13,7 +13,15 @@ describe("server-side action rules", () => {
   it("locks allotted challans for the manager but not new ones", () => {
     expect(applyAction(fresh, { type: "patch", id: fresh.id, patch: { priority: "urgent" }, message: "p" }, manager, now).priority).toBe("urgent");
     expect(() => applyAction(allotted, { type: "patch", id: allotted.id, patch: { design: "X" }, message: "p" }, manager, now)).toThrow();
-    expect(() => applyAction(allotted, { type: "assign", id: allotted.id, parts: [{ sketcherName: "Echo", assignedPart: "Border" }] }, manager, now)).toThrow();
+  });
+
+  it("lets the manager add another person to an allotted challan, but not a sketcher", () => {
+    const more = { type: "assign" as const, id: allotted.id, parts: [{ sketcherName: "Echo", assignedPart: "Border" }] };
+    const added = applyAction(allotted, more, manager, now);
+    expect(added.tasks).toHaveLength(allotted.tasks.length + 1);
+    expect(added.tasks.at(-1)).toMatchObject({ sketcherName: "Echo", assignedPart: "Border", status: "assigned" });
+    expect(() => applyAction(allotted, more, alpha, now)).toThrow();
+    expect(() => applyAction({ ...allotted, status: "on_hold" }, more, manager, now)).toThrow(/on hold/);
   });
 
   it("routes a manager handover to admin, and only admin can approve it", () => {

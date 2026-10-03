@@ -281,14 +281,14 @@ export function SketchChallanWorkspace({ initialChallans, initialMaps, user, dem
               // A sketcher writes the remark only while holding a part; after a handover it belongs to the new holder.
               mode={role === "manager" && !pending ? "edit" : role === "sketcher" && holdsPart ? "remarks" : "view"}
               onPatch={role === "manager" ? patchSelected : (change, message) => patch(selected.id, change, message)}
-              // Manager allots only new challans; after that, extra parts are the admin's call.
-              onAssign={(role === "manager" && !allotted) || (role === "admin" && allotted) ? (parts) => assign(selected.id, parts) : undefined}
+              // The manager adds people at any time (applied at once); Admin can add parts once it is allotted.
+              onAssign={role === "manager" || (role === "admin" && allotted) ? (parts) => assign(selected.id, parts) : undefined}
             />
             {role === "manager" && allotted ? (
               <div className="no-print rounded-2xl border border-border bg-surface-secondary p-4">
                 {pending ? <p className="text-sm">Your request is awaiting admin approval. Current challan details remain unchanged.</p> : (
                   <div className="flex flex-col gap-2">
-                    <p className="text-sm font-medium">This challan is allotted and locked. Edits above stay a draft until the admin approves. To hand a part to someone else, use Hand over (it applies at once). For an extra part, describe it in the reason.</p>
+                    <p className="text-sm font-medium">This challan is allotted and locked. Edits above stay a draft until the admin approves. To hand a part to someone else, use Hand over; to add another person, use Assign above. Both apply at once.</p>
                     <input className="rounded-lg border border-border bg-surface p-2 text-sm" value={requestReason} onChange={(event) => setRequestReason(event.target.value)} placeholder="What should change and why" />
                     <Button size="sm" onPress={submitRequest}>Send change request to admin</Button>
                   </div>

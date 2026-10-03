@@ -70,7 +70,10 @@ export function applyAction(row: SketchChallan, action: ChallanAction, user: Act
       return { ...row, ...patch, activity: log(row, String(action.message).slice(0, 200), now) };
     }
     case "assign": {
-      if (!(role === "manager" && !allotted) && !(role === "admin" && allotted)) deny();
+      // The Sketching Manager adds people at any time, applied at once like a handover (user, 2026-10-03);
+      // Admin can add parts to an allotted challan too.
+      if (role !== "manager" && !(role === "admin" && allotted)) deny();
+      if (row.status === "on_hold") throw new Error("This challan is on hold. Resume it before adding people.");
       if (!Array.isArray(action.parts) || action.parts.length === 0) throw new Error("Add at least one part.");
       // The same sketcher and part twice is a mistake; a finished part may be given again as rework.
       const open = new Set(row.tasks.filter((task) => task.status !== "completed").map((task) => `${task.sketcherName}|${task.assignedPart}`));
