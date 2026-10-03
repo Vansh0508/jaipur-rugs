@@ -163,6 +163,16 @@ export function challansFromRows(rows: Record<string, unknown>[], rules?: MapSiz
   return [...out.values()];
 }
 
+// Map No = the NAV-028 serial for the challan's production order (blank until NAV posts one). Always marked as a
+// report field so a refresh also clears an old value, such as the MAP item no that NAV-145 used to fill in.
+export function withMapSerials(rows: SketchChallan[], serials: Map<string, string>): SketchChallan[] {
+  return rows.map((row) => ({
+    ...row,
+    mapNo: serials.get(row.productionOrderNo) ?? "",
+    excelFields: [...(row.excelFields ?? []).filter((field) => field !== "mapNo"), "mapNo"],
+  }));
+}
+
 // Fields the manager owns once set; a live refresh only fills them while they are still blank.
 const MANAGER_OWNED = new Set<keyof SketchChallan>(["managerRemark1", "managerRemark2", "sketcherRemark", "substituteDesign", "priority", "status"]);
 

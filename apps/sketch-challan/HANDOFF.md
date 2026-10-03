@@ -47,6 +47,9 @@ npx tsc --noEmit && npx vitest run --dir tests && npx next build
   Supabase when `NAV_DB_URL` is set (`lib/nav/mirror.ts`, read-only login `sketch_challan_reader`), else the Excel
   inbox. NAV-145 rows: only Action to be Taken = Print/Available; that column is computed like the sheet's formula
   (`lib/nav/actionToBeTaken.ts`, checked 133/133 against the sheet). Map sizes from the DND rule workbooks.
+- Map No = the serial in nav_mirror `NAV-028 - Map Serial Output` whose Production Order No is the challan's
+  (e.g. PDMAP2627/023590 -> 595228; `mapSerialsByOrder` in `lib/nav/mirror.ts`). NAV posts it days after the challan,
+  so Map No is blank until then and fills in at the next Refresh Excel. NAV database mode only.
 - Navigation: Home cards Sketch Challan / Admin approvals / Sketchers / My work / Maps; stages are tabs inside
   Sketch Challan.
 - Flow: New → allot (manager) → sketcher Start / Done → Sketch approval (manager Approve / Send back, also from the

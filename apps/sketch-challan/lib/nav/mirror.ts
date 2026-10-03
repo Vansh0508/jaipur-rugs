@@ -13,6 +13,7 @@ const TABLES = {
   nav160: process.env.NAV_TABLE_160 || "NAV-160 - Map Routing Details - Sketch Checking and Development",
   inventory: process.env.NAV_TABLE_028 || "NAV-028 - Map Serial Inventory",
   library: process.env.NAV_TABLE_028_LIBRARY || "NAV-028 - Map Serial Inventory - Map Library",
+  output: process.env.NAV_TABLE_028_OUTPUT || "NAV-028 - Map Serial Output",
 };
 const table = (name: string) => `nav_mirror."${name.replace(/"/g, '""')}"`;
 
@@ -25,10 +26,10 @@ function db() {
 export interface MirrorResult { columns: string[]; rows: Record<string, unknown>[] }
 
 // Each copy drops the table and renames a fresh one into place, so a read can land in the gap: retry a few times.
-async function read(sql: string, label: string): Promise<MirrorResult> {
+async function read(sql: string, label: string, params: unknown[] = []): Promise<MirrorResult> {
   for (let attempt = 1; ; attempt++) {
     try {
-      const result = await db().query(sql);
+      const result = await db().query(sql, params);
       return { columns: result.fields.map((field) => field.name), rows: result.rows };
     } catch (error) {
       const code = (error as { code?: string }).code;
@@ -66,6 +67,19 @@ export async function nav145Rows(): Promise<MirrorResult> {
       return { ...rest, "Action to be Taken": action };
     }),
   };
+}
+
+// The challan's Map No is the serial NAV posts against its map production order (user, 2026-10-03), e.g.
+// PDMAP2627/023590 -> 595228. NAV posts it some days after the challan, so every refresh looks again.
+// Latest posting wins if an order ever has two.
+export async function mapSerialsByOrder(orders: string[]): Promise<Map<string, string>> {
+  if (orders.length === 0) return new Map();
+  const { rows } = await read(`
+    select distinct on (trim("Production Order No"::text)) trim("Production Order No"::text) as po, trim("Serial No_"::text) as serial
+    from ${table(TABLES.output)}
+    where trim("Production Order No"::text) = any($1)
+    order by trim("Production Order No"::text), "Posting Date" desc`, "NAV-028 Map Serial Output", [orders]);
+  return new Map(rows.map((row) => [String(row.po), String(row.serial)]));
 }
 
 // Only what the Maps screen needs from the ~130k-row inventory: LOC-031 copies and where they are.

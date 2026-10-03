@@ -5,8 +5,8 @@ import { NextResponse } from "next/server";
 import { DEMO_COOKIE, getDemoSession } from "@/lib/demoAuth";
 import * as XLSX from "xlsx";
 import { env } from "@/lib/env";
-import { challansFromExcel, challansFromRows, mergeExcelRows } from "@/lib/importExcel";
-import { mirrorEnabled, nav145Rows, nav160Rows } from "@/lib/nav/mirror";
+import { challansFromExcel, challansFromRows, mergeExcelRows, withMapSerials } from "@/lib/importExcel";
+import { mapSerialsByOrder, mirrorEnabled, nav145Rows, nav160Rows } from "@/lib/nav/mirror";
 import type { SketchChallan } from "@/lib/domain/types";
 import { updateRows } from "@/lib/demoStore";
 import { addRulesFromWorkbook, emptyRules, type MapSizeRules } from "@/lib/mapSizeRules";
@@ -88,7 +88,7 @@ export async function POST() {
       for (const row of rows) byPo.set(row.productionOrderNo, row);
     }
     if (!byPo.size) throw new Error(mirrorEnabled() ? "No Production Order rows in NAV-160 or NAV-145 right now." : "No Production Order rows found in the Excel inbox.");
-    const incoming = [...byPo.values()];
+    const incoming = mirrorEnabled() ? withMapSerials([...byPo.values()], await mapSerialsByOrder([...byPo.keys()])) : [...byPo.values()];
     const file = (mirrorEnabled() ? "NAV database: " : "") + used.join(", ");
     // Demo: merge into the shared store so every login sees the same refreshed rows.
     const rows = await updateRows((current) => { const merged = mergeExcelRows(current, incoming); return { rows: merged, result: merged }; });

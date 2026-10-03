@@ -104,3 +104,19 @@ describe("challansFromExcel", () => {
     await expect(challansFromExcel(XLSX.write(book, { type: "array", bookType: "xlsx" }) as ArrayBuffer)).rejects.toThrow(/^No Production Order rows/);
   });
 });
+
+describe("withMapSerials", () => {
+  it("shows the NAV-028 serial as Map No, clears it when there is none yet, and a refresh applies both", async () => {
+    const { withMapSerials } = await import("../lib/importExcel");
+    const base = { excelFields: ["design", "mapNo"] } as unknown as SketchChallan;
+    const rows = withMapSerials([
+      { ...base, productionOrderNo: "PDMAP2627/023590", mapNo: "" },
+      { ...base, productionOrderNo: "PDMAP2627/023676", mapNo: "MAP1184269" },
+    ], new Map([["PDMAP2627/023590", "595228"]]));
+    expect(rows.map((row) => row.mapNo)).toEqual(["595228", ""]);
+    expect(rows[1]?.excelFields?.filter((field) => field === "mapNo")).toHaveLength(1);
+    const stored = [{ ...rows[0]!, mapNo: "" }, { ...rows[1]!, mapNo: "MAP1184269", tasks: [], activity: [] }] as SketchChallan[];
+    const merged = mergeExcelRows(stored.map((row) => ({ ...row, tasks: [], activity: [] })), rows);
+    expect(merged.map((row) => row.mapNo)).toEqual(["595228", ""]);
+  });
+});
