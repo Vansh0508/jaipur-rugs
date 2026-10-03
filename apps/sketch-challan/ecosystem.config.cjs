@@ -7,7 +7,9 @@
 //   - memory: the Maps refresh parses NAV-028 (~36 MB) and needs ~2 GB, so the heap and restart limit are raised
 //   - `next start` without -H listens on every interface, so the LAN reaches http://192.168.0.18:3012
 const nodeBin = process.env.PM2_NODE_INTERPRETER;
-const NEXT_CLI = "node_modules/next/dist/bin/next";
+// The repo installs with node-linker=hoisted, so Next sits in this app's node_modules or the root one depending on
+// the whole lockfile; resolve it instead of hardcoding either (a lockfile change on 2026-10-03 moved it to the root).
+const NEXT_CLI = require.resolve("next/dist/bin/next", { paths: [__dirname] });
 const PORT = process.env.PORT || 3012;
 const HEAP = "--max-old-space-size=4096";
 
