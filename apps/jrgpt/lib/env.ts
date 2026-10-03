@@ -27,6 +27,16 @@ export const env = {
   get requireAuth() {
     return process.env.JRGPT_REQUIRE_AUTH === "true";
   },
+
+  /**
+   * Whether the auth session cookie is marked Secure. Defaults to true; set
+   * NEXT_PUBLIC_COOKIE_SECURE=false only for a genuinely plain-HTTP deployment (the
+   * office server, 192.168.0.18) — otherwise browsers drop the Secure cookie, sign-in
+   * "succeeds", and the user bounces back to /login. Same guard as Atlas / CAD Layout.
+   */
+  get secureCookies() {
+    return process.env.NEXT_PUBLIC_COOKIE_SECURE !== "false";
+  },
 };
 
 /** Server-side only. Absent until a key is provisioned; /api/ask reports that plainly. */

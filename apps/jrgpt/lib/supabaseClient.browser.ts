@@ -8,7 +8,7 @@ let client: ReturnType<typeof createSupabaseBrowserClient> | undefined;
 
 export function getBrowserSupabaseClient() {
   if (!client) {
-    client = createSupabaseBrowserClient(env.supabaseUrl, env.supabaseAnonKey, env.rootDomain);
+    client = createSupabaseBrowserClient(env.supabaseUrl, env.supabaseAnonKey, env.rootDomain, env.secureCookies);
   }
   return client;
 }
