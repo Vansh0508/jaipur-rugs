@@ -26,7 +26,17 @@ const QUANT_STEP = 16;
 // comparable, correlated amounts, so Euclidean distance (not a wider QUANT_STEP, which
 // would just as easily merge genuinely different pale colours) is what actually matches
 // "same colour, different shading" rather than "different colour, similar brightness."
-const MERGE_DISTANCE = 30;
+//
+// 30 turned out to still be far too tight: a second real photo (2026-10-03,
+// "TNQ-1124-...-LAOUT-Fa.jpg", the JPG DnD actually shares over Output Messenger for jobs
+// that have a clean Tikni BMP too) came back as 24 "colours" for a design CAD records as
+// 3 tikni — the tufted groove pattern's highlight/shadow contrast is wide enough that a
+// lot of real shading variation survived at distance 30. Swept against both real photos'
+// design pixels (legend strip already cropped off): 100 is the first value where both
+// settle onto a stable plateau that matches known ground truth — 4 colours for TNQ-1124
+// (matching its own clean BMP's exact 4) and 3 for QNQ-66-02 (matching its own legend's
+// 3 swatches) — and stays stable there, rather than being a knife-edge value.
+const MERGE_DISTANCE = 100;
 // Matches the dimension guard bmp.ts already applies to BMPs — one real DnD reference
 // photo (2026-09-28: "20250428 NEXUS ID - COWORKING LOUNGE.jpg") is a genuine 8000x4500,
 // 36 megapixel camera shot, so this has real headroom above real files, not just BMPs.

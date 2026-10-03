@@ -61,10 +61,22 @@ export interface TikniAnalysis {
 // embedded design image uncropped. NEAR_WHITE_MIN and the row tolerance below let a mostly-
 // white row with a little real-world noise still count as the gap.
 const NEAR_WHITE_MIN = 243;
-const ROW_NON_WHITE_TOLERANCE = 0.01;
+// 2026-10-03, "TNQ-1124...-LAOUT-Fa.jpg" (the JPG DnD actually shared for this job, over
+// Output Messenger, rather than the clean Tikni BMP): even its margin/gap rows carry 5–8%
+// non-white pixels from re-compression noise, so 1% rejected every row as "not a gap" and
+// detectLegendStrip returned null — the whole image (legend included) then went into
+// colour counting, surfacing 24 "colours" for a design CAD records as 3 tikni. 0.07 is the
+// widest tolerance that still cleanly separates design/gap/swatch bands on both that file
+// and the earlier real sample ("QNQ-66-02 (Visualization)(1).jpg") — both resolve to the
+// correct 3 legend swatches at this value.
+const ROW_NON_WHITE_TOLERANCE = 0.07;
 
 function isNearWhite(r: number, g: number, b: number): boolean {
   return r >= NEAR_WHITE_MIN && g >= NEAR_WHITE_MIN && b >= NEAR_WHITE_MIN;
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  return [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
 }
 
 /**
@@ -100,7 +112,12 @@ export function analyseTikni(image: BmpImage): TikniAnalysis {
       areaPct: (pixelCount / total) * 100,
       legendIndex: null as number | null,
       tikniCode: null as string | null,
-      likelyBackground: hex === "FFFFFF",
+      // Exact #FFFFFF catches a clean Tikni BMP's canvas, but a photographed/re-compressed
+      // JPG never lands on exact white (2026-10-03, "TNQ-1124-...-LAOUT-Fa.jpg": its margin
+      // came back as #FBFBFB) — that near-white tolerance is the same NEAR_WHITE_MIN already
+      // used to find the legend gap, so it should flag as background too rather than
+      // surfacing as a spurious 4th "colour" alongside the design's 3 real ones.
+      likelyBackground: isNearWhite(...hexToRgb(hex)),
     }))
     .sort((a, b) => b.pixelCount - a.pixelCount);
 
