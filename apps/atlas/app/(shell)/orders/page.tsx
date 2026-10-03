@@ -5,6 +5,7 @@ import {
   listFollowUpPersonEmails,
   getMyOrdersViewPreferences,
   getOrdersSummary,
+  getPoLinePositions,
   DEFAULT_PAGE_SIZE,
   type OrderFilters,
   type AgingBucket,
@@ -99,6 +100,8 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
     listOrders(supabase, filters),
     showSummary ? getOrdersSummary(supabase, filters) : Promise.resolve(null),
   ]);
+  // Needs the page's rows first (which POs to count), so it can't join the Promise.all above.
+  const poLinePositions = await getPoLinePositions(supabase, orders);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const hasAnyFilter = Object.entries(params).some(
     ([k, v]) => !["page", "pageSize", "sortBy", "sortDir"].includes(k) && v,
@@ -112,10 +115,10 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
     // own overflow-y-auto as a fallback for every other page, but this page manages its
     // own scrolling internally (only the table body scrolls; title bar and pagination
     // stay put) via Table.ScrollContainer below, not this outer div.
-    <div className="flex h-full flex-col gap-3.5 overflow-hidden">
+    <div className="flex h-full flex-col gap-2 overflow-hidden">
       <div className="flex shrink-0 items-center justify-between">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Orders</h1>
+          <h1 className="text-lg font-bold tracking-tight text-foreground">Orders</h1>
           {toArray(params.stageId).length === 1 ? (
             (() => {
               const stage = stages.find((s) => s.id === toArray(params.stageId)[0]);
@@ -157,6 +160,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
           }}
           hasAnyFilter={hasAnyFilter}
           followUpPersonEmails={followUpPersonEmails}
+          poLinePositions={poLinePositions}
           initialViewPreferences={viewPreferences}
           totalCount={totalCount}
           page={page}

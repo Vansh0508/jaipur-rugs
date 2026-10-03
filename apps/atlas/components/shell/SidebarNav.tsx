@@ -61,8 +61,8 @@ export function SidebarNav({
   ];
 
   return (
-    <nav aria-label="Primary" className="flex flex-1 flex-col gap-1 overflow-y-auto p-4">
-      <div className="mb-4 flex h-5 items-center justify-between px-2 text-sm font-semibold whitespace-nowrap text-foreground">
+    <nav aria-label="Primary" className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-4 py-2.5">
+      <div className="mb-2 flex h-5 items-center justify-between px-2 text-sm font-semibold whitespace-nowrap text-foreground">
         <span
           className={
             "overflow-hidden transition-[max-width,opacity] duration-150 " +
@@ -81,7 +81,7 @@ export function SidebarNav({
           <ChevronIcon className={"h-4 w-4 transition-transform duration-200 " + (expanded ? "" : "rotate-180")} />
         </button>
       </div>
-      <ul className="flex flex-col gap-1">
+      <ul className="flex flex-col gap-0.5">
         {links.map((link) => {
           const isActive = pathname === link.href || pathname.startsWith(link.href + "/");
           const Icon = link.icon;
@@ -92,7 +92,7 @@ export function SidebarNav({
                 aria-current={isActive ? "page" : undefined}
                 title={link.label}
                 className={
-                  "flex items-center gap-3 rounded-lg py-1.5 pl-1.5 pr-3 text-sm transition-colors " +
+                  "flex items-center gap-2 rounded-lg py-0.5 pl-1.5 pr-2 text-[13px] transition-colors " +
                   (isActive ? "font-medium text-accent" : "text-muted hover:text-foreground")
                 }
               >
@@ -104,11 +104,11 @@ export function SidebarNav({
                     blue color on the icon is not aligned" — this is what was misaligned. */}
                 <span
                   className={
-                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors " +
+                    "flex h-7 w-8 shrink-0 items-center justify-center rounded-lg transition-colors " +
                     (isActive ? "bg-accent/10" : "hover:bg-surface-secondary")
                   }
                 >
-                  <Icon className="h-5 w-5" />
+                  <Icon className="h-4.5 w-4.5" />
                 </span>
                 <span
                   className={

@@ -30,7 +30,7 @@ export function SidebarShell({
     <div
       className={
         "flex h-full shrink-0 flex-col overflow-hidden bg-app transition-[width] duration-200 ease-in-out " +
-        (expanded ? "w-72" : "w-16")
+        (expanded ? "w-48" : "w-16")
       }
     >
       <SessionTracker />

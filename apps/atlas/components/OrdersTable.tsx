@@ -45,6 +45,7 @@ import {
   type OrderFacets,
   type ViewPreferencesRow,
   type SortableColumn,
+  type PoLinePosition,
 } from "@/lib/queries/orders";
 
 /** Narrows a jsonb column's loosely-typed value (Json = string | number | boolean |
@@ -384,9 +385,9 @@ export const ALL_FILTERS = [
 ] as const;
 
 export const ROW_HEIGHT_OPTIONS = [
-  { id: "compact", label: "Compact", desc: "High density (32px)" },
-  { id: "normal", label: "Normal", desc: "Default spacing (44px)" },
-  { id: "comfortable", label: "Comfortable", desc: "Relaxed spacing (56px)" },
+  { id: "compact", label: "Compact", desc: "Highest density (~28px)" },
+  { id: "normal", label: "Normal", desc: "Default, 25+ rows per screen (~32px)" },
+  { id: "comfortable", label: "Comfortable", desc: "Relaxed spacing (~48px)" },
 ] as const;
 
 function getPageNumbers(currentPage: number, totalPages: number): number[] {
@@ -430,6 +431,8 @@ export interface OrdersTableProps {
   };
   hasAnyFilter?: boolean;
   followUpPersonEmails: Record<string, string>;
+  /** order id -> position within its Customer PO ("2/4"); absent for single-line POs. */
+  poLinePositions?: Record<string, PoLinePosition>;
   /** This account's saved Orders view (shown columns, order, hidden filters, row
    * height) — null means never saved yet (falls back to this app's own defaults).
    * Fetched server-side (getMyOrdersViewPreferences) so the very first paint already
@@ -463,6 +466,7 @@ export function OrdersTable({
   },
   hasAnyFilter = false,
   followUpPersonEmails,
+  poLinePositions = {},
   initialViewPreferences = null,
   totalCount = 0,
   page = 1,
@@ -803,7 +807,7 @@ export function OrdersTable({
   const pageNumbers = useMemo(() => getPageNumbers(page, totalPages), [page, totalPages]);
 
   return (
-    <div className="flex h-full flex-col gap-3">
+    <div className="flex h-full flex-col gap-1.5">
       {/* 1. Top Area: View Tabs on the left, Search Bar Button Group on the right */}
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 px-0.5">
         {/* Left Side: View Tabs + Selection */}
@@ -1569,7 +1573,7 @@ export function OrdersTable({
       {/* Main Table Card (Enclosed inside rounded-2xl card matching reference screenshot) */}
       <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/80 bg-surface shadow-2xs">
         {/* Table Subheader Bar matching BOM batches header in reference screenshot */}
-        <div className="flex shrink-0 items-center justify-between border-b border-border/80 bg-surface px-4 py-2.5">
+        <div className="flex shrink-0 items-center justify-between border-b border-border/80 bg-surface px-4 py-1.5">
           <div className="flex items-center gap-2.5">
             <span className="flex h-6 w-6 items-center justify-center rounded-md bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">
               <Layers3Diagonal width={13} height={13} />
@@ -1596,7 +1600,7 @@ export function OrdersTable({
               onSortChange={handleSortChange}
             >
               <Table.Header className="sticky top-0 z-10 bg-surface-secondary text-xs uppercase tracking-wider text-muted border-b border-border/80 whitespace-nowrap">
-                <Table.Column className="pe-0 w-14 text-center whitespace-nowrap py-3.5" id="selection">
+                <Table.Column className="pe-0 w-14 text-center whitespace-nowrap py-1.5" id="selection">
                   <Checkbox aria-label="Select all" slot="selection">
                     <Checkbox.Content>
                       <Checkbox.Control>
@@ -1611,7 +1615,7 @@ export function OrdersTable({
                     id={col.id}
                     isRowHeader={i === 0}
                     allowsSorting={col.sortable}
-                    className={`py-3.5 px-5 text-xs font-semibold text-muted uppercase tracking-wider whitespace-nowrap ${
+                    className={`py-1.5 px-3 text-[11px] font-semibold text-muted uppercase tracking-wider whitespace-nowrap ${
                       col.sortable ? "cursor-pointer hover:text-foreground transition-colors select-none" : ""
                     }`}
                   >
@@ -1686,7 +1690,7 @@ export function OrdersTable({
                     const cellsById: Record<string, React.ReactNode> = {
                       otn: (
                         <div className="flex items-center gap-1.5 whitespace-nowrap">
-                          <div>
+                          <div className="flex items-center gap-2">
                             <div className="flex items-center gap-1">
                               <Link href={`/orders/${order.id}`} className="font-semibold text-accent hover:underline">
                                 {order.otn_no}
@@ -1708,12 +1712,32 @@ export function OrdersTable({
                         </div>
                       ),
                       merchant: (
-                        <div className="whitespace-nowrap">
+                        <div className="flex items-center gap-2 whitespace-nowrap">
                           <div className="font-medium text-foreground">{order.merchant_name ?? "—"}</div>
                           <div className="text-[11px] text-muted">{order.customer_no ?? "—"}</div>
                         </div>
                       ),
-                      customerPo: order.customer_po_no ?? "—",
+                      // "PO-123 (2/4)" — the badge only exists for a PO with several rug
+                      // lines; clicking it filters to that whole PO.
+                      customerPo: (() => {
+                        const po = order.customer_po_no;
+                        if (!po) return "—";
+                        const pos = poLinePositions[order.id];
+                        return (
+                          <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                            <span>{po}</span>
+                            {pos ? (
+                              <Link
+                                href={buildLink({ customerPoNo: [po] })}
+                                title={`Line ${pos.index} of ${pos.total} on this Customer PO — click to show all ${pos.total}`}
+                                className="rounded-full bg-neutral-100 px-1.5 text-[10px] font-semibold leading-4 text-muted hover:text-accent dark:bg-neutral-800"
+                              >
+                                {pos.index}/{pos.total}
+                              </Link>
+                            ) : null}
+                          </span>
+                        );
+                      })(),
                       salesOrderNo: order.sales_order_no ?? "—",
                       salesCode: order.salesperson_code ?? "—",
                       salesPerson: order.order_wise_merchant ?? "—",
@@ -1722,7 +1746,7 @@ export function OrdersTable({
                       size: order.size ?? "—",
                       construction: order.construction ?? "—",
                       stage: (
-                        <div className="whitespace-nowrap">
+                        <div className="flex items-center gap-2 whitespace-nowrap">
                           {order.dispatched_at ? (
                             // Real dispatch fact from NAV-011 (not NAV_VIEW, which has
                             // no "Dispatched" status text at all — a dispatched rug just
@@ -1747,7 +1771,7 @@ export function OrdersTable({
                               order really is. Left as whatever NAV_VIEW last showed even
                               once dispatched — that's genuinely useful context (where it
                               shipped FROM), not a stale-data bug. */}
-                          <div className="mt-0.5 text-[11px] text-muted">{order.raw_current_status ?? "—"}</div>
+                          <div className="text-[11px] text-muted">{order.raw_current_status ?? "—"}</div>
                         </div>
                       ),
                       pendingDays: order.current_status_pending_days ?? "—",
@@ -1835,12 +1859,18 @@ export function OrdersTable({
 
                     const cellPaddingClass =
                       rowHeight === "compact"
-                        ? "py-2 px-5 text-[11px]"
+                        ? "py-0.5 px-3 text-[11px]"
                         : rowHeight === "comfortable"
-                        ? "py-5 px-5 text-xs"
-                        : "py-3.5 px-5 text-xs";
+                        ? "py-3 px-4 text-xs"
+                        : "py-1 px-3 text-xs";
                     const checkboxPaddingClass =
-                      rowHeight === "compact" ? "py-2" : rowHeight === "comfortable" ? "py-5" : "py-3.5";
+                      rowHeight === "compact" ? "py-0.5" : rowHeight === "comfortable" ? "py-3" : "py-1";
+                    // Tint each cell too, not just the row: a cell/row-group background from
+                    // the table theme can paint over the row's own background, which made
+                    // Delayed/Late rows look tinted only on hover.
+                    const cellTintStyle: React.CSSProperties | undefined = statusRowStyle
+                      ? { backgroundColor: statusRowStyle.backgroundColor }
+                      : undefined;
 
                     return (
                       <Table.Row
@@ -1849,7 +1879,7 @@ export function OrdersTable({
                         style={statusRowStyle}
                         className={`border-b border-border/40 transition-colors whitespace-nowrap ${statusRowClassName}`}
                       >
-                        <Table.Cell className={`pe-0 w-14 text-center whitespace-nowrap ${checkboxPaddingClass}`}>
+                        <Table.Cell style={cellTintStyle} className={`pe-0 w-14 text-center whitespace-nowrap ${checkboxPaddingClass}`}>
                           <Checkbox
                             aria-label={`Select order ${order.otn_no}`}
                             slot="selection"
@@ -1863,8 +1893,24 @@ export function OrdersTable({
                           </Checkbox>
                         </Table.Cell>
                         {visibleColumns.map((col) => (
-                          <Table.Cell key={col.id} className={`${cellPaddingClass} align-middle whitespace-nowrap`}>
-                            {cellsById[col.id]}
+                          <Table.Cell
+                            key={col.id}
+                            style={{ ...cellTintStyle, userSelect: "text", cursor: "text" }}
+                            className={`${cellPaddingClass} align-middle whitespace-nowrap`}
+                          >
+                            {/* Text must be selectable/copyable: the table's row-press handler
+                                (row click toggles selection, and the theme sets user-select: none
+                                on rows) otherwise swallows the drag. Stopping the press events
+                                here keeps drag-select working without preventing default, and
+                                row selection stays on the checkbox. Links/buttons inside still work. */}
+                            <div
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => e.stopPropagation()}
+                            >
+                              {cellsById[col.id]}
+                            </div>
                           </Table.Cell>
                         ))}
                       </Table.Row>
@@ -1877,7 +1923,7 @@ export function OrdersTable({
         </Table>
 
         {/* Footer with pagination and row count logic (generous padding) */}
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-t border-border/80 bg-surface px-6 py-3.5 text-xs text-muted">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-t border-border/80 bg-surface px-4 py-1.5 text-xs text-muted">
           <div>
             Showing <span className="font-semibold text-foreground">{from}</span> to{" "}
             <span className="font-semibold text-foreground">{to}</span> of{" "}

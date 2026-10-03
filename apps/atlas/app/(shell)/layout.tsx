@@ -32,7 +32,7 @@ export default async function ShellLayout({ children }: { children: ReactNode })
       <SidebarShell isAdmin={access.isAdmin} fullName={access.fullName} email={access.email} />
       {/* The content area is its own detached white card, floating against the grey
           shell with rounded-3xl corners, crisp border, and subtle elevation matching the reference design. */}
-      <main className="my-2.5 mr-2.5 ml-1.5 flex-1 min-w-0 h-[calc(100vh-20px)] overflow-y-auto rounded-3xl border border-border/80 bg-surface p-6 lg:p-7 shadow-xs flex flex-col">
+      <main className="my-1.5 mr-1.5 ml-1 flex-1 min-w-0 h-[calc(100vh-12px)] overflow-y-auto rounded-2xl border border-border/80 bg-surface p-3 lg:p-4 shadow-xs flex flex-col">
         {children}
       </main>
     </div>

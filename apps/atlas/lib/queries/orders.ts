@@ -40,8 +40,9 @@ export async function listStages(supabase: SupabaseClient): Promise<StageRow[]> 
 // this table's drag-to-resize columns are mutually exclusive — confirmed against its
 // type definitions), so a 500-row page is fully usable, just not quite as buttery a
 // scroll as a virtualized list would be.
-export const PAGE_SIZE_OPTIONS = [20, 50, 100, 500] as const;
-export const DEFAULT_PAGE_SIZE = 20;
+export const PAGE_SIZE_OPTIONS = [20, 30, 50, 100, 500] as const;
+// 30, not 20 — direct feedback: 20-30 rows should fit on one screen at the compact row height.
+export const DEFAULT_PAGE_SIZE = 30;
 
 export type ConstructionType = "knotted" | "tufted" | "handloom" | "other" | "swatch";
 export type AgingBucket = "0-7" | "8-15" | "16-30" | "30+";
@@ -458,6 +459,73 @@ export async function listOrders(supabase: SupabaseClient, filters: OrderFilters
   const { data, error, count } = await query;
   if (error) throw error;
   return { rows: data ?? [], totalCount: count ?? 0 };
+}
+
+/** A rug line's position within its Customer PO, e.g. { index: 2, total: 4 } -> "2/4". */
+export interface PoLinePosition {
+  index: number;
+  total: number;
+}
+
+/** For every Customer PO that appears in `rows`, counts ALL its rug lines (not just the
+ * ones on this page — a PO can straddle pages) and numbers each line within it, so the
+ * table can show "PO-123 (2/4)". Keyed by order id. Lines are numbered in a stable order
+ * (sales order, line no., OTN). RLS and the hidden-stock rule apply exactly as in
+ * listOrders, so "total" is the number of lines this caller can see on that PO. A PO with
+ * a single visible line gets no entry. Customer PO numbers aren't unique across
+ * customers, so lines are grouped on (customer_no, customer_po_no). */
+export async function getPoLinePositions(
+  supabase: SupabaseClient,
+  rows: Pick<OrderRow, "customer_po_no">[],
+  includeStock = false,
+): Promise<Record<string, PoLinePosition>> {
+  const poNos = [...new Set(rows.map((r) => r.customer_po_no).filter((v): v is string => Boolean(v)))];
+  if (!poNos.length) return {};
+
+  type Line = Pick<OrderRow, "id" | "customer_no" | "customer_po_no" | "sales_order_no" | "sales_line_no" | "otn_no">;
+  const lines: Line[] = [];
+  const PAGE = 1000; // PostgREST's per-request row cap
+  const CHUNK = 50; // PO numbers per request, keeps the URL short
+  for (let i = 0; i < poNos.length; i += CHUNK) {
+    const chunk = poNos.slice(i, i + CHUNK);
+    for (let from = 0; ; from += PAGE) {
+      let q = supabase
+        .from("orders_with_on_time_status")
+        .select("id, customer_no, customer_po_no, sales_order_no, sales_line_no, otn_no")
+        .in("customer_po_no", chunk)
+        .order("id", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (!includeStock) q = q.eq("is_hidden_stock", false);
+      const { data, error } = await q;
+      if (error) throw error;
+      lines.push(...((data ?? []) as Line[]));
+      if ((data?.length ?? 0) < PAGE) break;
+    }
+  }
+
+  const groups = new Map<string, Line[]>();
+  for (const line of lines) {
+    const key = `${line.customer_no ?? ""}\u0000${line.customer_po_no ?? ""}`;
+    const g = groups.get(key);
+    if (g) g.push(line);
+    else groups.set(key, [line]);
+  }
+
+  const collator = new Intl.Collator(undefined, { numeric: true });
+  const result: Record<string, PoLinePosition> = {};
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    group.sort(
+      (a, b) =>
+        collator.compare(String(a.sales_order_no ?? ""), String(b.sales_order_no ?? "")) ||
+        collator.compare(String(a.sales_line_no ?? ""), String(b.sales_line_no ?? "")) ||
+        collator.compare(String(a.otn_no ?? ""), String(b.otn_no ?? "")),
+    );
+    group.forEach((line, i) => {
+      result[line.id] = { index: i + 1, total: group.length };
+    });
+  }
+  return result;
 }
 
 export interface OrderFacets {

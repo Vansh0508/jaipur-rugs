@@ -43,7 +43,7 @@ export function UserMenu({
   }
 
   return (
-    <div className="shrink-0 border-t-2 border-border p-2">
+    <div className="shrink-0 border-t-2 border-border p-1.5">
       <Popover.Root>
         <Popover.Trigger>
           <Button variant="ghost" fullWidth className="justify-start gap-3 overflow-hidden !px-2">

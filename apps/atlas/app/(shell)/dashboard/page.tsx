@@ -32,17 +32,18 @@ export default async function DashboardPage() {
   const [stats, stages] = await Promise.all([getDashboardStats(supabase), listStages(supabase)]);
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
+        <h1 className="text-lg font-semibold text-foreground">Dashboard</h1>
         <p className="text-sm text-muted">Everything you have visibility into, in one place.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <DashboardStat label="Rug lines in view" value={stats.total} />
-        <DashboardStat label="Distinct sales orders" value={stats.distinctSalesOrders} />
-        <DashboardStat label="Delayed" value={stats.delayedCount} />
-        <DashboardStat label="On track" value={stats.total - stats.delayedCount} />
+        <DashboardStat label="Rug lines in view" value={stats.total} href="/orders" />
+        {/* No per-sales-order list exists; the Orders table is the closest view (sort by Sales Order No.). */}
+        <DashboardStat label="Distinct sales orders" value={stats.distinctSalesOrders} href="/orders?sortBy=salesOrderNo&sortDir=asc" />
+        <DashboardStat label="Delayed" value={stats.delayedCount} href="/orders?delayStatus=late" />
+        <DashboardStat label="On track" value={stats.total - stats.delayedCount} href="/orders?delayStatus=on_track" />
       </div>
 
       <div>
